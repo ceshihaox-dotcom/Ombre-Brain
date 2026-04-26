@@ -191,7 +191,6 @@ class DecayEngine:
 
         checked = 0
         archived = 0
-        auto_resolved = 0
         lowest_score = float("inf")
 
         for bucket in buckets:
@@ -204,27 +203,11 @@ class DecayEngine:
 
             checked += 1
 
-            # --- Auto-resolve: imp≤4 + >30 days old + not resolved → auto resolve ---
-            # --- 自动结案：重要度≤4 + 超过30天 + 未解决 → 自动 resolve ---
-            if not meta.get("resolved", False):
-                imp = int(meta.get("importance", 5))
-                last_active_str = meta.get("last_active", meta.get("created", ""))
-                try:
-                    last_active = datetime.fromisoformat(str(last_active_str))
-                    days_since = (datetime.now() - last_active).total_seconds() / 86400
-                except (ValueError, TypeError):
-                    days_since = 999
-                if imp <= 4 and days_since > 30:
-                    try:
-                        await self.bucket_mgr.update(bucket["id"], resolved=True)
-                        auto_resolved += 1
-                        logger.info(
-                            f"Auto-resolved / 自动结案: "
-                            f"{meta.get('name', bucket['id'])} "
-                            f"(imp={imp}, days={days_since:.0f})"
-                        )
-                    except Exception as e:
-                        logger.warning(f"Auto-resolve failed / 自动结案失败: {e}")
+            # 注:原本这里有 auto-resolve 机制(imp≤4 + 30 天没动 → 自动 resolved=True)
+            # 在 2026-04-26 切片 3 关掉。原因:resolved 在新语义下=用户确认兑现的待办,
+            # 让系统替用户宣布"这事完成了"会污染待办视图,且用户对此机制不知情。
+            # 自然衰减归档(下方 score < threshold 路径)仍在工作,清理低活跃记忆的目标
+            # 由那条路径承担,只是路径变成"被遗忘"而不是"被宣布完成"。
 
             try:
                 score = self.calculate_score(meta)
@@ -258,7 +241,6 @@ class DecayEngine:
         result = {
             "checked": checked,
             "archived": archived,
-            "auto_resolved": auto_resolved,
             "lowest_score": lowest_score if checked > 0 else 0,
         }
         logger.info(f"Decay cycle complete / 衰减周期完成: {result}")
