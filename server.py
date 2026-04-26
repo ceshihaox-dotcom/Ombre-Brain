@@ -49,7 +49,7 @@ from dehydrator import Dehydrator
 from decay_engine import DecayEngine
 from embedding_engine import EmbeddingEngine
 from import_memory import ImportEngine
-from utils import load_config, setup_logging, strip_wikilinks, count_tokens_approx
+from utils import load_config, setup_logging, strip_wikilinks, count_tokens_approx, is_internalized
 
 # --- Load config & init logging / 加载配置 & 初始化日志 ---
 config = load_config()
@@ -102,17 +102,17 @@ async def breath_hook(request):
     from starlette.responses import PlainTextResponse
     try:
         all_buckets = await bucket_mgr.list_all(include_archive=False)
-        # pinned (exclude digested: per trace docstring, digested=隐藏不浮现)
+        # pinned (exclude internalized: 用户手动标记的隐藏不浮现)
         pinned = [b for b in all_buckets
                   if (b["metadata"].get("pinned") or b["metadata"].get("protected"))
-                  and not b["metadata"].get("digested", False)]
+                  and not is_internalized(b["metadata"])]
         # top 2 unresolved by score
         unresolved = [b for b in all_buckets
                       if not b["metadata"].get("resolved", False)
                       and b["metadata"].get("type") not in ("permanent", "feel")
                       and not b["metadata"].get("pinned")
                       and not b["metadata"].get("protected")
-                      and not b["metadata"].get("digested", False)]
+                      and not is_internalized(b["metadata"])]
         scored = sorted(unresolved, key=lambda b: decay_engine.calculate_score(b["metadata"]), reverse=True)
 
         parts = []
@@ -164,7 +164,7 @@ async def dream_hook(request):
             if b["metadata"].get("type") not in ("permanent", "feel")
             and not b["metadata"].get("pinned", False)
             and not b["metadata"].get("protected", False)
-            and not b["metadata"].get("digested", False)
+            and not is_internalized(b["metadata"])
         ]
         candidates.sort(key=lambda b: b["metadata"].get("created", ""), reverse=True)
         recent = candidates[:10]
@@ -294,11 +294,11 @@ async def breath(
             return "记忆系统暂时无法访问。"
 
         # --- Pinned/protected buckets: always surface as core principles ---
-        # --- 钉选桶：作为核心准则，始终浮现（已消化的隐藏） ---
+        # --- 钉选桶：作为核心准则，始终浮现（已内化的隐藏） ---
         pinned_buckets = [
             b for b in all_buckets
             if (b["metadata"].get("pinned") or b["metadata"].get("protected"))
-            and not b["metadata"].get("digested", False)
+            and not is_internalized(b["metadata"])
         ]
         pinned_results = []
         for b in pinned_buckets:
@@ -318,7 +318,7 @@ async def breath(
             and b["metadata"].get("type") not in ("permanent", "feel")
             and not b["metadata"].get("pinned", False)
             and not b["metadata"].get("protected", False)
-            and not b["metadata"].get("digested", False)
+            and not is_internalized(b["metadata"])
         ]
 
         logger.info(
@@ -420,12 +420,12 @@ async def breath(
         logger.error(f"Search failed / 检索失败: {e}")
         return "检索过程出错，请稍后重试。"
 
-    # --- Exclude pinned/protected/digested from search results ---
-    # --- 搜索模式排除钉选桶（它们在浮现模式中始终可见）和已消化桶 ---
+    # --- Exclude pinned/protected/internalized from search results ---
+    # --- 搜索模式排除钉选桶(它们在浮现模式中始终可见)和已内化桶 ---
     matches = [b for b in matches
                if not (b["metadata"].get("pinned")
                        or b["metadata"].get("protected")
-                       or b["metadata"].get("digested", False))]
+                       or is_internalized(b["metadata"]))]
 
     # --- Vector similarity channel: find semantically related buckets ---
     # --- 向量相似度通道：找到语义相关的桶 ---
@@ -437,7 +437,7 @@ async def breath(
                 bucket = await bucket_mgr.get(bucket_id)
                 if bucket and not (bucket["metadata"].get("pinned")
                                    or bucket["metadata"].get("protected")
-                                   or bucket["metadata"].get("digested", False)):
+                                   or is_internalized(bucket["metadata"])):
                     bucket["score"] = round(sim_score * 100, 2)
                     bucket["vector_match"] = True
                     matches.append(bucket)
@@ -483,7 +483,7 @@ async def breath(
                 b for b in all_buckets
                 if b["id"] not in matched_ids
                 and decay_engine.calculate_score(b["metadata"]) < 2.0
-                and not b["metadata"].get("digested", False)
+                and not is_internalized(b["metadata"])
             ]
             if low_weight:
                 drifted = random.sample(low_weight, min(random.randint(1, 3), len(low_weight)))
@@ -516,7 +516,7 @@ async def hold(
     source_bucket: str = "",    valence: float = -1,
     arousal: float = -1,
 ) -> str:
-    """存储单条记忆,自动打标+合并。tags逗号分隔,importance 1-10。pinned=True创建永久钉选桶。feel=True存储你的第一人称感受(不参与普通浮现)。source_bucket=被消化的记忆桶ID(feel模式下,标记源记忆为已消化)。"""
+    """存储单条记忆,自动打标+合并。tags逗号分隔,importance 1-10。pinned=True创建永久钉选桶。feel=True存储你的第一人称感受(不参与普通浮现)。source_bucket=被你内化的记忆桶ID(feel模式下,标记源记忆为已内化,从此不再浮现)。"""
     await decay_engine.ensure_started()
 
     # --- Input validation / 输入校验 ---
@@ -546,16 +546,16 @@ async def hold(
             await embedding_engine.generate_and_store(bucket_id, content)
         except Exception:
             pass
-        # --- Mark source memory as digested + store model's valence perspective ---
-        # --- 标记源记忆为已消化 + 存储模型视角的 valence ---
+        # --- Mark source memory as internalized + store model's valence perspective ---
+        # --- 标记源记忆为已内化 + 存储模型视角的 valence ---
         if source_bucket and source_bucket.strip():
             try:
-                update_kwargs = {"digested": True}
+                update_kwargs = {"internalized": True}
                 if 0 <= valence <= 1:
                     update_kwargs["model_valence"] = feel_valence
                 await bucket_mgr.update(source_bucket.strip(), **update_kwargs)
             except Exception as e:
-                logger.warning(f"Failed to mark source as digested / 标记已消化失败: {e}")
+                logger.warning(f"Failed to mark source as internalized / 标记已内化失败: {e}")
         return f"🫧feel→{bucket_id}"
 
     # --- Step 1: auto-tagging / 自动打标 ---
@@ -711,11 +711,12 @@ async def trace(
     tags: str = "",
     resolved: int = -1,
     pinned: int = -1,
-    digested: int = -1,
+    internalized: int = -1,
+    digested: int = -1,  # 老字段名,兼容历史调用方,语义同 internalized
     content: str = "",
     delete: bool = False,
 ) -> str:
-    """修改记忆元数据或内容。resolved=1沉底/0激活,pinned=1钉选/0取消,digested=1隐藏(保留但不浮现)/0取消隐藏,content=替换桶正文,delete=True删除。只传需改的,-1或空=不改。"""
+    """修改记忆元数据或内容。resolved=1沉底/0激活,pinned=1钉选/0取消,internalized=1隐藏(保留但不浮现)/0取消隐藏,content=替换桶正文,delete=True删除。只传需改的,-1或空=不改。digested 是 internalized 的旧名,仍可用。"""
 
     if not bucket_id or not bucket_id.strip():
         return "请提供有效的 bucket_id。"
@@ -751,8 +752,11 @@ async def trace(
         updates["pinned"] = bool(pinned)
         if pinned == 1:
             updates["importance"] = 10  # pinned → lock importance
-    if digested in (0, 1):
-        updates["digested"] = bool(digested)
+    # internalized 优先,digested 是兼容老调用方的别名
+    if internalized in (0, 1):
+        updates["internalized"] = bool(internalized)
+    elif digested in (0, 1):
+        updates["internalized"] = bool(digested)
     if content:
         updates["content"] = content
 
@@ -780,11 +784,11 @@ async def trace(
             changed += " → 已沉底，只在关键词触发时重新浮现"
         else:
             changed += " → 已重新激活，将参与浮现排序"
-    if "digested" in updates:
-        if updates["digested"]:
-            changed += " → 已隐藏，保留但不再浮现"
+    if "internalized" in updates:
+        if updates["internalized"]:
+            changed += " → 已内化，保留但不再浮现"
         else:
-            changed += " → 已取消隐藏，重新参与浮现"
+            changed += " → 已取消内化，重新参与浮现"
     return f"已修改记忆桶 {bucket_id}: {changed}"
 
 
@@ -1007,7 +1011,8 @@ async def api_buckets(request):
                 "importance": meta.get("importance", 5),
                 "resolved": meta.get("resolved", False),
                 "pinned": meta.get("pinned", False),
-                "digested": meta.get("digested", False),
+                "internalized": is_internalized(meta),
+                "digested": is_internalized(meta),  # 兼容旧前端
                 "created": meta.get("created", ""),
                 "last_active": meta.get("last_active", ""),
                 "activation_count": meta.get("activation_count", 1),
@@ -1086,7 +1091,8 @@ async def api_network(request):
                 "score": decay_engine.calculate_score(meta),
                 "resolved": meta.get("resolved", False),
                 "pinned": meta.get("pinned", False),
-                "digested": meta.get("digested", False),
+                "internalized": is_internalized(meta),
+                "digested": is_internalized(meta),  # 兼容旧前端
             })
             if embedding_engine and embedding_engine.enabled:
                 emb = await embedding_engine.get_embedding(bid)

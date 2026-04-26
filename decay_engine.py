@@ -24,6 +24,8 @@ import asyncio
 import logging
 from datetime import datetime
 
+from utils import is_internalized
+
 logger = logging.getLogger("ombre_brain.decay")
 
 
@@ -151,13 +153,13 @@ class DecayEngine:
         )
 
         # --- Weight pool modifiers ---
-        # resolved + digested (has feel) → accelerated fade: ×0.02
+        # resolved + internalized → accelerated fade: ×0.02
         # resolved only → ×0.05
-        # 已处理+已消化（写过feel）→ 加速淡化：×0.02
+        # 已处理+已内化 → 加速淡化:×0.02
         # 仅已处理 → ×0.05
         resolved = metadata.get("resolved", False)
-        digested = metadata.get("digested", False)  # set when feel is written for this memory
-        if resolved and digested:
+        internalized = is_internalized(metadata)
+        if resolved and internalized:
             resolved_factor = 0.02
         elif resolved:
             resolved_factor = 0.05

@@ -126,6 +126,19 @@ def load_config(config_path: str = None) -> dict:
     return config
 
 
+def is_internalized(meta: dict) -> bool:
+    """读"已内化"标记,兼容旧字段名 `digested`。
+    优先用新字段 `internalized`(即使是 False 也以它为准),
+    只在 `internalized` 完全没设过时才退回旧字段 `digested`。
+    历史(2026-04-26):字段从 digested 重命名为 internalized,
+    语义改为"用户手动隐藏不浮现"(原本跟 feel 写入耦合,跟权重无关)。"""
+    if not isinstance(meta, dict):
+        return False
+    if "internalized" in meta:
+        return bool(meta.get("internalized"))
+    return bool(meta.get("digested", False))
+
+
 def _deep_merge(base: dict, override: dict) -> dict:
     """
     Deep-merge two dicts; override values take precedence.

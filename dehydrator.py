@@ -33,7 +33,7 @@ from datetime import datetime
 
 from openai import AsyncOpenAI
 
-from utils import count_tokens_approx
+from utils import count_tokens_approx, is_internalized
 
 
 def _short_date(ts) -> str:
@@ -404,8 +404,8 @@ class Dehydrator:
                 time_parts.append(f"最近活跃:{_short_date(last_active)}")
             if time_parts:
                 header += f" [{' / '.join(time_parts)}]"
-            if metadata.get("digested"):
-                header += " [已消化]"
+            if is_internalized(metadata):
+                header += " [已内化]"
             header += "\n"
 
         content = re.sub(r'\[\[([^\]]+)\]\]', r'\1', content)

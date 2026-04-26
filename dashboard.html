@@ -821,14 +821,17 @@ async function loadBuckets() {
   }
 }
 
+// 读"已内化"标记,兼容老字段名 digested(后端 /api/buckets 同时返回两个,这里防御性 fallback)
+function isInternalized(b) { return !!(b.internalized || b.digested); }
+
 function updateStats() {
   const total = allBuckets.length;
   const pinned = allBuckets.filter(b => b.pinned).length;
   const feels = allBuckets.filter(b => b.type === 'feel').length;
   const resolved = allBuckets.filter(b => b.resolved).length;
-  const digested = allBuckets.filter(b => b.digested).length;
+  const internalized = allBuckets.filter(isInternalized).length;
   document.getElementById('stats').textContent =
-    total + ' 桶 · ' + pinned + ' 钉选 · ' + feels + ' feel · ' + resolved + ' 已解决 · ' + digested + ' 已消化';
+    total + ' 桶 · ' + pinned + ' 钉选 · ' + feels + ' feel · ' + resolved + ' 已解决 · ' + internalized + ' 已内化';
 }
 
 function buildFilters() {
@@ -840,7 +843,7 @@ function buildFilters() {
     { key: 'pinned', label: '📌 钉选' },
     { key: 'feel', label: '🫧 Feel' },
     { key: 'unresolved', label: '⚡ 未解决' },
-    { key: 'digested', label: '🌿 已消化' },
+    { key: 'internalized', label: '🌿 已内化' },
     { key: 'archived', label: '📦 归档' },
   ];
   filters.innerHTML = types.map(function(t) {
@@ -864,7 +867,7 @@ function filterBuckets(buckets) {
   if (currentFilter === 'pinned') return buckets.filter(function(b) { return b.pinned; });
   if (currentFilter === 'feel') return buckets.filter(function(b) { return b.type === 'feel'; });
   if (currentFilter === 'unresolved') return buckets.filter(function(b) { return !b.resolved && b.type !== 'permanent' && !b.pinned; });
-  if (currentFilter === 'digested') return buckets.filter(function(b) { return b.digested; });
+  if (currentFilter === 'internalized') return buckets.filter(isInternalized);
   if (currentFilter === 'archived') return buckets.filter(function(b) { return b.type === 'archived' || b.score < 0.3; });
   if (currentFilter.startsWith('domain:')) {
     var d = currentFilter.slice(7);
@@ -880,7 +883,7 @@ function renderBuckets(buckets) {
     return;
   }
   list.innerHTML = buckets.map(function(b) {
-    var icon = b.pinned ? '📌' : b.type === 'feel' ? '🫧' : b.digested ? '🌿' : b.resolved ? '💤' : '💭';
+    var icon = b.pinned ? '📌' : b.type === 'feel' ? '🫧' : isInternalized(b) ? '🌿' : b.resolved ? '💤' : '💭';
     var vPos = Math.round(b.valence * 100);
     var modelV = b.model_valence != null ? ' → V' + b.model_valence.toFixed(1) : '';
     var timeAgo = formatTimeAgo(b.last_active || b.created);
@@ -930,7 +933,7 @@ async function showDetail(id) {
         '<div class="field"><label>权重分</label>' + b.score.toFixed(4) + '</div>' +
         '<div class="field"><label>激活次数</label>' + (meta.activation_count || 1) + '</div>' +
         '<div class="field"><label>已解决</label>' + (meta.resolved ? '✓' : '—') + '</div>' +
-        '<div class="field"><label>已消化</label>' + (meta.digested ? '✓' : '—') + '</div>' +
+        '<div class="field"><label>已内化</label>' + ((meta.internalized || meta.digested) ? '✓' : '—') + '</div>' +
         '<div class="field"><label>钉选</label>' + (meta.pinned ? '✓' : '—') + '</div>' +
         '<div class="field"><label>创建</label>' + (meta.created || '—') + '</div>' +
         '<div class="field"><label>最后活跃</label>' + (meta.last_active || '—') + '</div>' +

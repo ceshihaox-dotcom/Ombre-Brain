@@ -274,8 +274,14 @@ class BucketManager:
             post["pinned"] = bool(kwargs["pinned"])
             if kwargs["pinned"]:
                 post["importance"] = 10  # pinned → lock importance to 10
-        if "digested" in kwargs:
-            post["digested"] = bool(kwargs["digested"])
+        # internalized 是新字段名(原 digested),兼容老调用方传 digested
+        if "internalized" in kwargs:
+            post["internalized"] = bool(kwargs["internalized"])
+            # 顺手清理老字段,避免新旧并存歧义
+            post.pop("digested", None)
+        elif "digested" in kwargs:
+            post["internalized"] = bool(kwargs["digested"])
+            post.pop("digested", None)
         if "model_valence" in kwargs:
             post["model_valence"] = max(0.0, min(1.0, float(kwargs["model_valence"])))
 
