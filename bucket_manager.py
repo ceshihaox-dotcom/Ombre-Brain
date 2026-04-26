@@ -112,6 +112,7 @@ class BucketManager:
         protected: bool = False,
         highlight: bool = False,
         event_time: str = None,
+        created_by: str = None,
     ) -> str:
         """
         Create a new memory bucket, return bucket ID.
@@ -157,6 +158,9 @@ class BucketManager:
         et = _nev(event_time)
         if et:
             metadata["event_time"] = et
+        # created_by: 'user' 表示 dashboard 手动创建,'ai' 默认(不显式写入,认为 ai 是默认值)
+        if created_by:
+            metadata["created_by"] = str(created_by)
         if protected:
             metadata["protected"] = True
         if highlight:
@@ -759,6 +763,42 @@ class BucketManager:
             return False
 
         logger.info(f"Archived bucket / 归档记忆桶: {bucket_id} → archive/{primary_domain}/")
+        return True
+
+    # ---------------------------------------------------------
+    # Unarchive: move a bucket from archive/ back to dynamic/
+    # 取消归档：把桶从 archive/ 移回 dynamic/
+    # 用户在 dashboard 误归档/想恢复活跃时调用
+    # ---------------------------------------------------------
+    async def unarchive(self, bucket_id: str) -> bool:
+        """Move an archived bucket back into dynamic/, clear 'archived' type marker."""
+        file_path = self._find_bucket_file(bucket_id)
+        if not file_path:
+            return False
+        # 仅处理目前在 archive 目录的桶,permanent 不动(那是钉选/保护类)
+        if not os.path.normpath(file_path).startswith(os.path.normpath(self.archive_dir)):
+            logger.warning(f"unarchive: 桶 {bucket_id} 不在 archive 目录,跳过")
+            return False
+
+        try:
+            post = frontmatter.load(file_path)
+            domain = post.get("domain", ["未分类"])
+            primary_domain = sanitize_name(domain[0]) if domain else "未分类"
+            dynamic_subdir = os.path.join(self.dynamic_dir, primary_domain)
+            os.makedirs(dynamic_subdir, exist_ok=True)
+            dest = safe_path(dynamic_subdir, os.path.basename(file_path))
+
+            # 清掉 archived 标记,改回 dynamic
+            post["type"] = "dynamic"
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(frontmatter.dumps(post))
+
+            shutil.move(file_path, str(dest))
+        except Exception as e:
+            logger.error(f"Failed to unarchive bucket / 取消归档失败: {bucket_id}: {e}")
+            return False
+
+        logger.info(f"Unarchived bucket / 取消归档: {bucket_id} → dynamic/{primary_domain}/")
         return True
 
     # ---------------------------------------------------------
