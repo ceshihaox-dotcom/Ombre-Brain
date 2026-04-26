@@ -29,10 +29,24 @@ import json
 import hashlib
 import sqlite3
 import logging
+from datetime import datetime
 
 from openai import AsyncOpenAI
 
 from utils import count_tokens_approx
+
+
+def _short_date(ts) -> str:
+    """把任意 ISO 时间戳/日期字符串压成 YYYY-MM-DD,失败返回原值。
+    给 AI 看的 header 用,绝对日期方便 AI 做时间推理。"""
+    if not ts:
+        return ""
+    s = str(ts)
+    try:
+        return datetime.fromisoformat(s).strftime("%Y-%m-%d")
+    except (ValueError, TypeError):
+        # 已经是 YYYY-MM-DD 之类就直接截前 10 位返回
+        return s[:10]
 
 logger = logging.getLogger("ombre_brain.dehydrator")
 
@@ -378,10 +392,22 @@ class Dehydrator:
                     header += f" [我的视角:V{float(model_v):.1f}]"
                 except (ValueError, TypeError):
                     pass
+            # 时间维度:让 AI 知道每条记忆的时间线,做时间推理用
+            # event_time 是事件实际发生时间(用户可设/可改,以后切片加),
+            # 没有就退回 created(系统写入时间);last_active 表示最近一次唤起。
+            event_or_created = metadata.get("event_time") or metadata.get("created")
+            last_active = metadata.get("last_active")
+            time_parts = []
+            if event_or_created:
+                time_parts.append(f"创建:{_short_date(event_or_created)}")
+            if last_active and last_active != event_or_created:
+                time_parts.append(f"最近活跃:{_short_date(last_active)}")
+            if time_parts:
+                header += f" [{' / '.join(time_parts)}]"
             if metadata.get("digested"):
                 header += " [已消化]"
             header += "\n"
-        
+
         content = re.sub(r'\[\[([^\]]+)\]\]', r'\1', content)
         return f"{header}{content}"
 
