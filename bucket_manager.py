@@ -303,23 +303,32 @@ class BucketManager:
             post["name"] = sanitize_name(kwargs["name"])
         if "resolved" in kwargs:
             post["resolved"] = bool(kwargs["resolved"])
+        # frontmatter.Post 不是 dict,没有 .pop();只能用 del,且需要先判断 key 在不在
+        # 用一个本地小工具统一处理,避免每处都 try/except
+        def _drop(key):
+            try:
+                if key in post:
+                    del post[key]
+            except Exception:
+                pass
+
         if "protected" in kwargs:
             post["protected"] = bool(kwargs["protected"])
             if kwargs["protected"]:
                 post["importance"] = 10  # protected → lock importance to 10
             # 写新字段后顺手清老 pinned,完成迁移
-            post.pop("pinned", None)
+            _drop("pinned")
         if "highlight" in kwargs:
             post["highlight"] = bool(kwargs["highlight"])
-            post.pop("pinned", None)
+            _drop("pinned")
         # internalized 是新字段名(原 digested),兼容老调用方传 digested
         if "internalized" in kwargs:
             post["internalized"] = bool(kwargs["internalized"])
             # 顺手清理老字段,避免新旧并存歧义
-            post.pop("digested", None)
+            _drop("digested")
         elif "digested" in kwargs:
             post["internalized"] = bool(kwargs["digested"])
-            post.pop("digested", None)
+            _drop("digested")
         if "model_valence" in kwargs:
             post["model_valence"] = max(0.0, min(1.0, float(kwargs["model_valence"])))
         # event_time:用户事后纠正"这事到底发生在哪天"
@@ -330,7 +339,7 @@ class BucketManager:
             if et:
                 post["event_time"] = et
             else:
-                post.pop("event_time", None)
+                _drop("event_time")
 
         # --- Auto-refresh activation time / 自动刷新激活时间 ---
         post["last_active"] = now_iso()
