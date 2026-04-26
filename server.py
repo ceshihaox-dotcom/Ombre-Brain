@@ -1038,6 +1038,7 @@ async def api_buckets(request):
                 "internalized": is_internalized(meta),
                 "digested": is_internalized(meta),  # 兼容旧前端
                 "event_time": meta.get("event_time", ""),
+                "created_by": meta.get("created_by", "ai"),  # 默认 ai,dashboard 手动新建会标 user
                 "created": meta.get("created", ""),
                 "last_active": meta.get("last_active", ""),
                 "activation_count": meta.get("activation_count", 1),
@@ -1064,6 +1065,160 @@ async def api_bucket_detail(request):
         "metadata": meta,
         "content": strip_wikilinks(bucket.get("content", "")),
         "score": decay_engine.calculate_score(meta),
+    })
+
+
+# =============================================================
+# Bucket edit endpoints (slice 6 — dashboard 用户直接编辑入口)
+# 这些端点把 trace 工具 + bucket_mgr.archive/unarchive/create 暴露给前端
+# Dashboard 编辑模态框 / 归档按钮 / 新建桶按钮都通过这几个端点写
+# =============================================================
+
+@mcp.custom_route("/api/bucket/{bucket_id}/update", methods=["POST"])
+async def api_bucket_update(request):
+    """更新一条桶的元数据/内容。body 同 trace 工具的字段子集。"""
+    from starlette.responses import JSONResponse
+    bucket_id = request.path_params["bucket_id"]
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+
+    bucket = await bucket_mgr.get(bucket_id)
+    if not bucket:
+        return JSONResponse({"error": "not found"}, status_code=404)
+
+    # 透传到 bucket_mgr.update — 它内部已处理 protected/highlight 拆分、
+    # internalized/digested 兼容、event_time 校验、pinned 别名等
+    allowed = {
+        "name", "domain", "tags", "valence", "arousal", "importance",
+        "resolved", "protected", "highlight", "pinned",
+        "internalized", "digested", "event_time", "content", "model_valence",
+    }
+    updates = {k: v for k, v in body.items() if k in allowed}
+    if not updates:
+        return JSONResponse({"error": "no valid fields", "allowed": sorted(allowed)}, status_code=400)
+
+    # tags / domain 接受字符串(逗号分隔)或数组
+    if isinstance(updates.get("tags"), str):
+        updates["tags"] = [t.strip() for t in updates["tags"].split(",") if t.strip()]
+    if isinstance(updates.get("domain"), str):
+        updates["domain"] = [d.strip() for d in updates["domain"].split(",") if d.strip()]
+
+    success = await bucket_mgr.update(bucket_id, **updates)
+    if not success:
+        return JSONResponse({"error": "update failed"}, status_code=500)
+
+    # content 改了顺手刷 embedding
+    if "content" in updates and embedding_engine and embedding_engine.enabled:
+        try:
+            await embedding_engine.generate_and_store(bucket_id, updates["content"])
+        except Exception:
+            pass
+
+    fresh = await bucket_mgr.get(bucket_id)
+    return JSONResponse({
+        "ok": True,
+        "id": bucket_id,
+        "metadata": fresh.get("metadata", {}) if fresh else {},
+        "applied": sorted(updates.keys()),
+    })
+
+
+@mcp.custom_route("/api/bucket/{bucket_id}/archive", methods=["POST"])
+async def api_bucket_archive(request):
+    """手动归档一条桶,移到 archive/,AI 不再调用。"""
+    from starlette.responses import JSONResponse
+    bucket_id = request.path_params["bucket_id"]
+    bucket = await bucket_mgr.get(bucket_id)
+    if not bucket:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    success = await bucket_mgr.archive(bucket_id)
+    if not success:
+        return JSONResponse({"error": "archive failed"}, status_code=500)
+    return JSONResponse({"ok": True, "id": bucket_id, "archived": True})
+
+
+@mcp.custom_route("/api/bucket/{bucket_id}/unarchive", methods=["POST"])
+async def api_bucket_unarchive(request):
+    """取消归档,从 archive/ 移回 dynamic/,AI 重新可见。"""
+    from starlette.responses import JSONResponse
+    bucket_id = request.path_params["bucket_id"]
+    bucket = await bucket_mgr.get(bucket_id)
+    if not bucket:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    success = await bucket_mgr.unarchive(bucket_id)
+    if not success:
+        return JSONResponse({"error": "unarchive failed (not in archive?)"}, status_code=400)
+    return JSONResponse({"ok": True, "id": bucket_id, "archived": False})
+
+
+@mcp.custom_route("/api/bucket/create", methods=["POST"])
+async def api_bucket_create(request):
+    """用户手动新建一条桶。**不走合并**,所见即所存。带 created_by='user' 标记。"""
+    from starlette.responses import JSONResponse
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+
+    content = (body.get("content") or "").strip()
+    if not content:
+        return JSONResponse({"error": "content is required"}, status_code=400)
+
+    # 接受字符串(逗号分隔)或数组
+    tags = body.get("tags", [])
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",") if t.strip()]
+    domain = body.get("domain", ["未分类"])
+    if isinstance(domain, str):
+        domain = [d.strip() for d in domain.split(",") if d.strip()] or ["未分类"]
+
+    importance = int(body.get("importance", 5))
+    valence = float(body.get("valence", 0.5))
+    arousal = float(body.get("arousal", 0.3))
+    name = body.get("name") or None
+    event_time = body.get("event_time") or None
+    protected = bool(body.get("protected", False))
+    highlight = bool(body.get("highlight", False))
+    internalized = bool(body.get("internalized", False))
+
+    try:
+        bucket_id = await bucket_mgr.create(
+            content=content,
+            tags=tags,
+            importance=importance,
+            domain=domain,
+            valence=valence,
+            arousal=arousal,
+            name=name,
+            protected=protected,
+            highlight=highlight,
+            event_time=event_time,
+            created_by="user",  # dashboard 手动新建标记,跟 AI 写入区分
+        )
+    except Exception as e:
+        return JSONResponse({"error": f"create failed: {e}"}, status_code=500)
+
+    # internalized 在创建时不能直接通过 create() 设(create 没这个参数),
+    # 用一次 update 顺手设上。失败也不影响桶本身的创建。
+    if internalized:
+        try:
+            await bucket_mgr.update(bucket_id, internalized=True)
+        except Exception:
+            pass
+
+    if embedding_engine and embedding_engine.enabled:
+        try:
+            await embedding_engine.generate_and_store(bucket_id, content)
+        except Exception:
+            pass
+
+    fresh = await bucket_mgr.get(bucket_id)
+    return JSONResponse({
+        "ok": True,
+        "id": bucket_id,
+        "metadata": fresh.get("metadata", {}) if fresh else {},
     })
 
 
