@@ -1139,6 +1139,26 @@ async def api_bucket_archive(request):
     return JSONResponse({"ok": True, "id": bucket_id, "archived": True})
 
 
+@mcp.custom_route("/api/bucket/{bucket_id}/delete", methods=["POST"])
+async def api_bucket_delete(request):
+    """物理删除一条桶。dashboard 编辑模态框的"删除"按钮调用。不可撤销。"""
+    from starlette.responses import JSONResponse
+    bucket_id = request.path_params["bucket_id"]
+    bucket = await bucket_mgr.get(bucket_id)
+    if not bucket:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    success = await bucket_mgr.delete(bucket_id)
+    if not success:
+        return JSONResponse({"error": "delete failed"}, status_code=500)
+    # 顺手清掉 embedding,避免 SQLite 残留
+    if embedding_engine:
+        try:
+            embedding_engine.delete_embedding(bucket_id)
+        except Exception:
+            pass
+    return JSONResponse({"ok": True, "id": bucket_id, "deleted": True})
+
+
 @mcp.custom_route("/api/bucket/{bucket_id}/unarchive", methods=["POST"])
 async def api_bucket_unarchive(request):
     """取消归档,从 archive/ 移回 dynamic/,AI 重新可见。"""
