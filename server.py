@@ -49,7 +49,7 @@ from dehydrator import Dehydrator
 from decay_engine import DecayEngine
 from embedding_engine import EmbeddingEngine
 from import_memory import ImportEngine
-from utils import load_config, setup_logging, strip_wikilinks, count_tokens_approx, is_internalized
+from utils import load_config, setup_logging, strip_wikilinks, count_tokens_approx, is_internalized, is_protected, is_highlighted
 
 # --- Load config & init logging / 加载配置 & 初始化日志 ---
 config = load_config()
@@ -102,16 +102,15 @@ async def breath_hook(request):
     from starlette.responses import PlainTextResponse
     try:
         all_buckets = await bucket_mgr.list_all(include_archive=False)
-        # pinned (exclude internalized: 用户手动标记的隐藏不浮现)
+        # 核心准则段:highlight=True 的桶始终浮现(已内化的隐藏)
         pinned = [b for b in all_buckets
-                  if (b["metadata"].get("pinned") or b["metadata"].get("protected"))
+                  if is_highlighted(b["metadata"])
                   and not is_internalized(b["metadata"])]
-        # top 2 unresolved by score
+        # 普通浮现池:排除已经进核心准则区的 highlighted 桶,排除 permanent/feel 类型
         unresolved = [b for b in all_buckets
                       if not b["metadata"].get("resolved", False)
                       and b["metadata"].get("type") not in ("permanent", "feel")
-                      and not b["metadata"].get("pinned")
-                      and not b["metadata"].get("protected")
+                      and not is_highlighted(b["metadata"])
                       and not is_internalized(b["metadata"])]
         scored = sorted(unresolved, key=lambda b: decay_engine.calculate_score(b["metadata"]), reverse=True)
 
@@ -162,8 +161,7 @@ async def dream_hook(request):
         candidates = [
             b for b in all_buckets
             if b["metadata"].get("type") not in ("permanent", "feel")
-            and not b["metadata"].get("pinned", False)
-            and not b["metadata"].get("protected", False)
+            and not is_highlighted(b["metadata"])
             and not is_internalized(b["metadata"])
         ]
         candidates.sort(key=lambda b: b["metadata"].get("created", ""), reverse=True)
@@ -293,11 +291,11 @@ async def breath(
             logger.error(f"Failed to list buckets for surfacing / 浮现列桶失败: {e}")
             return "记忆系统暂时无法访问。"
 
-        # --- Pinned/protected buckets: always surface as core principles ---
-        # --- 钉选桶：作为核心准则，始终浮现（已内化的隐藏） ---
+        # --- Highlighted buckets: always surface as core principles ---
+        # --- 置顶桶(highlight=True):作为核心准则始终浮现(已内化的隐藏) ---
         pinned_buckets = [
             b for b in all_buckets
-            if (b["metadata"].get("pinned") or b["metadata"].get("protected"))
+            if is_highlighted(b["metadata"])
             and not is_internalized(b["metadata"])
         ]
         pinned_results = []
@@ -316,8 +314,7 @@ async def breath(
             b for b in all_buckets
             if not b["metadata"].get("resolved", False)
             and b["metadata"].get("type") not in ("permanent", "feel")
-            and not b["metadata"].get("pinned", False)
-            and not b["metadata"].get("protected", False)
+            and not is_highlighted(b["metadata"])
             and not is_internalized(b["metadata"])
         ]
 
@@ -420,11 +417,11 @@ async def breath(
         logger.error(f"Search failed / 检索失败: {e}")
         return "检索过程出错，请稍后重试。"
 
-    # --- Exclude pinned/protected/internalized from search results ---
-    # --- 搜索模式排除钉选桶(它们在浮现模式中始终可见)和已内化桶 ---
+    # --- Exclude highlighted/internalized from search results ---
+    # --- 搜索模式排除置顶桶(它们在浮现模式核心准则区已可见)和已内化桶 ---
+    # 注:protected 但非 highlighted 的桶仍可被搜出(防衰减不影响搜索)
     matches = [b for b in matches
-               if not (b["metadata"].get("pinned")
-                       or b["metadata"].get("protected")
+               if not (is_highlighted(b["metadata"])
                        or is_internalized(b["metadata"]))]
 
     # --- Vector similarity channel: find semantically related buckets ---
@@ -435,8 +432,7 @@ async def breath(
         for bucket_id, sim_score in vector_results:
             if bucket_id not in matched_ids and sim_score > 0.5:
                 bucket = await bucket_mgr.get(bucket_id)
-                if bucket and not (bucket["metadata"].get("pinned")
-                                   or bucket["metadata"].get("protected")
+                if bucket and not (is_highlighted(bucket["metadata"])
                                    or is_internalized(bucket["metadata"])):
                     bucket["score"] = round(sim_score * 100, 2)
                     bucket["vector_match"] = True
@@ -710,13 +706,15 @@ async def trace(
     importance: int = -1,
     tags: str = "",
     resolved: int = -1,
-    pinned: int = -1,
+    protected: int = -1,
+    highlight: int = -1,
+    pinned: int = -1,  # 老字段名,等价 protected=1 + highlight=1
     internalized: int = -1,
     digested: int = -1,  # 老字段名,兼容历史调用方,语义同 internalized
     content: str = "",
     delete: bool = False,
 ) -> str:
-    """修改记忆元数据或内容。resolved=1沉底/0激活,pinned=1钉选/0取消,internalized=1隐藏(保留但不浮现)/0取消隐藏,content=替换桶正文,delete=True删除。只传需改的,-1或空=不改。digested 是 internalized 的旧名,仍可用。"""
+    """修改记忆元数据或内容。resolved=1沉底/0激活,protected=1防衰减/0取消,highlight=1浮现优先/0取消,internalized=1隐藏(保留但不浮现)/0取消,content=替换桶正文,delete=True删除。只传需改的,-1或空=不改。pinned 是 protected+highlight 的旧组合别名;digested 是 internalized 旧名,仍可用。"""
 
     if not bucket_id or not bucket_id.strip():
         return "请提供有效的 bucket_id。"
@@ -748,10 +746,18 @@ async def trace(
         updates["tags"] = [t.strip() for t in tags.split(",") if t.strip()]
     if resolved in (0, 1):
         updates["resolved"] = bool(resolved)
-    if pinned in (0, 1):
-        updates["pinned"] = bool(pinned)
+    # protected/highlight 是新字段,pinned 是老组合别名(=两个都设)
+    if protected in (0, 1):
+        updates["protected"] = bool(protected)
+        if protected == 1:
+            updates["importance"] = 10  # protected → lock importance
+    if highlight in (0, 1):
+        updates["highlight"] = bool(highlight)
+    if pinned in (0, 1) and protected == -1 and highlight == -1:
+        updates["protected"] = bool(pinned)
+        updates["highlight"] = bool(pinned)
         if pinned == 1:
-            updates["importance"] = 10  # pinned → lock importance
+            updates["importance"] = 10
     # internalized 优先,digested 是兼容老调用方的别名
     if internalized in (0, 1):
         updates["internalized"] = bool(internalized)
@@ -1010,7 +1016,9 @@ async def api_buckets(request):
                 "model_valence": meta.get("model_valence"),
                 "importance": meta.get("importance", 5),
                 "resolved": meta.get("resolved", False),
-                "pinned": meta.get("pinned", False),
+                "protected": is_protected(meta),
+                "highlight": is_highlighted(meta),
+                "pinned": is_protected(meta) or is_highlighted(meta),  # 兼容旧前端,等价老语义
                 "internalized": is_internalized(meta),
                 "digested": is_internalized(meta),  # 兼容旧前端
                 "created": meta.get("created", ""),
@@ -1090,7 +1098,9 @@ async def api_network(request):
                 "arousal": meta.get("arousal", 0.3),
                 "score": decay_engine.calculate_score(meta),
                 "resolved": meta.get("resolved", False),
-                "pinned": meta.get("pinned", False),
+                "protected": is_protected(meta),
+                "highlight": is_highlighted(meta),
+                "pinned": is_protected(meta) or is_highlighted(meta),  # 兼容旧前端
                 "internalized": is_internalized(meta),
                 "digested": is_internalized(meta),  # 兼容旧前端
             })

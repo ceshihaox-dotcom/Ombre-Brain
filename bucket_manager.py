@@ -110,24 +110,30 @@ class BucketManager:
         name: str = None,
         pinned: bool = False,
         protected: bool = False,
+        highlight: bool = False,
     ) -> str:
         """
         Create a new memory bucket, return bucket ID.
         创建一个新的记忆桶，返回桶 ID。
 
-        pinned/protected=True: bucket won't be merged, decayed, or have importance changed.
-        Importance is locked to 10 for pinned/protected buckets.
-        pinned/protected 桶不参与合并与衰减，importance 强制锁定为 10。
+        语义(2026-04-26 切片 4 后):
+        - protected=True: 防自动衰减归档(永久),importance 锁 10,放 permanent_dir
+        - highlight=True: breath 浮现时进核心准则区,不防衰减,不锁 importance
+        - pinned=True: 老 API 别名,等价 protected=True + highlight=True
         """
+        # 老 pinned 别名 → 拆成 protected + highlight 都开
+        if pinned:
+            protected = True
+            highlight = True
+
         bucket_id = generate_bucket_id()
         bucket_name = sanitize_name(name) if name else bucket_id
         domain = domain or ["未分类"]
         tags = tags or []
         linked_content = content  # wikilink injection disabled; LLM adds [[]] via prompt
 
-        # --- Pinned/protected buckets: lock importance to 10 ---
-        # --- 钉选/保护桶：importance 强制锁定为 10 ---
-        if pinned or protected:
+        # --- Protected 桶:importance 锁 10(highlight 单独不锁) ---
+        if protected:
             importance = 10
 
         # --- Build YAML frontmatter metadata / 构建元数据 ---
@@ -144,20 +150,20 @@ class BucketManager:
             "last_active": now_iso(),
             "activation_count": 1,
         }
-        if pinned:
-            metadata["pinned"] = True
         if protected:
             metadata["protected"] = True
+        if highlight:
+            metadata["highlight"] = True
 
         # --- Assemble Markdown file (frontmatter + body) ---
         # --- 组装 Markdown 文件 ---
         post = frontmatter.Post(linked_content, **metadata)
 
         # --- Choose directory by type + primary domain ---
-        # --- 按类型 + 主题域选择存储目录 ---
-        if bucket_type == "permanent" or pinned:
+        # --- 按类型 + 主题域选择存储目录(protected → permanent_dir) ---
+        if bucket_type == "permanent" or protected:
             type_dir = self.permanent_dir
-            if pinned and bucket_type != "permanent":
+            if protected and bucket_type != "permanent":
                 metadata["type"] = "permanent"
         elif bucket_type == "feel":
             type_dir = self.feel_dir
@@ -185,9 +191,14 @@ class BucketManager:
             logger.error(f"Failed to write bucket file / 写入桶文件失败: {file_path}: {e}")
             raise
 
+        flag_tags = []
+        if protected:
+            flag_tags.append("PROTECTED")
+        if highlight:
+            flag_tags.append("HIGHLIGHT")
         logger.info(
             f"Created bucket / 创建记忆桶: {bucket_id} ({bucket_name}) → {primary_domain}/"
-            + (" [PINNED]" if pinned else "") + (" [PROTECTED]" if protected else "")
+            + (" [" + " ".join(flag_tags) + "]" if flag_tags else "")
         )
         return bucket_id
 
@@ -247,11 +258,22 @@ class BucketManager:
             logger.warning(f"Failed to load bucket for update / 加载桶失败: {file_path}: {e}")
             return False
 
-        # --- Pinned/protected buckets: lock importance to 10, ignore importance changes ---
-        # --- 钉选/保护桶：importance 不可修改，强制保持 10 ---
-        is_pinned = post.get("pinned", False) or post.get("protected", False)
-        if is_pinned:
-            kwargs.pop("importance", None)  # silently ignore importance update
+        # --- Lazy migrate: 老 pinned=True 数据 → protected + highlight ---
+        # --- 任何 update 调用都顺手把老字段清掉,逐渐让数据集走向干净 ---
+        if "pinned" in post and "protected" not in post:
+            post["protected"] = bool(post.get("pinned", False))
+            if not post.get("highlight"):
+                post["highlight"] = bool(post.get("pinned", False))
+        # 调用方传 pinned=True/False 当作"两个都开/都关"的别名
+        if "pinned" in kwargs:
+            v = bool(kwargs.pop("pinned"))
+            kwargs.setdefault("protected", v)
+            kwargs.setdefault("highlight", v)
+
+        # --- Protected 桶 importance 锁 10(highlight 单独不锁) ---
+        currently_protected = bool(post.get("protected", False)) or kwargs.get("protected", False)
+        if currently_protected:
+            kwargs.pop("importance", None)  # 静默忽略,protected 始终是 10
 
         # --- Update only fields that were passed in / 只改传入的字段 ---
         if "content" in kwargs:
@@ -270,10 +292,15 @@ class BucketManager:
             post["name"] = sanitize_name(kwargs["name"])
         if "resolved" in kwargs:
             post["resolved"] = bool(kwargs["resolved"])
-        if "pinned" in kwargs:
-            post["pinned"] = bool(kwargs["pinned"])
-            if kwargs["pinned"]:
-                post["importance"] = 10  # pinned → lock importance to 10
+        if "protected" in kwargs:
+            post["protected"] = bool(kwargs["protected"])
+            if kwargs["protected"]:
+                post["importance"] = 10  # protected → lock importance to 10
+            # 写新字段后顺手清老 pinned,完成迁移
+            post.pop("pinned", None)
+        if "highlight" in kwargs:
+            post["highlight"] = bool(kwargs["highlight"])
+            post.pop("pinned", None)
         # internalized 是新字段名(原 digested),兼容老调用方传 digested
         if "internalized" in kwargs:
             post["internalized"] = bool(kwargs["internalized"])
@@ -295,10 +322,11 @@ class BucketManager:
             logger.error(f"Failed to write bucket update / 写入桶更新失败: {file_path}: {e}")
             return False
 
-        # --- Auto-move: pinned → permanent/, resolved → archive/ ---
-        # --- 自动移动：钉选 → permanent/，已解决 → archive/ ---
+        # --- Auto-move: protected → permanent/, resolved → archive/ ---
+        # --- 自动移动：保护(防衰减) → permanent/，已解决 → archive/ ---
+        # 注:highlight 单独不触发移动,它只影响 breath 浮现优先级,不改变存储位置
         domain = post.get("domain", ["未分类"])
-        if kwargs.get("pinned") and post.get("type") != "permanent":
+        if kwargs.get("protected") and post.get("type") != "permanent":
             post["type"] = "permanent"
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(frontmatter.dumps(post))
