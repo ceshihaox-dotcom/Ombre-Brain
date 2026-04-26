@@ -98,11 +98,30 @@ def load_config(config_path: str = None) -> dict:
     if env_buckets_dir:
         config["buckets_dir"] = env_buckets_dir
 
+    # --- Validate bucket storage path before touching the filesystem ---
+    # --- 启动期校验存储路径，防止配错把数据写到非持久位置 ---
+    # 历史踩坑(2026-04-26):OMBRE_BUCKETS_DIR 在 Render dashboard 里被填成了
+    # 字面字符串 "OMBRE_BUCKETS_DIR" 而不是路径,os.path.join 把它当相对路径
+    # 解析成 ./OMBRE_BUCKETS_DIR/,数据写到容器临时盘上;持久盘 mount 在
+    # /opt/render/project/src/buckets/ 历来一字节都没收到。redeploy 时
+    # 临时盘擦除 → 数据全丢。这个 check 让此类错配在启动期立刻报错。
+    buckets_dir = config["buckets_dir"]
+    if not os.path.isabs(buckets_dir):
+        raise RuntimeError(
+            f"buckets_dir must be an absolute path, got {buckets_dir!r}. "
+            f"This often means OMBRE_BUCKETS_DIR was accidentally set to the "
+            f"variable name instead of the path. "
+            f"Set it to e.g. /opt/render/project/src/buckets (Render) "
+            f"or /data (Docker)."
+        )
+
     # --- Ensure bucket storage directories exist ---
     # --- 确保记忆桶存储目录存在 ---
-    buckets_dir = config["buckets_dir"]
     for subdir in ["permanent", "dynamic", "archive"]:
         os.makedirs(os.path.join(buckets_dir, subdir), exist_ok=True)
+
+    # 启动期把最终解析到的存储路径打到日志,出问题时一眼看到。
+    logging.info(f"Bucket storage path resolved to: {buckets_dir!r}")
 
     return config
 
