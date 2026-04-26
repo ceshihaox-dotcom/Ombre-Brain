@@ -102,14 +102,17 @@ async def breath_hook(request):
     from starlette.responses import PlainTextResponse
     try:
         all_buckets = await bucket_mgr.list_all(include_archive=False)
-        # pinned
-        pinned = [b for b in all_buckets if b["metadata"].get("pinned") or b["metadata"].get("protected")]
+        # pinned (exclude digested: per trace docstring, digested=隐藏不浮现)
+        pinned = [b for b in all_buckets
+                  if (b["metadata"].get("pinned") or b["metadata"].get("protected"))
+                  and not b["metadata"].get("digested", False)]
         # top 2 unresolved by score
         unresolved = [b for b in all_buckets
                       if not b["metadata"].get("resolved", False)
                       and b["metadata"].get("type") not in ("permanent", "feel")
                       and not b["metadata"].get("pinned")
-                      and not b["metadata"].get("protected")]
+                      and not b["metadata"].get("protected")
+                      and not b["metadata"].get("digested", False)]
         scored = sorted(unresolved, key=lambda b: decay_engine.calculate_score(b["metadata"]), reverse=True)
 
         parts = []
@@ -161,6 +164,7 @@ async def dream_hook(request):
             if b["metadata"].get("type") not in ("permanent", "feel")
             and not b["metadata"].get("pinned", False)
             and not b["metadata"].get("protected", False)
+            and not b["metadata"].get("digested", False)
         ]
         candidates.sort(key=lambda b: b["metadata"].get("created", ""), reverse=True)
         recent = candidates[:10]
@@ -290,10 +294,11 @@ async def breath(
             return "记忆系统暂时无法访问。"
 
         # --- Pinned/protected buckets: always surface as core principles ---
-        # --- 钉选桶：作为核心准则，始终浮现 ---
+        # --- 钉选桶：作为核心准则，始终浮现（已消化的隐藏） ---
         pinned_buckets = [
             b for b in all_buckets
-            if b["metadata"].get("pinned") or b["metadata"].get("protected")
+            if (b["metadata"].get("pinned") or b["metadata"].get("protected"))
+            and not b["metadata"].get("digested", False)
         ]
         pinned_results = []
         for b in pinned_buckets:
@@ -313,6 +318,7 @@ async def breath(
             and b["metadata"].get("type") not in ("permanent", "feel")
             and not b["metadata"].get("pinned", False)
             and not b["metadata"].get("protected", False)
+            and not b["metadata"].get("digested", False)
         ]
 
         logger.info(
@@ -414,9 +420,12 @@ async def breath(
         logger.error(f"Search failed / 检索失败: {e}")
         return "检索过程出错，请稍后重试。"
 
-    # --- Exclude pinned/protected from search results (they surface in surfacing mode) ---
-    # --- 搜索模式排除钉选桶（它们在浮现模式中始终可见）---
-    matches = [b for b in matches if not (b["metadata"].get("pinned") or b["metadata"].get("protected"))]
+    # --- Exclude pinned/protected/digested from search results ---
+    # --- 搜索模式排除钉选桶（它们在浮现模式中始终可见）和已消化桶 ---
+    matches = [b for b in matches
+               if not (b["metadata"].get("pinned")
+                       or b["metadata"].get("protected")
+                       or b["metadata"].get("digested", False))]
 
     # --- Vector similarity channel: find semantically related buckets ---
     # --- 向量相似度通道：找到语义相关的桶 ---
@@ -426,7 +435,9 @@ async def breath(
         for bucket_id, sim_score in vector_results:
             if bucket_id not in matched_ids and sim_score > 0.5:
                 bucket = await bucket_mgr.get(bucket_id)
-                if bucket and not (bucket["metadata"].get("pinned") or bucket["metadata"].get("protected")):
+                if bucket and not (bucket["metadata"].get("pinned")
+                                   or bucket["metadata"].get("protected")
+                                   or bucket["metadata"].get("digested", False)):
                     bucket["score"] = round(sim_score * 100, 2)
                     bucket["vector_match"] = True
                     matches.append(bucket)
@@ -472,6 +483,7 @@ async def breath(
                 b for b in all_buckets
                 if b["id"] not in matched_ids
                 and decay_engine.calculate_score(b["metadata"]) < 2.0
+                and not b["metadata"].get("digested", False)
             ]
             if low_weight:
                 drifted = random.sample(low_weight, min(random.randint(1, 3), len(low_weight)))
