@@ -24,7 +24,7 @@ import asyncio
 import logging
 from datetime import datetime
 
-from utils import is_internalized
+from utils import is_internalized, is_protected
 
 logger = logging.getLogger("ombre_brain.decay")
 
@@ -101,8 +101,8 @@ class DecayEngine:
         if not isinstance(metadata, dict):
             return 0.0
 
-        # --- Pinned/protected buckets: never decay, importance locked to 10 ---
-        if metadata.get("pinned") or metadata.get("protected"):
+        # --- Protected buckets: never decay (highlight 单独不防衰减) ---
+        if is_protected(metadata):
             return 999.0
 
         # --- Permanent buckets never decay ---
@@ -196,9 +196,10 @@ class DecayEngine:
         for bucket in buckets:
             meta = bucket.get("metadata", {})
 
-            # Skip permanent / pinned / protected / feel buckets
-            # 跳过固化桶、钉选/保护桶和 feel 桶
-            if meta.get("type") in ("permanent", "feel") or meta.get("pinned") or meta.get("protected"):
+            # Skip permanent / protected / feel buckets
+            # 跳过固化桶、保护桶(防衰减)和 feel 桶。highlight 单独不防衰减,
+            # 仍参与衰减/归档,只是浮现时被推到核心准则区。
+            if meta.get("type") in ("permanent", "feel") or is_protected(meta):
                 continue
 
             checked += 1

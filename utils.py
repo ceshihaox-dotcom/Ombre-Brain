@@ -126,6 +126,29 @@ def load_config(config_path: str = None) -> dict:
     return config
 
 
+def is_protected(meta: dict) -> bool:
+    """读"防自动衰减归档"标记,兼容旧字段名 `pinned`。
+    优先用新字段 `protected`,完全没设过才退回旧字段 `pinned`。
+    历史(2026-04-26):pinned 之前耦合了"防衰减"+"作为核心准则浮现"两件事,
+    切片 4 拆成 protected(防衰减) + highlight(浮现优先) 两个独立轴。
+    旧 pinned=True 的桶在迁移前继续被读成 protected+highlight 都 True。"""
+    if not isinstance(meta, dict):
+        return False
+    if "protected" in meta:
+        return bool(meta.get("protected"))
+    return bool(meta.get("pinned", False))
+
+
+def is_highlighted(meta: dict) -> bool:
+    """读"breath 浮现时作为核心准则置顶"标记,兼容旧字段名 `pinned`。
+    跟 is_protected 是镜像:优先用新字段 highlight,没设过退回旧 pinned。"""
+    if not isinstance(meta, dict):
+        return False
+    if "highlight" in meta:
+        return bool(meta.get("highlight"))
+    return bool(meta.get("pinned", False))
+
+
 def is_internalized(meta: dict) -> bool:
     """读"已内化"标记,兼容旧字段名 `digested`。
     优先用新字段 `internalized`(即使是 False 也以它为准),
