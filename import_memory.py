@@ -511,10 +511,15 @@ class ImportEngine:
         if not items:
             return
 
+        # 这一 chunk 对应的事件发生时间(从聊天记录的时间戳来),
+        # 用作每条 extracted item 的 event_time(以条目自己的为优先)
+        chunk_event_time = chunk.get("timestamp_start") or chunk.get("timestamp")
+
         # --- Store each extracted memory ---
         for item in items:
             try:
                 should_preserve = preserve_raw or item.get("preserve_raw", False)
+                item_event_time = item.get("event_time") or chunk_event_time
 
                 if should_preserve:
                     # Raw mode: store original content without summarization
@@ -526,6 +531,7 @@ class ImportEngine:
                         valence=item.get("valence", 0.5),
                         arousal=item.get("arousal", 0.3),
                         name=item.get("name"),
+                        event_time=item_event_time,
                     )
                     if self.embedding_engine:
                         try:
@@ -536,16 +542,11 @@ class ImportEngine:
                     self.state.data["memories_created"] += 1
                 else:
                     # Normal mode: go through merge-or-create pipeline
-                    is_merged = await self._merge_or_create_item(item)
+                    is_merged = await self._merge_or_create_item(item, event_time=item_event_time)
                     if is_merged:
                         self.state.data["memories_merged"] += 1
                     else:
                         self.state.data["memories_created"] += 1
-
-                # Patch timestamp if available
-                if chunk.get("timestamp_start"):
-                    # We don't have update support for created, so skip
-                    pass
 
             except Exception as e:
                 logger.warning(f"Failed to store memory: {item.get('name', '?')}: {e}")
@@ -617,7 +618,7 @@ class ImportEngine:
 
         return validated
 
-    async def _merge_or_create_item(self, item: dict) -> bool:
+    async def _merge_or_create_item(self, item: dict, event_time: str = None) -> bool:
         """Try to merge with existing bucket, or create new. Returns is_merged."""
         content = item["content"]
         domain = item.get("domain", ["未分类"])
@@ -670,6 +671,7 @@ class ImportEngine:
             valence=valence,
             arousal=arousal,
             name=name or None,
+            event_time=event_time,
         )
         if self.embedding_engine:
             try:

@@ -126,6 +126,25 @@ def load_config(config_path: str = None) -> dict:
     return config
 
 
+def normalize_event_time(s):
+    """把任意 event_time 输入(YYYY-MM-DD / 完整 ISO 时间戳 / datetime 对象)
+    标准化成 ISO 格式字符串。无效输入或空字符串返回 None。
+    用于 hold/grow/trace/import 路径校验用户/AI 提供的事件时间。"""
+    if s is None:
+        return None
+    if isinstance(s, str):
+        s = s.strip()
+        if not s:
+            return None
+    try:
+        from datetime import datetime as _dt, date as _date
+        if hasattr(s, "isoformat"):  # datetime / date
+            return s.isoformat()
+        return _dt.fromisoformat(str(s)).isoformat()
+    except (ValueError, TypeError):
+        return None
+
+
 def is_protected(meta: dict) -> bool:
     """读"防自动衰减归档"标记,兼容旧字段名 `pinned`。
     优先用新字段 `protected`,完全没设过才退回旧字段 `pinned`。

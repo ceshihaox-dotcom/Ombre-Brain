@@ -200,6 +200,7 @@ async def _merge_or_create(
     valence: float,
     arousal: float,
     name: str = "",
+    event_time: str = None,
 ) -> tuple[str, bool]:
     """
     Check if a similar bucket exists for merging; merge if so, create if not.
@@ -224,8 +225,7 @@ async def _merge_or_create(
                 old_a = bucket["metadata"].get("arousal", 0.3)
                 merged_valence = round((old_v + valence) / 2, 2)
                 merged_arousal = round((old_a + arousal) / 2, 2)
-                await bucket_mgr.update(
-                    bucket["id"],
+                update_kwargs = dict(
                     content=merged,
                     tags=list(set(bucket["metadata"].get("tags", []) + tags)),
                     importance=max(bucket["metadata"].get("importance", 5), importance),
@@ -233,6 +233,11 @@ async def _merge_or_create(
                     valence=merged_valence,
                     arousal=merged_arousal,
                 )
+                # 合并时若调用方明确传了 event_time,跟随更新(用更近的事件时间);
+                # 没传就保持旧 event_time 不动
+                if event_time is not None:
+                    update_kwargs["event_time"] = event_time
+                await bucket_mgr.update(bucket["id"], **update_kwargs)
                 # --- Update embedding after merge ---
                 try:
                     await embedding_engine.generate_and_store(bucket["id"], merged)
@@ -250,6 +255,7 @@ async def _merge_or_create(
         valence=valence,
         arousal=arousal,
         name=name or None,
+        event_time=event_time,
     )
     # --- Generate embedding for new bucket ---
     try:
@@ -511,8 +517,9 @@ async def hold(
     feel: bool = False,
     source_bucket: str = "",    valence: float = -1,
     arousal: float = -1,
+    event_time: str = "",
 ) -> str:
-    """存储单条记忆,自动打标+合并。tags逗号分隔,importance 1-10。pinned=True创建永久钉选桶。feel=True存储你的第一人称感受(不参与普通浮现)。source_bucket=被你内化的记忆桶ID(feel模式下,标记源记忆为已内化,从此不再浮现)。"""
+    """存储单条记忆,自动打标+合并。tags逗号分隔,importance 1-10。pinned=True创建永久钉选桶。feel=True存储你的第一人称感受(不参与普通浮现)。source_bucket=被你内化的记忆桶ID(feel模式下,标记源记忆为已内化,从此不再浮现)。event_time=事件实际发生时间(YYYY-MM-DD 或 ISO 时间戳),不传默认就是现在。当用户提到的事件不是发生在现在时(如"上周末""昨晚""三月那次"),应当传 event_time 而非默认。"""
     await decay_engine.ensure_started()
 
     # --- Input validation / 输入校验 ---
@@ -585,6 +592,7 @@ async def hold(
             name=suggested_name or None,
             bucket_type="permanent",
             pinned=True,
+            event_time=event_time,
         )
         try:
             await embedding_engine.generate_and_store(bucket_id, content)
@@ -601,6 +609,7 @@ async def hold(
         valence=valence,
         arousal=arousal,
         name=suggested_name,
+        event_time=event_time or None,
     )
 
     action = "合并→" if is_merged else "新建→"
@@ -612,8 +621,8 @@ async def hold(
 # 工具 3：grow — 生长，一天的碎片长成记忆
 # =============================================================
 @mcp.tool()
-async def grow(content: str) -> str:
-    """日记归档,自动拆分为多桶。短内容(<30字)走快速路径。"""
+async def grow(content: str, event_time: str = "") -> str:
+    """日记归档,自动拆分为多桶。短内容(<30字)走快速路径。event_time=这篇日记记录的事件发生时间(YYYY-MM-DD 或 ISO),不传默认就是现在。整篇日记拆出的所有桶会共享这个 event_time(因为本来就是"那天发生的事")。"""
     await decay_engine.ensure_started()
 
     if not content or not content.strip():
@@ -642,6 +651,7 @@ async def grow(content: str) -> str:
             valence=analysis.get("valence", 0.5),
             arousal=analysis.get("arousal", 0.3),
             name=analysis.get("suggested_name", ""),
+            event_time=event_time or None,
         )
         action = "合并" if is_merged else "新建"
         return f"{action} → {result_name} | {','.join(analysis.get('domain', []))} V{analysis.get('valence', 0.5):.1f}/A{analysis.get('arousal', 0.3):.1f}"
@@ -672,6 +682,7 @@ async def grow(content: str) -> str:
                 valence=item.get("valence", 0.5),
                 arousal=item.get("arousal", 0.3),
                 name=item.get("name", ""),
+                event_time=event_time or None,
             )
 
             if is_merged:
@@ -711,10 +722,11 @@ async def trace(
     pinned: int = -1,  # 老字段名,等价 protected=1 + highlight=1
     internalized: int = -1,
     digested: int = -1,  # 老字段名,兼容历史调用方,语义同 internalized
+    event_time: str = "",
     content: str = "",
     delete: bool = False,
 ) -> str:
-    """修改记忆元数据或内容。resolved=1沉底/0激活,protected=1防衰减/0取消,highlight=1浮现优先/0取消,internalized=1隐藏(保留但不浮现)/0取消,content=替换桶正文,delete=True删除。只传需改的,-1或空=不改。pinned 是 protected+highlight 的旧组合别名;digested 是 internalized 旧名,仍可用。"""
+    """修改记忆元数据或内容。resolved=1沉底/0激活,protected=1防衰减/0取消,highlight=1浮现优先/0取消,internalized=1隐藏(保留但不浮现)/0取消,event_time=纠正事件实际发生时间(YYYY-MM-DD 或 ISO,空字符串=清除该字段),content=替换桶正文,delete=True删除。只传需改的,-1或空=不改。pinned 是 protected+highlight 的旧组合别名;digested 是 internalized 旧名,仍可用。"""
 
     if not bucket_id or not bucket_id.strip():
         return "请提供有效的 bucket_id。"
@@ -763,6 +775,10 @@ async def trace(
         updates["internalized"] = bool(internalized)
     elif digested in (0, 1):
         updates["internalized"] = bool(digested)
+    # event_time 透传到 bucket_mgr.update,内部会做格式校验
+    # 空字符串语义=清掉该字段,非空但非法的会被规范化函数返回 None 然后清掉
+    if event_time != "":
+        updates["event_time"] = event_time
     if content:
         updates["content"] = content
 
@@ -1021,6 +1037,7 @@ async def api_buckets(request):
                 "pinned": is_protected(meta) or is_highlighted(meta),  # 兼容旧前端,等价老语义
                 "internalized": is_internalized(meta),
                 "digested": is_internalized(meta),  # 兼容旧前端
+                "event_time": meta.get("event_time", ""),
                 "created": meta.get("created", ""),
                 "last_active": meta.get("last_active", ""),
                 "activation_count": meta.get("activation_count", 1),

@@ -111,6 +111,7 @@ class BucketManager:
         pinned: bool = False,
         protected: bool = False,
         highlight: bool = False,
+        event_time: str = None,
     ) -> str:
         """
         Create a new memory bucket, return bucket ID.
@@ -150,6 +151,12 @@ class BucketManager:
             "last_active": now_iso(),
             "activation_count": 1,
         }
+        # event_time 是用户/AI 设置的"事件实际发生时间",跟系统级 created 区分
+        # 没传或非法就不写,读取时 dehydrator/前端会退回 created
+        from utils import normalize_event_time as _nev
+        et = _nev(event_time)
+        if et:
+            metadata["event_time"] = et
         if protected:
             metadata["protected"] = True
         if highlight:
@@ -311,6 +318,15 @@ class BucketManager:
             post.pop("digested", None)
         if "model_valence" in kwargs:
             post["model_valence"] = max(0.0, min(1.0, float(kwargs["model_valence"])))
+        # event_time:用户事后纠正"这事到底发生在哪天"
+        # 传 None 或空字符串 → 清掉这个字段(回退到用 created 显示)
+        if "event_time" in kwargs:
+            from utils import normalize_event_time as _nev
+            et = _nev(kwargs["event_time"])
+            if et:
+                post["event_time"] = et
+            else:
+                post.pop("event_time", None)
 
         # --- Auto-refresh activation time / 自动刷新激活时间 ---
         post["last_active"] = now_iso()
