@@ -1182,6 +1182,75 @@ async def api_bucket_unarchive(request):
     return JSONResponse({"ok": True, "id": bucket_id, "archived": False})
 
 
+@mcp.custom_route("/api/embeddings/diagnose", methods=["GET"])
+async def api_embeddings_diagnose(request):
+    """诊断 embedding 状态:配置 + 已生成数 / 总桶数。"""
+    from starlette.responses import JSONResponse
+    if not embedding_engine:
+        return JSONResponse({"error": "embedding_engine 未初始化"}, status_code=500)
+    all_buckets = await bucket_mgr.list_all(include_archive=False)
+    has_emb = 0
+    for b in all_buckets:
+        if await embedding_engine.get_embedding(b["id"]) is not None:
+            has_emb += 1
+    return JSONResponse({
+        "enabled": embedding_engine.enabled,
+        "model": embedding_engine.model,
+        "base_url": embedding_engine.base_url,
+        "api_key_masked": (embedding_engine.api_key[:5] + "..." + embedding_engine.api_key[-4:]) if embedding_engine.api_key else "",
+        "total_buckets": len(all_buckets),
+        "with_embedding": has_emb,
+        "missing": len(all_buckets) - has_emb,
+    })
+
+
+@mcp.custom_route("/api/embeddings/backfill", methods=["POST"])
+async def api_embeddings_backfill(request):
+    """一键给所有缺 embedding 的桶补生成。轻量保护:env OMBRE_ADMIN_TOKEN 鉴权。
+    无 token 时拒绝(避免被滥用消耗 API 配额)。"""
+    from starlette.responses import JSONResponse
+    expected = os.environ.get("OMBRE_ADMIN_TOKEN", "")
+    if not expected:
+        return JSONResponse({"error": "OMBRE_ADMIN_TOKEN 未配置,拒绝运行"}, status_code=503)
+    token = request.query_params.get("token") or request.headers.get("X-Admin-Token", "")
+    if token != expected:
+        return JSONResponse({"error": "invalid token"}, status_code=401)
+    if not embedding_engine or not embedding_engine.enabled:
+        return JSONResponse({"error": "embedding 未启用,检查 OMBRE_EMBED_API_KEY"}, status_code=400)
+
+    all_buckets = await bucket_mgr.list_all(include_archive=False)
+    missing = []
+    for b in all_buckets:
+        if await embedding_engine.get_embedding(b["id"]) is None:
+            missing.append(b)
+
+    success = 0
+    failed = 0
+    skipped = 0
+    errors = []
+    for b in missing:
+        content = (b.get("content") or "").strip()
+        if not content:
+            skipped += 1
+            continue
+        try:
+            ok = await embedding_engine.generate_and_store(b["id"], content)
+            if ok: success += 1
+            else: failed += 1
+        except Exception as e:
+            failed += 1
+            errors.append(f"{b['id'][:12]}: {str(e)[:120]}")
+            if len(errors) > 5:
+                break  # 早停 — 大概率配置问题
+    return JSONResponse({
+        "total_missing": len(missing),
+        "success": success,
+        "failed": failed,
+        "skipped_empty": skipped,
+        "errors": errors[:5],
+    })
+
+
 @mcp.custom_route("/api/bucket/{bucket_id}/similar", methods=["GET"])
 async def api_bucket_similar(request):
     """返回该桶在全库内最相似的 top N(by embedding cosine)。导入工作台用。"""

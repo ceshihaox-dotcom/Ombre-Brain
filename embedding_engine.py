@@ -34,8 +34,12 @@ class EmbeddingEngine:
         dehy_cfg = config.get("dehydration", {})
         embed_cfg = config.get("embedding", {})
 
-        self.api_key = dehy_cfg.get("api_key", "")
-        self.base_url = dehy_cfg.get("base_url", "https://generativelanguage.googleapis.com/v1beta/openai/")
+        # 优先用 embedding 独立的 api_key / base_url(env: OMBRE_EMBED_API_KEY / OMBRE_EMBED_BASE_URL),
+        # 没配就 fallback 到 dehydration 的(常见情况:同一家 Gemini key 跑 dehydration + embedding)。
+        # 重要:dehydration 用 deepseek/openrouter 等其他家时,这里必须独立配 Gemini key,
+        # 否则用别家的 key 调 gemini-embedding-001 会一直 401/404 静默失败。
+        self.api_key = embed_cfg.get("api_key") or dehy_cfg.get("api_key", "")
+        self.base_url = embed_cfg.get("base_url") or dehy_cfg.get("base_url") or "https://generativelanguage.googleapis.com/v1beta/openai/"
         self.model = embed_cfg.get("model", "gemini-embedding-001")
         self.enabled = bool(self.api_key) and embed_cfg.get("enabled", True)
 

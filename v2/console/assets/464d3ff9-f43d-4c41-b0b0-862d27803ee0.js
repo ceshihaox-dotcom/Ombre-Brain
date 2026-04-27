@@ -87,6 +87,12 @@ function ImportWorkbench() {
   const [similarCache, setSimilarCache] = iwS({});
   const [similarLoading, setSimilarLoading] = iwS(false);
 
+  // hover 详情卡:hover 相似项时弹出
+  const [hoverItem, setHoverItem] = iwS(null);
+  const [hoverPos, setHoverPos] = iwS({ x: 0, y: 0 });
+  const [hoverDetail, setHoverDetail] = iwS({});  // id → {body, tags, ...}
+  const hoverTimerRef = iwR(null);
+
   // ---------- 拉真实数据 ----------
   const fetchQueue = iwC(async () => {
     try {
@@ -346,6 +352,49 @@ function ImportWorkbench() {
   // 同批相似(派生,不缓存)
   const sbSimilar = iwM(() => sameBatchSimilar(active, queue, 3), [active, queue]);
   const fullSimilar = active ? (similarCache[active.id] || []) : [];
+
+  // hover 相似项:延迟 200ms 弹出详情卡
+  const onSimEnter = (e, simItem, sourceQueue) => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    const rect = e.currentTarget.getBoundingClientRect();
+    hoverTimerRef.current = setTimeout(() => {
+      // 同批:从 queue 找完整 item;全库:用 simItem.id 查 hoverDetail/lazy fetch
+      const src = sourceQueue ? queue.find(q => q.id === simItem.id) : null;
+      if (src) {
+        setHoverItem({ ...src, _src: 'batch' });
+      } else {
+        // 全库相似:先用 simItem 现有信息,异步补 body
+        setHoverItem({
+          id: simItem.id,
+          title: simItem.name,
+          summary: simItem.summary || '',
+          body: hoverDetail[simItem.id]?.content || '',
+          tags: hoverDetail[simItem.id]?.tags || [],
+          importance: hoverDetail[simItem.id]?.importance,
+          score: simItem.score,
+          date: simItem.date,
+          type: simItem.type,
+          _src: 'global',
+          _bodyLoaded: !!hoverDetail[simItem.id],
+        });
+        if (!hoverDetail[simItem.id]) {
+          window.__obFetchBucketDetail(simItem.id).then(d => {
+            setHoverDetail(c => ({ ...c, [simItem.id]: { content: d.content, tags: d.metadata?.tags, importance: d.metadata?.importance, type: d.metadata?.type } }));
+            // 如果当前还在 hover 这个 item,实时更新
+            setHoverItem(prev => (prev && prev.id === simItem.id) ? {
+              ...prev, body: d.content || '', tags: d.metadata?.tags || prev.tags,
+              importance: d.metadata?.importance ?? prev.importance, _bodyLoaded: true,
+            } : prev);
+          }).catch(e => console.warn('hover detail fail', e));
+        }
+      }
+      setHoverPos({ x: rect.left, y: rect.top });
+    }, 200);
+  };
+  const onSimLeave = () => {
+    if (hoverTimerRef.current) { clearTimeout(hoverTimerRef.current); hoverTimerRef.current = null; }
+    setHoverItem(null);
+  };
 
   return (
     <>
@@ -753,7 +802,14 @@ function ImportWorkbench() {
                   <div className="imp-aside-title">同批相似 · {sbSimilar.length}</div>
                   <div className="imp-aside-body" style={{ marginTop: 4 }}>
                     {sbSimilar.map((s) => (
-                      <div key={s.id} className="imp-sim-item" onClick={() => setActiveId(s.id)} style={{ cursor: 'pointer' }}>
+                      <div
+                        key={s.id}
+                        className="imp-sim-item"
+                        onClick={() => setActiveId(s.id)}
+                        onMouseEnter={(e) => onSimEnter(e, s, true)}
+                        onMouseLeave={onSimLeave}
+                        style={{ cursor: 'pointer' }}
+                      >
                         <div className="imp-sim-hd">
                           <div className="imp-sim-title">{s.title}</div>
                           <div className="imp-sim-score">{Math.round(s.score * 100)}%</div>
@@ -778,7 +834,12 @@ function ImportWorkbench() {
                     </div>
                   )}
                   {fullSimilar.map((s) => (
-                    <div key={s.id} className="imp-sim-item">
+                    <div
+                      key={s.id}
+                      className="imp-sim-item"
+                      onMouseEnter={(e) => onSimEnter(e, s, false)}
+                      onMouseLeave={onSimLeave}
+                    >
                       <div className="imp-sim-hd">
                         <div className="imp-sim-title">{s.name}</div>
                         <div className="imp-sim-score">{Math.round(s.score * 100)}%</div>
@@ -833,6 +894,48 @@ function ImportWorkbench() {
         <div className="imp-toast">
           <span>✓ {toast.msg}</span>
           {toast.undo && <button onClick={toast.undo}>撤销</button>}
+        </div>
+      )}
+
+      {/* 相似项 hover 详情卡(浮在左侧朝信纸方向,方便对比) */}
+      {hoverItem && (
+        <div
+          className="imp-hover-card"
+          style={{
+            // 出现在源条目左边一点,垂直对齐源条目顶部
+            // 320px 宽 + 8px 间距 + transform 微调让其不超出视口
+            left: Math.max(12, hoverPos.x - 332),
+            top: Math.min(hoverPos.y, window.innerHeight - 380),
+          }}
+        >
+          <div className="imp-hover-hd">
+            <div className="imp-hover-title">{hoverItem.title}</div>
+            {hoverItem.score != null && (
+              <div className="imp-hover-score">{Math.round(hoverItem.score * 100)}%</div>
+            )}
+          </div>
+          {hoverItem.summary && (
+            <div className="imp-hover-summary">{hoverItem.summary}</div>
+          )}
+          {hoverItem._src === 'global' && !hoverItem._bodyLoaded ? (
+            <div className="imp-hover-body" style={{ fontStyle: 'italic', opacity: 0.6 }}>⌛ 加载完整内容…</div>
+          ) : hoverItem.body ? (
+            <div className="imp-hover-body">{hoverItem.body}</div>
+          ) : null}
+          <div className="imp-hover-meta">
+            {hoverItem.feel && <span style={{ color: 'var(--rose-deep)' }}>❀ feel</span>}
+            {hoverItem.protected && <span style={{ color: 'var(--accent)' }}>⛨ 保护</span>}
+            {hoverItem.importance != null && <span>imp <b>{hoverItem.importance}</b>/10</span>}
+            {hoverItem.type && hoverItem.type !== 'dynamic' && <span>· {hoverItem.type}</span>}
+            {(hoverItem.date || hoverItem.timeHint) && <span>· {hoverItem.date || hoverItem.timeHint}</span>}
+          </div>
+          {visibleTags(hoverItem.tags).length > 0 && (
+            <div className="imp-hover-tags">
+              {visibleTags(hoverItem.tags).slice(0, 8).map(t => (
+                <span key={t} className="imp-hover-tag">#{t}</span>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </>

@@ -90,6 +90,14 @@ def load_config(config_path: str = None) -> dict:
     if env_base_url:
         config.setdefault("dehydration", {})["base_url"] = env_base_url
 
+    # Embedding 单独的 API key + base url(默认 fallback 到 dehydration)
+    env_embed_key = os.environ.get("OMBRE_EMBED_API_KEY", "")
+    if env_embed_key:
+        config.setdefault("embedding", {})["api_key"] = env_embed_key
+    env_embed_base = os.environ.get("OMBRE_EMBED_BASE_URL", "")
+    if env_embed_base:
+        config.setdefault("embedding", {})["base_url"] = env_embed_base
+
     env_transport = os.environ.get("OMBRE_TRANSPORT", "")
     if env_transport:
         config["transport"] = env_transport
