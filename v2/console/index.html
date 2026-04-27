@@ -6522,35 +6522,42 @@ body {
 }
 .imp-queue {
   position: absolute !important;
-  left: 32px;
-  top: 24px;
-  bottom: 24px;
-  width: 280px;
+  left: 32px !important;
+  top: 24px !important;
+  bottom: 24px !important;
+  right: auto !important;
+  width: 280px !important;
   height: auto !important;
   max-height: none !important;
-  display: flex; flex-direction: column;
+  display: flex !important;
+  flex-direction: column !important;
   min-height: 0;
   overflow: hidden;
 }
 .imp-queue-list { flex: 1 1 0; min-height: 0; overflow-y: auto; }
 .imp-aside {
   position: absolute !important;
-  right: 32px;
-  top: 24px;
-  bottom: 24px;
-  width: 320px;
+  right: 32px !important;
+  top: 24px !important;
+  bottom: 24px !important;
+  left: auto !important;
+  width: 320px !important;
   height: auto !important;
   max-height: none !important;
-  overflow-y: auto;
+  overflow-y: auto !important;
   min-height: 0;
-  display: flex; flex-direction: column;
+  display: flex !important;
+  flex-direction: column !important;
+  grid-column: auto !important;
+  grid-template-columns: none !important;
+  margin-top: 0 !important;
   gap: 12px;
 }
 .imp-shell > main { width: 100%; min-width: 0; }
 @media (min-width: 901px) and (max-width: 1280px) {
-  .imp-shell { padding-left: 264px; padding-right: 304px; }
-  .imp-queue { width: 240px; left: 24px; }
-  .imp-aside { width: 280px; right: 24px; }
+  .imp-shell { padding-left: 264px !important; padding-right: 304px !important; }
+  .imp-queue { width: 240px !important; left: 24px !important; }
+  .imp-aside { width: 280px !important; right: 24px !important; }
 }
 
 /* ---- 淡薄滚动条(WebKit + Firefox) ---- */
@@ -6595,32 +6602,26 @@ body {
 [data-theme="dark"] .imp-raw-body::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.12);
 }
-/* 反制原 CSS @1180 把 shell 切 2 列 + aside 漂下来的逻辑:
-   只要 >900 就强制 3 列平行,只是 aside 在窄屏下变窄一点 */
+/* 旧的 grid 反制规则 — 当前用 absolute 定位方案,以下规则中的 grid-template-columns
+   实际不再生效(.imp-shell 是 display:block),保留以防降级。aside 的 position/display
+   等会被前面 !important 规则覆盖。 */
 @media (min-width: 901px) {
-  .imp-shell { grid-template-columns: 240px 1fr 280px; }
-  .imp-aside {
-    grid-column: auto;
-    position: relative;
-    margin-top: 0;
-    display: flex;
-    flex-direction: column;
-    grid-template-columns: none;
-    max-height: 100%;
-    overflow-y: auto;
-  }
   .imp-aside-card { margin-bottom: 12px; }
 }
-@media (min-width: 1280px) {
-  .imp-shell { grid-template-columns: 280px 1fr 320px; }
-}
 
-/* 移动端 (<900):撤销固定高度,回自然流 */
+/* 移动端 (<900):撤销 absolute 定位,所有元素回自然流 */
 @media (max-width: 900px) {
-  .imp-shell { height: auto; overflow: visible; grid-template-columns: 1fr; }
-  .imp-queue, .imp-shell > main, .imp-aside {
-    height: auto; max-height: none; overflow: visible;
+  .imp-shell {
+    display: block !important;
+    padding: 24px 16px !important;
   }
+  .imp-queue, .imp-aside {
+    position: static !important;
+    width: auto !important;
+    height: auto !important;
+    margin-bottom: 16px;
+  }
+  .imp-shell > main { width: 100%; }
   .imp-queue-list { overflow-y: visible; max-height: none; }
 }
 
