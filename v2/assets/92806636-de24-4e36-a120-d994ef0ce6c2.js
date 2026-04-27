@@ -67,25 +67,87 @@ function TodayBar({ todayItems, lastWriteDate, todayDate, onWrite, onJumpToday }
 }
 
 // ── 右侧 Mini Timeline ──────────────────────────────
+// 改成"按天"显示:每天一个点,无记忆的日子保持灰色,有记忆的按代表性 item 着色
 function MiniTimeline({ items, onJump }) {
   const [hover, setHover] = uS(null);
-  const sorted = uM(() => [...items].sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time)), [items]);
+
+  const days = uM(() => {
+    if (!items.length) return [];
+    const valid = items.filter(i => i.date);
+    if (!valid.length) return [];
+    const dates = valid.map(i => i.date).sort();
+    const startStr = dates[0];
+    const endStr = dates[dates.length - 1];
+    const [sy, sm, sd] = startStr.split('-').map(Number);
+    const [ey, em, ed] = endStr.split('-').map(Number);
+    const start = new Date(sy, sm - 1, sd);
+    const end = new Date(ey, em - 1, ed);
+
+    // 按日期分组
+    const byDate = {};
+    for (const it of valid) {
+      if (!byDate[it.date]) byDate[it.date] = [];
+      byDate[it.date].push(it);
+    }
+
+    // 从 end 倒推到 start(顶部=最新)
+    const result = [];
+    const cur = new Date(end);
+    while (cur >= start) {
+      const ds = cur.getFullYear() + '-' +
+        String(cur.getMonth() + 1).padStart(2, '0') + '-' +
+        String(cur.getDate()).padStart(2, '0');
+      const dayItems = byDate[ds] || [];
+      result.push({ date: ds, items: dayItems });
+      cur.setDate(cur.getDate() - 1);
+    }
+    return result;
+  }, [items]);
+
+  if (!days.length) return null;
+
+  // 太多天的时候缩小点尺寸,避免挤
+  const compact = days.length > 60;
 
   return (
     <div className="ob-mini" aria-label="迷你时间线">
       <div className="ob-mini-rail">
-        {sorted.map((it, i) => {
-          const isHi = it.importance >= 8 || it.highlight;
-          const tone = it.feel ? 'feel' : (isHi ? 'hi' : 'norm');
+        {days.map((d, i) => {
+          const top = (i / Math.max(1, days.length - 1)) * 100;
+          if (!d.items.length) {
+            // 空日 — 灰色小点,不可点
+            return (
+              <div
+                key={d.date}
+                className="ob-mini-node"
+                style={{
+                  top: `${top}%`,
+                  background: 'rgba(150, 142, 168, 0.22)',
+                  boxShadow: 'none',
+                  width: compact ? 3 : 4,
+                  height: compact ? 3 : 4,
+                  pointerEvents: 'none',
+                }}
+                title={`${d.date} · 无记忆`}
+              />
+            );
+          }
+          // 有记忆 — 选最强代表(feel > 重要 > 普通)
+          const repr = d.items.reduce((best, it) => {
+            const rank = (x) => (x.feel ? 3 : 0) + ((x.importance >= 8 || x.highlight) ? 2 : (x.importance || 0) * 0.1);
+            return rank(it) > rank(best) ? it : best;
+          });
+          const isHi = repr.importance >= 8 || repr.highlight;
+          const tone = repr.feel ? 'feel' : (isHi ? 'hi' : 'norm');
           return (
             <div
-              key={it.id}
+              key={d.date}
               className={`ob-mini-node ob-mini-${tone}`}
-              style={{ top: `${(i / Math.max(1, sorted.length - 1)) * 100}%` }}
-              onMouseEnter={() => setHover(it)}
+              style={{ top: `${top}%` }}
+              onMouseEnter={() => setHover({ date: d.date, count: d.items.length, title: repr.title })}
               onMouseLeave={() => setHover(null)}
-              onClick={() => onJump(it)}
-              title={`${it.date} ${it.time} · ${it.title}`}
+              onClick={() => onJump(repr)}
+              title={`${d.date} · ${d.items.length} 条`}
             />
           );
         })}
@@ -93,7 +155,7 @@ function MiniTimeline({ items, onJump }) {
       {hover && (
         <div className="ob-mini-tip">
           <div className="ob-mini-tip-d">{hover.date}</div>
-          <div className="ob-mini-tip-t">{hover.title}</div>
+          <div className="ob-mini-tip-t">{hover.count} 条 · {hover.title}</div>
         </div>
       )}
       <div className="ob-mini-label">
