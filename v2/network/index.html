@@ -1,0 +1,977 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ombre Brain · 记忆星图 v2</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+  /* ── v2 调色 (与 timeline / cells 一致) ── */
+  :root {
+    --paper: #faf9f5;
+    --paper-2: #f3eee5;
+    --ink: #1f1a2e;
+    --ink-2: #3a3340;
+    --ink-3: #6b6478;
+    --ink-4: #968ea8;
+    --line: #e7e0d3;
+    --line-2: #d8cfba;
+    --accent: #6e4f9a;
+    --accent-2: #8c6dba;
+    --accent-soft: #d8c8ee;
+    --accent-glow: rgba(110, 79, 154, 0.25);
+    --gold: #c79a4f;
+    --gold-soft: rgba(199, 154, 79, 0.22);
+    --rose: #d291b3;
+    --rose-deep: #a86592;
+    --rose-soft: rgba(210, 145, 179, 0.22);
+    --serif: 'Cormorant Garamond', serif;
+    --mono: 'JetBrains Mono', ui-monospace, monospace;
+  }
+  [data-theme="dark"] {
+    --paper: #14121d;
+    --paper-2: #1c1a26;
+    --ink: #f3efe6;
+    --ink-2: #d3ccbb;
+    --ink-3: #948a9c;
+    --ink-4: #5a5266;
+    --line: #2a2538;
+    --line-2: #3a3450;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; overflow: hidden; }
+  body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    background: var(--paper);
+    color: var(--ink);
+    font-size: 14px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── TopBar (跟 v2 一致的窄横栏) ── */
+  .ob-topbar {
+    height: 56px;
+    display: flex; align-items: center; gap: 24px;
+    padding: 0 24px;
+    background: rgba(250, 249, 245, 0.85);
+    backdrop-filter: blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  [data-theme="dark"] .ob-topbar { background: rgba(20, 18, 29, 0.85); }
+  .ob-brand { display: flex; align-items: center; gap: 10px; }
+  .ob-brand-mark {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-soft);
+  }
+  .ob-brand-name {
+    font-family: var(--serif);
+    font-size: 22px; font-weight: 600;
+    color: var(--accent); letter-spacing: 0.3px;
+  }
+  .ob-brand-stats { font-size: 11px; color: var(--ink-4); margin-left: 12px; }
+  .ob-brand-stats b { color: var(--ink-2); font-weight: 600; margin-right: 1px; }
+  .ob-brand-stats span { margin-right: 10px; }
+  .ob-search {
+    margin-left: auto;
+    display: flex; align-items: center; gap: 6px;
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 6px 14px; min-width: 220px;
+  }
+  .ob-search input {
+    flex: 1; border: none; outline: none;
+    background: transparent; color: var(--ink);
+    font-family: inherit; font-size: 12px;
+  }
+  .ob-search input::placeholder { color: var(--ink-4); }
+
+  /* ── NavBar (横向 tab) ── */
+  .ob-nav {
+    display: flex; gap: 2px; padding: 0 24px;
+    background: rgba(250, 249, 245, 0.6);
+    border-bottom: 1px solid var(--line);
+  }
+  [data-theme="dark"] .ob-nav { background: rgba(20, 18, 29, 0.6); }
+  .ob-nav a {
+    padding: 12px 16px; font-size: 13px;
+    color: var(--ink-3); text-decoration: none;
+    border-bottom: 2px solid transparent;
+    transition: all .15s;
+  }
+  .ob-nav a:hover { color: var(--accent); }
+  .ob-nav a.on { color: var(--accent); border-bottom-color: var(--accent); }
+
+  /* ── 页面标题块 ── */
+  .net-page-hd {
+    padding: 22px 28px 14px;
+    display: flex; align-items: flex-start; gap: 24px;
+    border-bottom: 1px solid var(--line);
+    background: var(--paper);
+  }
+  .net-page-hd h1 {
+    font-family: var(--serif);
+    font-size: 28px; font-weight: 600;
+    color: var(--accent); letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+  .net-page-hd p { color: var(--ink-3); font-size: 12.5px; line-height: 1.7; max-width: 560px; }
+  .net-page-side { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .net-counter {
+    font-size: 12px; color: var(--ink-3);
+    border-left: 2px solid var(--line); padding-left: 12px;
+  }
+  .net-counter b { color: var(--ink); font-weight: 600; }
+
+  /* ── 主舞台 ── */
+  .net-stage {
+    position: relative;
+    width: 100%;
+    height: calc(100vh - 56px - 49px - 76px); /* topbar + nav + page-hd */
+    overflow: hidden;
+    background:
+      radial-gradient(ellipse at 28% 22%, rgba(110, 79, 154, 0.06), transparent 55%),
+      radial-gradient(ellipse at 72% 78%, rgba(210, 145, 179, 0.05), transparent 55%),
+      radial-gradient(ellipse at 50% 50%, rgba(199, 154, 79, 0.025), transparent 70%),
+      var(--paper);
+  }
+  [data-theme="dark"] .net-stage {
+    background:
+      radial-gradient(ellipse at 28% 22%, rgba(140, 109, 186, 0.18), transparent 55%),
+      radial-gradient(ellipse at 72% 78%, rgba(168, 101, 146, 0.14), transparent 55%),
+      var(--paper);
+  }
+
+  .net-svg {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    cursor: grab; user-select: none;
+  }
+  .net-svg.grabbing { cursor: grabbing; }
+
+  .edge-line { stroke: var(--accent); transition: opacity .15s; }
+  .edge-line.dim { opacity: 0.06; }
+
+  .node-group { cursor: pointer; transition: transform .12s; }
+  .node-group:hover { filter: brightness(1.18) drop-shadow(0 0 10px var(--accent-glow)); }
+  .node-group.dim { opacity: 0.25; }
+
+  /* ── 左侧浮动面板 ── */
+  .net-side {
+    position: absolute; top: 16px; left: 16px;
+    width: 220px;
+    background: rgba(255, 255, 255, 0.88);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 14px 16px;
+    box-shadow: 0 8px 24px rgba(31, 26, 46, 0.06);
+    font-size: 12px;
+  }
+  [data-theme="dark"] .net-side { background: rgba(28, 26, 38, 0.88); }
+  .net-side h4 {
+    font-family: var(--serif); font-size: 14px; font-weight: 600;
+    color: var(--ink-2); letter-spacing: 0.5px;
+    margin-bottom: 10px; padding-bottom: 6px;
+    border-bottom: 1px solid var(--line);
+  }
+  .legend-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; color: var(--ink-3); font-size: 11.5px; }
+  .legend-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+  .legend-dot.dynamic { background: var(--accent); }
+  .legend-dot.permanent { background: var(--gold); border-radius: 2px; transform: rotate(45deg); }
+  .legend-dot.feel { background: var(--rose); box-shadow: 0 0 4px var(--rose-soft); }
+  .legend-dot.archived { background: var(--ink-4); opacity: 0.4; }
+
+  .filter-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+  .filter-chip {
+    padding: 4px 10px; font-size: 11px;
+    border-radius: 12px;
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    color: var(--ink-3);
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .filter-chip:hover { color: var(--accent); }
+  .filter-chip.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* ── 悬停 tooltip ── */
+  .net-tip {
+    position: absolute; pointer-events: none; z-index: 50;
+    background: rgba(255, 255, 255, 0.97);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 12px 14px;
+    box-shadow: 0 12px 32px rgba(31, 26, 46, 0.15);
+    max-width: 280px;
+    transition: opacity .1s;
+  }
+  [data-theme="dark"] .net-tip { background: rgba(28, 26, 38, 0.97); }
+  .net-tip h5 {
+    font-family: var(--serif); font-size: 15px; font-weight: 600;
+    color: var(--ink); margin-bottom: 4px;
+  }
+  .net-tip .tip-meta {
+    font-size: 11px; color: var(--ink-4);
+    margin-bottom: 8px; font-family: var(--mono);
+  }
+  .net-tip .tip-meta b { color: var(--accent); font-weight: 500; }
+  .net-tip .tip-rel { font-size: 11px; color: var(--ink-3); }
+  .net-tip .tip-rel b { color: var(--ink-2); }
+
+  /* ── 右侧抽屉 ── */
+  .net-drawer {
+    position: fixed; right: 0; top: 0; bottom: 0;
+    width: min(440px, 92vw);
+    background: var(--paper);
+    border-left: 1px solid var(--line);
+    box-shadow: -10px 0 40px rgba(31, 26, 46, 0.08);
+    transform: translateX(100%);
+    transition: transform .28s cubic-bezier(.2,.8,.2,1);
+    overflow-y: auto;
+    z-index: 40;
+  }
+  .net-drawer.open { transform: translateX(0); }
+  .net-drawer-hd {
+    padding: 24px 28px 16px;
+    border-bottom: 1px solid var(--line);
+    position: sticky; top: 0;
+    background: var(--paper);
+    z-index: 1;
+  }
+  .net-drawer-eyebrow {
+    font-size: 11px; color: var(--ink-4); letter-spacing: 1px;
+    text-transform: uppercase; margin-bottom: 6px; font-family: var(--mono);
+  }
+  .net-drawer-hd h2 {
+    font-family: var(--serif); font-size: 24px; font-weight: 600;
+    color: var(--ink); padding-right: 36px; line-height: 1.25;
+  }
+  .net-drawer-close {
+    position: absolute; top: 22px; right: 22px;
+    width: 30px; height: 30px; border-radius: 50%;
+    background: var(--paper-2); border: 1px solid var(--line);
+    color: var(--ink-3); cursor: pointer; font-size: 14px;
+  }
+  .net-drawer-close:hover { color: var(--accent); border-color: var(--accent); }
+  .net-drawer-body { padding: 20px 28px 32px; }
+  .net-drawer-body section { margin-bottom: 22px; }
+  .net-drawer-body h4 {
+    font-size: 11px; color: var(--ink-4); letter-spacing: 0.8px;
+    text-transform: uppercase; margin-bottom: 8px; font-weight: 500;
+  }
+  .net-drawer-body p { font-size: 13px; line-height: 1.7; color: var(--ink-2); }
+  .meta-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 18px; }
+  .meta-grid .field { font-size: 12px; }
+  .meta-grid .field label {
+    color: var(--ink-4); font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.5px; display: block; margin-bottom: 2px;
+  }
+  .meta-grid .field span { color: var(--ink-2); font-weight: 500; }
+
+  .related-list { display: flex; flex-direction: column; gap: 6px; }
+  .related-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px; border-radius: 8px;
+    background: var(--paper-2); border: 1px solid var(--line);
+    cursor: pointer;
+  }
+  .related-row:hover { border-color: var(--accent); }
+  .related-row .rel-name { flex: 1; font-size: 13px; color: var(--ink-2); }
+  .related-row .rel-sim { font-size: 11px; color: var(--ink-4); font-family: var(--mono); }
+
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+  .actions button {
+    padding: 8px 14px; font-size: 12px;
+    border-radius: 18px;
+    background: var(--paper-2);
+    border: 1px solid var(--line);
+    color: var(--ink-2);
+    cursor: pointer; font-family: inherit;
+  }
+  .actions button:hover { color: var(--accent); border-color: var(--accent); }
+  .actions button.primary { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* ── 底部控制 ── */
+  .net-controls {
+    position: absolute; bottom: 18px; left: 50%; transform: translateX(-50%);
+    display: flex; gap: 4px;
+    background: rgba(255, 255, 255, 0.92);
+    backdrop-filter: blur(8px);
+    border: 1px solid var(--line);
+    border-radius: 24px;
+    padding: 5px;
+    box-shadow: 0 8px 20px rgba(31, 26, 46, 0.06);
+  }
+  [data-theme="dark"] .net-controls { background: rgba(28, 26, 38, 0.92); }
+  .net-controls button {
+    padding: 7px 14px; font-size: 12px; border-radius: 18px;
+    background: transparent; border: none; cursor: pointer;
+    color: var(--ink-3); font-family: inherit;
+  }
+  .net-controls button:hover { background: var(--paper-2); color: var(--accent); }
+  .net-controls .divider { width: 1px; background: var(--line); margin: 4px 4px; }
+
+  /* ── 状态横幅 ── */
+  .net-banner {
+    margin: 18px 28px 0;
+    padding: 14px 18px; border-radius: 10px;
+    font-size: 13px;
+  }
+  .net-banner.loading { background: rgba(110,79,154,0.08); border: 1px solid rgba(110,79,154,0.2); color: var(--accent); }
+  .net-banner.error { background: rgba(139,74,74,0.08); border: 1px solid rgba(139,74,74,0.3); color: #8B4A4A; }
+  .net-banner a { color: inherit; text-decoration: underline; cursor: pointer; }
+
+  .net-empty {
+    position: absolute; inset: 0;
+    display: flex; align-items: center; justify-content: center;
+    pointer-events: none;
+  }
+  .net-empty-text {
+    font-family: var(--serif); font-style: italic;
+    font-size: 18px; color: var(--ink-4);
+  }
+
+  @media (max-width: 720px) {
+    .net-side { display: none; }
+    .net-page-hd { flex-direction: column; gap: 8px; padding: 18px 20px 10px; }
+    .net-page-hd h1 { font-size: 22px; }
+    .net-page-side { margin-left: 0; }
+    .ob-topbar { padding: 0 16px; gap: 12px; }
+    .ob-search { display: none; }
+    .net-controls button { padding: 6px 10px; font-size: 11px; }
+  }
+</style>
+</head>
+<body>
+
+<div id="root"></div>
+
+<!-- 复用 timeline 的 React + Babel(同源,缓存友好) -->
+<script src="/v2/assets/927fe617-3b33-47d9-9fad-434f60e62dd8.js"></script>
+<script src="/v2/assets/038280d8-d7a9-40ed-a681-d4421b51f300.js"></script>
+<script src="/v2/assets/695b8c57-227e-4927-a8b9-cfce127358fe.js"></script>
+
+<script type="text/babel">
+const { useState, useEffect, useMemo, useRef, useCallback } = React;
+
+// ─────────────────────────────────────────────────────────
+// 力导向布局 — 弹簧 + 排斥 + 中心引力,同步运行 N 轮
+// ─────────────────────────────────────────────────────────
+function layoutForce(nodes, edges, w, h) {
+  const items = nodes.map(n => ({
+    id: n.id, n,
+    x: w / 2 + (Math.random() - 0.5) * Math.min(w, h) * 0.4,
+    y: h / 2 + (Math.random() - 0.5) * Math.min(w, h) * 0.4,
+    vx: 0, vy: 0,
+  }));
+  const map = {};
+  items.forEach(it => { map[it.id] = it; });
+  const pairs = edges.map(e => ({
+    a: map[e.source], b: map[e.target], sim: e.similarity,
+  })).filter(p => p.a && p.b);
+
+  const ITERS = 280;
+  for (let iter = 0; iter < ITERS; iter++) {
+    // 排斥(每对节点)
+    for (let i = 0; i < items.length; i++) {
+      for (let j = i + 1; j < items.length; j++) {
+        const a = items[i], b = items[j];
+        const dx = b.x - a.x, dy = b.y - a.y;
+        const d2 = Math.max(dx * dx + dy * dy, 1);
+        const f = 4500 / d2;
+        const d = Math.sqrt(d2);
+        const fx = (dx / d) * f, fy = (dy / d) * f;
+        a.vx -= fx; a.vy -= fy;
+        b.vx += fx; b.vy += fy;
+      }
+    }
+    // 弹簧
+    for (const p of pairs) {
+      const dx = p.b.x - p.a.x, dy = p.b.y - p.a.y;
+      const d = Math.sqrt(dx * dx + dy * dy) || 1;
+      const target = 90 + (1 - p.sim) * 110;
+      const k = 0.04;
+      const f = (d - target) * k;
+      const fx = (dx / d) * f, fy = (dy / d) * f;
+      p.a.vx += fx; p.a.vy += fy;
+      p.b.vx -= fx; p.b.vy -= fy;
+    }
+    // 中心引力
+    for (const it of items) {
+      it.vx += (w / 2 - it.x) * 0.0014;
+      it.vy += (h / 2 - it.y) * 0.0014;
+    }
+    // 阻尼 + 积分
+    const damping = 0.84;
+    for (const it of items) {
+      it.vx *= damping;
+      it.vy *= damping;
+      it.x += it.vx;
+      it.y += it.vy;
+      it.x = Math.max(50, Math.min(w - 50, it.x));
+      it.y = Math.max(50, Math.min(h - 50, it.y));
+    }
+  }
+  return items;
+}
+
+// ─────────────────────────────────────────────────────────
+// 节点视觉样式映射
+// ─────────────────────────────────────────────────────────
+function nodeVisual(n) {
+  const isPermanent = n.type === 'permanent';
+  const isFeel = n.type === 'feel';
+  const isInternalized = n.internalized || n.digested;
+  const isProtected = n.protected || n.pinned;
+
+  let color = '#6e4f9a';        // dynamic 紫
+  if (isPermanent) color = '#c79a4f'; // 金
+  if (isFeel) color = '#d291b3';      // 玫瑰
+
+  // size = importance(0..10) + score 加权
+  const score = Math.max(0, Math.min(1, n.score || 0.5));
+  const baseSize = 4 + score * 8;
+
+  return {
+    color,
+    size: baseSize,
+    isPermanent, isFeel, isInternalized, isProtected,
+    opacity: isInternalized ? 0.55 : 1,
+  };
+}
+
+// ─────────────────────────────────────────────────────────
+// 五角星 path(用于 permanent 节点)
+// ─────────────────────────────────────────────────────────
+function starPath(size) {
+  const points = [];
+  for (let i = 0; i < 10; i++) {
+    const a = (Math.PI / 5) * i - Math.PI / 2;
+    const r = i % 2 === 0 ? size : size * 0.45;
+    points.push([Math.cos(a) * r, Math.sin(a) * r]);
+  }
+  return 'M' + points.map(p => p.join(',')).join('L') + 'Z';
+}
+
+// ─────────────────────────────────────────────────────────
+// TopBar / Nav (跟 v2 对齐)
+// ─────────────────────────────────────────────────────────
+function TopBar({ data }) {
+  const total = data.length;
+  const pinned = data.filter(n => n.protected || n.pinned).length;
+  const feels = data.filter(n => n.type === 'feel').length;
+  return (
+    <div className="ob-topbar">
+      <div className="ob-brand">
+        <span className="ob-brand-mark" />
+        <span className="ob-brand-name">Ombre Brain</span>
+      </div>
+      <div className="ob-brand-stats">
+        <span><b>{total}</b> 格</span>
+        <span><b>{pinned}</b> 钉决</span>
+        <span><b>{feels}</b> feel</span>
+      </div>
+      <div className="ob-search">
+        <span style={{ opacity: 0.5 }}>⌕</span>
+        <input placeholder="搜索记忆…  /" disabled />
+      </div>
+    </div>
+  );
+}
+function NavBar() {
+  return (
+    <nav className="ob-nav">
+      <a href="/v2/cells/">记忆格 v2</a>
+      <a href="/v2/">时间线 v2</a>
+      <a href="/v2/network/" className="on">记忆星图 v2</a>
+    </nav>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// 节点组件
+// ─────────────────────────────────────────────────────────
+function StarNode({ pos, isSelected, isHovered, isDimmed, onMouseEnter, onMouseLeave, onClick }) {
+  const v = nodeVisual(pos.n);
+  const r = isSelected || isHovered ? v.size * 1.25 : v.size;
+  const cls = 'node-group' + (isDimmed ? ' dim' : '');
+  return (
+    <g
+      className={cls}
+      transform={`translate(${pos.x},${pos.y})`}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      onClick={onClick}
+    >
+      {/* 外晕(score 越高越亮) */}
+      <circle r={r + 6} fill={v.color} opacity={v.isFeel ? 0.18 : 0.08} />
+      {/* 核心 */}
+      {v.isPermanent ? (
+        <path d={starPath(r * 1.1)} fill={v.color} opacity={v.opacity} />
+      ) : (
+        <circle r={r} fill={v.color} opacity={v.opacity} />
+      )}
+      {/* 保护环 */}
+      {v.isProtected && (
+        <circle r={r + 3} fill="none" stroke={v.color} strokeWidth="1" strokeDasharray="2 2" opacity="0.6" />
+      )}
+      {/* 选中外环 */}
+      {isSelected && (
+        <circle r={r + 9} fill="none" stroke="var(--accent)" strokeWidth="1.5" opacity="0.7" />
+      )}
+    </g>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// 主舞台
+// ─────────────────────────────────────────────────────────
+function StarStage({ nodes, edges, selectedId, hoveredId, dimmedSet, onHover, onSelect, onTipMove, viewBox, onPan, onZoom }) {
+  const stageRef = useRef(null);
+  const [size, setSize] = useState({ w: 1200, h: 700 });
+  const [positions, setPositions] = useState([]);
+  const [computing, setComputing] = useState(true);
+
+  // 测量舞台尺寸
+  useEffect(() => {
+    const m = () => {
+      if (stageRef.current) {
+        const r = stageRef.current.getBoundingClientRect();
+        setSize({ w: r.width, h: r.height });
+      }
+    };
+    m();
+    window.addEventListener('resize', m);
+    return () => window.removeEventListener('resize', m);
+  }, []);
+
+  // 重新算布局
+  useEffect(() => {
+    if (!nodes.length) { setPositions([]); setComputing(false); return; }
+    setComputing(true);
+    // 异步避免阻塞首帧
+    const t = setTimeout(() => {
+      const items = layoutForce(nodes, edges, size.w, size.h);
+      setPositions(items);
+      setComputing(false);
+    }, 30);
+    return () => clearTimeout(t);
+  }, [nodes, edges, size.w, size.h]);
+
+  // 拖拽平移
+  const dragRef = useRef(null);
+  const onMouseDown = (e) => {
+    if (e.target.closest('.node-group')) return;
+    dragRef.current = { x: e.clientX, y: e.clientY };
+    stageRef.current.classList.add('grabbing');
+  };
+  const onMouseMove = (e) => {
+    if (!dragRef.current) return;
+    const dx = e.clientX - dragRef.current.x;
+    const dy = e.clientY - dragRef.current.y;
+    dragRef.current = { x: e.clientX, y: e.clientY };
+    onPan(dx, dy);
+  };
+  const onMouseUp = () => {
+    dragRef.current = null;
+    if (stageRef.current) stageRef.current.classList.remove('grabbing');
+  };
+  const onMouseMoveAll = (e) => {
+    onMouseMove(e);
+    if (onTipMove) {
+      const r = stageRef.current.getBoundingClientRect();
+      onTipMove(e.clientX - r.left, e.clientY - r.top);
+    }
+  };
+
+  // 滚轮缩放
+  const onWheel = (e) => {
+    e.preventDefault();
+    onZoom(e.deltaY < 0 ? 1.12 : 1 / 1.12);
+  };
+
+  const posMap = useMemo(() => {
+    const m = {};
+    positions.forEach(p => { m[p.id] = p; });
+    return m;
+  }, [positions]);
+
+  return (
+    <div className="net-stage" ref={stageRef}
+         onMouseMove={onMouseMoveAll}
+         onMouseDown={onMouseDown}
+         onMouseUp={onMouseUp}
+         onMouseLeave={onMouseUp}
+         onWheel={onWheel}>
+      <svg className="net-svg" viewBox={`${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`}>
+        {/* edges */}
+        <g>
+          {edges.map((e, i) => {
+            const a = posMap[e.source], b = posMap[e.target];
+            if (!a || !b) return null;
+            const dim = dimmedSet && (dimmedSet.has(e.source) || dimmedSet.has(e.target)) && !(selectedId === e.source || selectedId === e.target);
+            const w = 0.5 + e.similarity * 1.8;
+            const op = (selectedId && (e.source === selectedId || e.target === selectedId)) ? 0.6 : (dim ? 0.04 : 0.18);
+            return (
+              <line key={i} className="edge-line"
+                    x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                    strokeWidth={w} opacity={op} />
+            );
+          })}
+        </g>
+        {/* nodes */}
+        <g>
+          {positions.map(p => (
+            <StarNode key={p.id}
+              pos={p}
+              isSelected={selectedId === p.id}
+              isHovered={hoveredId === p.id}
+              isDimmed={dimmedSet && dimmedSet.has(p.id)}
+              onMouseEnter={() => onHover(p.id)}
+              onMouseLeave={() => onHover(null)}
+              onClick={(e) => { e.stopPropagation(); onSelect(p.id); }}
+            />
+          ))}
+        </g>
+      </svg>
+      {computing && (
+        <div className="net-empty">
+          <div className="net-empty-text">星图正在生成 …</div>
+        </div>
+      )}
+      {!computing && !nodes.length && (
+        <div className="net-empty">
+          <div className="net-empty-text">还没有记忆 — 写第一条试试</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// 悬停浮卡
+// ─────────────────────────────────────────────────────────
+function HoverTip({ node, edges, allNodes, x, y }) {
+  if (!node) return null;
+  const related = edges.filter(e => e.source === node.id || e.target === node.id);
+  const v = nodeVisual(node);
+  const typeLabel = node.type === 'permanent' ? 'permanent · 永久'
+    : node.type === 'feel' ? 'feel · 情感'
+    : node.type === 'archived' ? 'archived · 已归档'
+    : 'dynamic · 动态';
+  const score = node.score != null ? Math.round(node.score * 100) / 100 : '—';
+
+  // 限制 tip 不超出右/下
+  const left = Math.min(x + 16, window.innerWidth - 300);
+  const top = Math.min(y + 16, window.innerHeight - 200);
+
+  return (
+    <div className="net-tip" style={{ left, top }}>
+      <h5>{node.name || node.id}</h5>
+      <div className="tip-meta">
+        <span>{typeLabel}</span>
+        {' · '}
+        <b>imp:{Math.round(score * 10)}</b>
+        {related.length > 0 && (<><span> · </span><span>关联 {related.length}</span></>)}
+      </div>
+      {related.length > 0 && (
+        <div className="tip-rel">
+          <b>相关 · </b>
+          {related.slice(0, 3).map(e => {
+            const otherId = e.source === node.id ? e.target : e.source;
+            const other = allNodes.find(n => n.id === otherId);
+            return other ? (other.name || other.id).slice(0, 8) : '';
+          }).filter(Boolean).join(' · ')}
+          {related.length > 3 && ' …'}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// 右侧详情抽屉
+// ─────────────────────────────────────────────────────────
+function NodeDrawer({ node, edges, allNodes, detail, onClose, onJump }) {
+  if (!node) return null;
+  const related = edges
+    .filter(e => e.source === node.id || e.target === node.id)
+    .map(e => {
+      const otherId = e.source === node.id ? e.target : e.source;
+      return { sim: e.similarity, other: allNodes.find(n => n.id === otherId) };
+    })
+    .filter(r => r.other)
+    .sort((a, b) => b.sim - a.sim);
+
+  const v = nodeVisual(node);
+  const typeLabel = node.type === 'permanent' ? 'permanent'
+    : node.type === 'feel' ? 'feel'
+    : node.type === 'archived' ? 'archived'
+    : 'dynamic';
+
+  return (
+    <div className="net-drawer open">
+      <div className="net-drawer-hd">
+        <div className="net-drawer-eyebrow">
+          {typeLabel}
+          {' · '}
+          {(node.domain || []).join(' / ') || '未分类'}
+          {(node.protected || node.pinned) && ' · 🔒 保护'}
+          {(node.internalized || node.digested) && ' · 🌿 已内化'}
+        </div>
+        <h2>{node.name || node.id}</h2>
+        <button className="net-drawer-close" onClick={onClose} title="关闭 (Esc)">✕</button>
+      </div>
+      <div className="net-drawer-body">
+        <section>
+          <h4>正文</h4>
+          <p>{detail ? (detail.content || '(空)') : '⌛ 加载中 …'}</p>
+        </section>
+        <section>
+          <h4>属性</h4>
+          <div className="meta-grid">
+            <div className="field"><label>类型</label><span>{typeLabel}</span></div>
+            <div className="field"><label>权重分</label><span>{(node.score || 0).toFixed(3)}</span></div>
+            <div className="field"><label>效价 V</label><span>{(node.valence || 0.5).toFixed(2)}</span></div>
+            <div className="field"><label>唤醒 A</label><span>{(node.arousal || 0.3).toFixed(2)}</span></div>
+            <div className="field"><label>保护</label><span>{(node.protected || node.pinned) ? '✓' : '—'}</span></div>
+            <div className="field"><label>已内化</label><span>{(node.internalized || node.digested) ? '✓' : '—'}</span></div>
+          </div>
+        </section>
+        <section>
+          <h4>相关记忆 · {related.length}</h4>
+          {related.length === 0 ? (
+            <p style={{ color: 'var(--ink-4)', fontSize: 12 }}>这是一颗孤星 — 还没建立关联</p>
+          ) : (
+            <div className="related-list">
+              {related.slice(0, 8).map(r => (
+                <div key={r.other.id} className="related-row" onClick={() => onJump(r.other.id)}>
+                  <span className="rel-name">{r.other.name || r.other.id}</span>
+                  <span className="rel-sim">{(r.sim * 100).toFixed(0)}%</span>
+                </div>
+              ))}
+              {related.length > 8 && (
+                <div style={{ fontSize: 11, color: 'var(--ink-4)', textAlign: 'center', padding: 6 }}>
+                  + {related.length - 8} 条更多
+                </div>
+              )}
+            </div>
+          )}
+        </section>
+        <section>
+          <h4>操作</h4>
+          <div className="actions">
+            <button onClick={() => window.open('/dashboard#' + node.id, '_blank')}>在 v1 dashboard 编辑</button>
+          </div>
+        </section>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────
+// 顶层 App
+// ─────────────────────────────────────────────────────────
+function App() {
+  const [nodes, setNodes] = useState([]);
+  const [edges, setEdges] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
+  const [selectedId, setSelectedId] = useState(null);
+  const [hoveredId, setHoveredId] = useState(null);
+  const [tipPos, setTipPos] = useState({ x: 0, y: 0 });
+  const [detailCache, setDetailCache] = useState({});
+  const [filter, setFilter] = useState('all'); // all | permanent | feel | protected
+  const [viewBox, setViewBox] = useState({ x: 0, y: 0, w: 1200, h: 700 });
+  const stageSizeRef = useRef({ w: 1200, h: 700 });
+
+  // fetch
+  const refresh = useCallback(async () => {
+    try {
+      setLoadError(null);
+      const r = await fetch('/api/network');
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const data = await r.json();
+      setNodes(data.nodes || []);
+      setEdges(data.edges || []);
+      setLoading(false);
+    } catch (e) {
+      console.error(e);
+      setLoadError(e.message);
+      setLoading(false);
+    }
+  }, []);
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // 初始 viewBox 跟舞台尺寸对齐
+  useEffect(() => {
+    const update = () => {
+      const stage = document.querySelector('.net-stage');
+      if (stage) {
+        const r = stage.getBoundingClientRect();
+        stageSizeRef.current = { w: r.width, h: r.height };
+        setViewBox(v => ({ ...v, w: r.width, h: r.height }));
+      }
+    };
+    update();
+    window.addEventListener('resize', update);
+    return () => window.removeEventListener('resize', update);
+  }, []);
+
+  // 筛选
+  const filtered = useMemo(() => {
+    if (filter === 'all') return nodes;
+    if (filter === 'permanent') return nodes.filter(n => n.type === 'permanent');
+    if (filter === 'feel') return nodes.filter(n => n.type === 'feel');
+    if (filter === 'protected') return nodes.filter(n => n.protected || n.pinned);
+    return nodes;
+  }, [nodes, filter]);
+  const filteredIdSet = useMemo(() => new Set(filtered.map(n => n.id)), [filtered]);
+  const filteredEdges = useMemo(
+    () => edges.filter(e => filteredIdSet.has(e.source) && filteredIdSet.has(e.target)),
+    [edges, filteredIdSet]
+  );
+
+  // 选中后,加载详情
+  useEffect(() => {
+    if (!selectedId || detailCache[selectedId]) return;
+    fetch('/api/bucket/' + encodeURIComponent(selectedId))
+      .then(r => r.ok ? r.json() : Promise.reject(r.statusText))
+      .then(d => setDetailCache(c => ({ ...c, [selectedId]: d })))
+      .catch(e => console.warn('detail load failed', e));
+  }, [selectedId]);
+
+  // 关闭抽屉(Esc)
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') setSelectedId(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  const selectedNode = selectedId ? nodes.find(n => n.id === selectedId) : null;
+  const hoveredNode = hoveredId ? nodes.find(n => n.id === hoveredId) : null;
+
+  // viewBox 控制
+  const zoom = (factor) => {
+    setViewBox(v => {
+      const newW = v.w / factor;
+      const newH = v.h / factor;
+      return { x: v.x + (v.w - newW) / 2, y: v.y + (v.h - newH) / 2, w: newW, h: newH };
+    });
+  };
+  const reset = () => {
+    setViewBox({ x: 0, y: 0, w: stageSizeRef.current.w, h: stageSizeRef.current.h });
+  };
+  const pan = (dx, dy) => {
+    setViewBox(v => {
+      const sx = v.w / stageSizeRef.current.w;
+      const sy = v.h / stageSizeRef.current.h;
+      return { ...v, x: v.x - dx * sx, y: v.y - dy * sy };
+    });
+  };
+
+  return (
+    <>
+      <TopBar data={nodes} />
+      <NavBar />
+      <div className="net-page-hd">
+        <div>
+          <h1>记忆星图</h1>
+          <p>每一颗星是一条记忆,光弧是它们之间的相似关联。拖动星图、滚轮缩放、点击星体查看完整记忆。</p>
+        </div>
+        <div className="net-page-side">
+          <div className="net-counter">
+            <b>{filtered.length}</b> / {nodes.length} 条 · <b>{filteredEdges.length}</b> 关联
+          </div>
+        </div>
+      </div>
+
+      {loading && <div className="net-banner loading">正在拉取记忆网络 …</div>}
+      {loadError && (
+        <div className="net-banner error">
+          加载失败:{loadError} · <a onClick={refresh}>重试</a>
+        </div>
+      )}
+
+      <StarStage
+        nodes={filtered}
+        edges={filteredEdges}
+        selectedId={selectedId}
+        hoveredId={hoveredId}
+        dimmedSet={null}
+        onHover={setHoveredId}
+        onSelect={setSelectedId}
+        onTipMove={(x, y) => setTipPos({ x, y })}
+        viewBox={viewBox}
+        onPan={pan}
+        onZoom={zoom}
+      />
+
+      {hoveredNode && hoveredId !== selectedId && (
+        <HoverTip
+          node={hoveredNode}
+          edges={edges}
+          allNodes={nodes}
+          x={tipPos.x + (document.querySelector('.net-stage')?.getBoundingClientRect().left || 0)}
+          y={tipPos.y + (document.querySelector('.net-stage')?.getBoundingClientRect().top || 0)}
+        />
+      )}
+
+      {/* 左侧浮动面板 */}
+      {!loading && nodes.length > 0 && (
+        <div className="net-side">
+          <h4>类型图例</h4>
+          <div className="legend-row"><span className="legend-dot dynamic"></span>dynamic · 动态</div>
+          <div className="legend-row"><span className="legend-dot permanent"></span>permanent · 永久</div>
+          <div className="legend-row"><span className="legend-dot feel"></span>feel · 情感</div>
+          <div className="legend-row"><span className="legend-dot archived"></span>internalized · 已内化</div>
+
+          <h4 style={{ marginTop: 14 }}>筛选</h4>
+          <div className="filter-chips">
+            {[
+              { k: 'all', label: '全部' },
+              { k: 'permanent', label: '★ 永久' },
+              { k: 'feel', label: '❀ feel' },
+              { k: 'protected', label: '🔒 保护' },
+            ].map(c => (
+              <button key={c.k}
+                className={'filter-chip' + (filter === c.k ? ' on' : '')}
+                onClick={() => setFilter(c.k)}>
+                {c.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 底部控制 */}
+      <div className="net-controls">
+        <button onClick={() => zoom(1.2)} title="放大 +">＋</button>
+        <button onClick={() => zoom(1 / 1.2)} title="缩小 −">−</button>
+        <div className="divider"></div>
+        <button onClick={reset} title="重置视图">⌖ 重置</button>
+        <button onClick={refresh} title="重新加载">↻ 刷新</button>
+      </div>
+
+      <NodeDrawer
+        node={selectedNode}
+        edges={edges}
+        allNodes={nodes}
+        detail={selectedId ? detailCache[selectedId] : null}
+        onClose={() => setSelectedId(null)}
+        onJump={(id) => setSelectedId(id)}
+      />
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
