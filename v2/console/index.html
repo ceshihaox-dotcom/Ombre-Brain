@@ -6527,6 +6527,13 @@ body {
   height: 100%;
   min-height: 0;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.imp-shell > main > .imp-paper,
+.imp-shell > main > .imp-empty {
+  flex: 1 0 auto;
+  min-height: 100%;   /* 信纸/空状态 至少撑满列,内容多了自动滚动 */
 }
 .imp-aside {
   height: 100%;
