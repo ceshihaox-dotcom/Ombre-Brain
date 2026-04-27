@@ -20,26 +20,30 @@ function ConsoleApp() {
   const [loadError, setLoadError] = cAS(null);
 
   cAE(() => {
-    const onHash = () => {
-      const r = ROUTES[window.location.hash];
-      console.log('[console-debug] hashchange:', window.location.hash, '→ route =', r || 'breath');
+    const syncFromHash = () => {
+      const h = window.location.hash;
       // 用户点了已下线的 #network → 跳到独立星图
-      if (window.location.hash === '#network') {
+      if (h === '#network') {
         window.location.href = '/v2/network/';
         return;
       }
-      setRoute(r || 'breath');
+      const r = ROUTES[h] || 'breath';
+      setRoute(r);
     };
-    window.addEventListener('hashchange', onHash);
-    console.log('[console-debug] initial hash:', window.location.hash, '→ route =', ROUTES[window.location.hash] || 'breath');
+    window.addEventListener('hashchange', syncFromHash);
+    window.addEventListener('pageshow', syncFromHash);     // bfcache 恢复
+    window.addEventListener('popstate', syncFromHash);     // 后退/前进
     if (!window.location.hash) window.location.hash = 'breath';
-    return () => window.removeEventListener('hashchange', onHash);
+    // mount 后 100ms 再同步一次,绕过浏览器初始 hash 不准的诡异行为
+    const t = setTimeout(syncFromHash, 100);
+    return () => {
+      window.removeEventListener('hashchange', syncFromHash);
+      window.removeEventListener('pageshow', syncFromHash);
+      window.removeEventListener('popstate', syncFromHash);
+      clearTimeout(t);
+    };
   }, []);
 
-  // 诊断:每次 route 变化打日志
-  cAE(() => {
-    console.log('[console-debug] route now =', route, '/ data.length =', data.length);
-  }, [route, data]);
 
   cAE(() => {
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
