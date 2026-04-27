@@ -40,13 +40,14 @@ function ConsoleTopBar({ stats, dark, onDark, search, setSearch }) {
 // ── 二级导航 tab ──
 function ConsoleNav({ active }) {
   // 网络 tab 已被独立 constellation 取代,这里不再展示
+  // 内部 tab 改用路径路由(避免浏览器 hash autocomplete 把 hash 改回 #config 的诡异行为)
   const tabs = [
     { id: 'cells',     label: '记忆格 v2',  href: '/v2/cells/' },
     { id: 'timeline',  label: '时间线 v2',  href: '/v2/' },
     { id: 'star',      label: '记忆星图',   href: '/v2/network/' },
-    { id: 'breath',    label: 'Breath 模拟', href: '#breath' },
-    { id: 'config',    label: '配置',       href: '#config' },
-    { id: 'import',    label: '导入',       href: '#import' },
+    { id: 'breath',    label: 'Breath 模拟', href: '/v2/console/breath/' },
+    { id: 'config',    label: '配置',       href: '/v2/console/config/' },
+    { id: 'import',    label: '导入',       href: '/v2/console/import/' },
   ];
   return (
     <nav className="ob-nav">

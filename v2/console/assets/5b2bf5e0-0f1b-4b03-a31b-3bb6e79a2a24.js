@@ -1,17 +1,25 @@
-// console-app.jsx —— 控制台主入口(hash 路由) — 真实数据接入版
+// console-app.jsx —— 控制台主入口(路径路由) — 真实数据接入版
 
 const { useState: cAS, useEffect: cAE, useMemo: cAM } = React;
 
-// network tab 已下线 — 用独立 constellation(/v2/network/)取代
-const ROUTES = {
-  '#breath': 'breath',
-  '#config': 'config',
-  '#import': 'import',
-};
+// 路径路由:/v2/console/breath/ → 'breath' 等
+// 兼容老 hash: 如果 URL 还带 #breath 等也能识别(从老书签过来)
+function routeFromUrl() {
+  const path = window.location.pathname.replace(/\/+$/, '');  // 去尾斜杠
+  if (path.endsWith('/v2/console/breath')) return 'breath';
+  if (path.endsWith('/v2/console/config')) return 'config';
+  if (path.endsWith('/v2/console/import')) return 'import';
+  // 兼容老 hash 链接
+  const h = window.location.hash;
+  if (h === '#breath') return 'breath';
+  if (h === '#config') return 'config';
+  if (h === '#import') return 'import';
+  return 'breath';
+}
 
 function ConsoleApp() {
   const [t, setTweak] = useTweaks(window.TWEAK_DEFAULTS);
-  const [route, setRoute] = cAS(ROUTES[window.location.hash] || 'breath');
+  const [route, setRoute] = cAS(routeFromUrl());
   const [search, setSearch] = cAS('');
   const [dark, setDark] = cAS(t.dark || false);
   // 真实数据
@@ -20,27 +28,21 @@ function ConsoleApp() {
   const [loadError, setLoadError] = cAS(null);
 
   cAE(() => {
-    const syncFromHash = () => {
-      const h = window.location.hash;
-      // 用户点了已下线的 #network → 跳到独立星图
-      if (h === '#network') {
+    const sync = () => {
+      // 老 #network 兼容:跳到独立星图
+      if (window.location.hash === '#network') {
         window.location.href = '/v2/network/';
         return;
       }
-      const r = ROUTES[h] || 'breath';
-      setRoute(r);
+      setRoute(routeFromUrl());
     };
-    window.addEventListener('hashchange', syncFromHash);
-    window.addEventListener('pageshow', syncFromHash);     // bfcache 恢复
-    window.addEventListener('popstate', syncFromHash);     // 后退/前进
-    if (!window.location.hash) window.location.hash = 'breath';
-    // mount 后 100ms 再同步一次,绕过浏览器初始 hash 不准的诡异行为
-    const t = setTimeout(syncFromHash, 100);
+    window.addEventListener('popstate', sync);
+    window.addEventListener('pageshow', sync);
+    window.addEventListener('hashchange', sync);  // 兼容老 hash 链接
     return () => {
-      window.removeEventListener('hashchange', syncFromHash);
-      window.removeEventListener('pageshow', syncFromHash);
-      window.removeEventListener('popstate', syncFromHash);
-      clearTimeout(t);
+      window.removeEventListener('popstate', sync);
+      window.removeEventListener('pageshow', sync);
+      window.removeEventListener('hashchange', sync);
     };
   }, []);
 
