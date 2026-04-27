@@ -576,45 +576,239 @@
   .flow-step.active { border-color: var(--accent); color: var(--accent); }
   .flow-arrow { color: var(--text-light); font-size: 16px; }
 
-  /* 时间线 view (slice 8) */
+  /* 时间线 view — 纵向节点式时间线 */
+  .tl-view-head {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 4px; flex-wrap: wrap;
+  }
+  .tl-view-head h3 {
+    margin: 0;
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 22px; font-weight: 600;
+    color: var(--accent); letter-spacing: 0.5px;
+    flex: 1; min-width: 0;
+  }
+  .tl-intro {
+    color: var(--text-dim); font-size: 12px;
+    margin: 0 0 16px; line-height: 1.7;
+  }
+  .tl-controls {
+    display: flex; gap: 8px; align-items: center;
+    flex-wrap: wrap; margin-bottom: 22px;
+  }
+  .tl-controls input[type=text] {
+    flex: 1; min-width: 160px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    padding: 8px 16px; border-radius: 18px;
+    font-family: inherit; font-size: 12px;
+    box-shadow: inset 2px 2px 4px var(--shadow-dark-subtle), inset -2px -2px 4px var(--shadow-light);
+  }
+  .tl-controls input[type=text]:focus {
+    outline: none; border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow), inset 2px 2px 4px var(--shadow-dark-subtle), inset -2px -2px 4px var(--shadow-light);
+  }
+  .tl-controls .filter-btn { padding: 6px 14px; font-size: 11px; }
+
   .tl-group {
-    margin-bottom: 28px;
+    --tl-date-w: 78px;
+    --tl-node-w: 24px;
+    --tl-gap: 10px;
+    --tl-line-x: calc(var(--tl-date-w) + var(--tl-gap) + var(--tl-node-w) / 2);
+    --tl-body-x: calc(var(--tl-date-w) + var(--tl-gap) + var(--tl-node-w) + var(--tl-gap));
+    margin-bottom: 4px;
   }
   .tl-group-header {
-    font-size: 13px; font-weight: 600;
-    color: var(--text-dim); letter-spacing: 0.5px;
-    padding: 8px 0; margin-bottom: 8px;
-    border-bottom: 1px solid var(--border);
+    font-family: 'Cormorant Garamond', serif;
+    font-size: 17px; font-weight: 500;
+    color: var(--text-dim); letter-spacing: 1px;
+    padding: 16px 0 4px;
+    padding-left: var(--tl-body-x);
   }
-  .tl-entry {
+  .tl-group.untimed .tl-group-header {
+    font-style: italic; color: var(--text-light);
+    font-size: 14px; letter-spacing: 0.5px;
+  }
+
+  .tl-rows {
+    position: relative;
+  }
+  .tl-rows::before {
+    content: '';
+    position: absolute;
+    left: var(--tl-line-x);
+    top: 8px; bottom: 8px;
+    width: 1px;
+    background: var(--border-strong);
+    opacity: 0.55;
+  }
+
+  .tl-row {
     display: grid;
-    grid-template-columns: 90px 32px 1fr;
-    gap: 12px; align-items: start;
-    padding: 12px 14px; margin-bottom: 6px;
-    background: var(--surface); border-radius: 12px;
+    grid-template-columns: var(--tl-date-w) var(--tl-node-w) 1fr;
+    column-gap: var(--tl-gap);
+    padding: 7px 0;
     cursor: pointer;
     transition: background .15s;
-    border-left: 3px solid transparent;
+    border-radius: 8px;
   }
-  .tl-entry:hover { background: var(--bg); }
-  .tl-entry.user-made { border-left-color: var(--accent); }
-  .tl-entry.archived { opacity: 0.6; }
-  .tl-date { font-family: monospace; font-size: 13px; color: var(--text-dim); }
-  .tl-icon { font-size: 18px; text-align: center; }
-  .tl-body .tl-name { font-weight: 600; margin-bottom: 4px; font-size: 14px; }
-  .tl-body .tl-preview {
+  .tl-row:hover { background: rgba(180, 165, 140, 0.08); }
+  .tl-row.expanded { background: rgba(180, 165, 140, 0.12); }
+  .tl-row.archived { opacity: 0.5; }
+
+  .tl-row .tl-date {
+    font-family: 'Inter', monospace;
+    font-size: 11px;
+    color: var(--text-light);
+    letter-spacing: 0.4px;
+    padding-top: 7px;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+  .tl-row .tl-date.fallback {
+    font-style: italic;
+    opacity: 0.7;
+  }
+
+  .tl-node {
+    display: flex; justify-content: center; align-items: flex-start;
+    padding-top: 8px;
+  }
+  .tl-dot {
+    position: relative;
+    width: 9px; height: 9px;
+    border-radius: 50%;
+    background: var(--text-light);
+    box-shadow: 0 0 0 3px #FAF6E8, 0 0 0 4px var(--border);
+  }
+  .tl-row:hover .tl-dot { transform: scale(1.15); transition: transform .15s; }
+  .tl-dot.important {
+    width: 11px; height: 11px;
+    background: var(--accent);
+    border-radius: 2px;
+    transform: rotate(45deg);
+    box-shadow: 0 0 0 3px #FAF6E8, 0 0 0 4px var(--accent-light);
+  }
+  .tl-row:hover .tl-dot.important { transform: rotate(45deg) scale(1.15); }
+  .tl-dot.feel {
+    background: #B795C9;
+    box-shadow: 0 0 0 3px #FAF6E8, 0 0 0 4px rgba(183, 149, 201, 0.4),
+                0 0 10px rgba(183, 149, 201, 0.5);
+  }
+  .tl-dot.feel.important {
+    background: #A479C0;
+    box-shadow: 0 0 0 3px #FAF6E8, 0 0 0 4px rgba(164, 121, 192, 0.5),
+                0 0 12px rgba(164, 121, 192, 0.6);
+  }
+  .tl-dot.protected::after {
+    content: '';
+    position: absolute;
+    inset: -5px;
+    border: 1px dashed var(--accent);
+    border-radius: 50%;
+    opacity: 0.55;
+  }
+  .tl-dot.important.protected::after { border-radius: 3px; }
+
+  .tl-body { min-width: 0; padding-top: 4px; }
+  .tl-title {
+    font-size: 14px; font-weight: 500;
+    color: var(--text); line-height: 1.4;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    transition: color .15s;
+  }
+  .tl-row:hover .tl-title { color: var(--accent); }
+  .tl-title .tl-badges {
+    margin-left: 6px;
+    font-size: 11px;
+    opacity: 0.85;
+    letter-spacing: 1px;
+    font-weight: 400;
+  }
+  .tl-summary {
     font-size: 12px; color: var(--text-dim);
-    line-height: 1.5;
+    line-height: 1.5; margin-top: 2px;
     overflow: hidden; text-overflow: ellipsis;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical;
+    overflow-wrap: anywhere;
   }
-  .tl-meta {
-    font-size: 11px; color: var(--text-light);
-    margin-top: 4px;
+
+  .tl-expand-panel {
+    padding: 4px 0 18px var(--tl-body-x);
   }
+  .tl-expand-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 16px 18px;
+    box-shadow: inset 2px 2px 5px var(--shadow-dark-subtle), inset -2px -2px 5px var(--shadow-light);
+  }
+  .tl-expand-card .tl-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px 18px;
+    margin-bottom: 14px;
+  }
+  .tl-expand-card .field { font-size: 12px; }
+  .tl-expand-card .field label {
+    color: var(--text-light);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    display: block;
+    margin-bottom: 2px;
+  }
+  .tl-expand-card .body-text {
+    white-space: pre-wrap;
+    font-size: 13px; line-height: 1.75;
+    background: var(--bg);
+    padding: 14px 16px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    max-height: 40vh;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+  }
+  .tl-expand-card .actions {
+    display: flex; gap: 8px; flex-wrap: wrap;
+    margin-top: 14px;
+  }
+  .tl-expand-card .actions button {
+    font-size: 12px; padding: 6px 14px;
+  }
+  .tl-expand-card .related-empty {
+    margin-top: 10px; font-size: 11px;
+    color: var(--text-light); font-style: italic;
+  }
+
+  .tl-empty {
+    padding: 32px 16px;
+    text-align: center;
+    color: var(--text-light);
+    font-size: 13px; font-style: italic;
+  }
+
   @media (max-width: 768px) {
-    .tl-entry { grid-template-columns: 70px 28px 1fr; gap: 8px; padding: 10px; }
-    .tl-date { font-size: 11px; }
+    .tl-group {
+      --tl-date-w: 56px;
+      --tl-node-w: 18px;
+      --tl-gap: 8px;
+    }
+    .tl-group-header { font-size: 15px; padding-top: 12px; }
+    .tl-row .tl-date { font-size: 10px; padding-top: 6px; }
+    .tl-node { padding-top: 7px; }
+    .tl-dot { width: 7px; height: 7px; }
+    .tl-dot.important { width: 9px; height: 9px; }
+    .tl-title { font-size: 13px; }
+    .tl-summary { font-size: 11px; }
+    .tl-expand-card { padding: 14px; border-radius: 10px; }
+    .tl-expand-card .tl-meta-grid {
+      grid-template-columns: 1fr 1fr;
+      gap: 8px 12px;
+    }
+    .tl-expand-card .body-text { font-size: 12px; padding: 12px; }
   }
 
   /* 编辑 / 新建 / 删除确认 模态框 (slice 7) */
@@ -745,15 +939,22 @@
 </div>
 
 <div class="content" id="timeline-view" style="display:none">
-  <div style="display:flex; gap:10px; align-items:center; margin-bottom:16px;">
-    <h3 style="margin:0; flex:1;">🕒 我的时间线</h3>
+  <div class="tl-view-head">
+    <h3>🕒 我的时间线</h3>
     <span style="font-size:12px; color:var(--text-dim);" id="timeline-stats">—</span>
     <button class="btn-primary" onclick="openCreateModal()">+ 添加事件</button>
   </div>
-  <p style="color:var(--text-dim); font-size:12px; margin-top:0;">
-    所有有"事件时间"的桶按时间倒序展开。✏️ 是你手写的,AI 无权修改;🤖 是 AI 写的。
-    想加纯日期标记(AI 不读)→ 新建时勾选"已内化"。
+  <p class="tl-intro">
+    按"事件时间"倒序展开 — 最新在最上方。点击节点展开详情。<br>
+    <span style="opacity:.75;">✏️ 你手写 · 🤖 AI 写入 · 🌿 已内化 · 🔒 保护 · ◆ 重要(≥8) · 🫧 feel(柔紫色)</span>
   </p>
+  <div class="tl-controls">
+    <input type="text" id="tl-search" placeholder="搜索关键词…" autocomplete="off" />
+    <button class="filter-btn active" data-tl-filter="all">全部</button>
+    <button class="filter-btn" data-tl-filter="important">重要</button>
+    <button class="filter-btn" data-tl-filter="feel">🫧 Feel</button>
+    <button class="filter-btn" data-tl-filter="protected">🔒 已保护</button>
+  </div>
   <div id="timeline-list">
     <div class="loading">加载中…</div>
   </div>
@@ -953,7 +1154,8 @@ async function loadBuckets() {
     updateStats();
     buildFilters();
     renderBuckets(allBuckets);
-    // 时间线 tab 如果当前可见,顺手刷新一下
+    // 时间线 tab 如果当前可见,顺手刷新一下;detailCache 清掉防止动作后展示旧数据
+    if (typeof tlState !== 'undefined') tlState.detailCache = {};
     var tlView = document.getElementById('timeline-view');
     if (tlView && tlView.style.display !== 'none' && typeof renderTimeline === 'function') {
       renderTimeline();
@@ -1118,88 +1320,259 @@ async function showDetail(id) {
 }
 
 // ============================================================
-// 时间线 (slice 8) — 把 allBuckets 按 event_time desc 渲染
-// 没设过 event_time 的桶不显示在时间线(它们没"发生时间"语义)
-// 按"年-月"分组,组内倒序
+// 时间线 — 纵向节点式,事件时间倒序
+// - 排序优先 event_time;无 event_time 的 fallback 到 created
+// - 最新在最上方,按 YYYY-MM 分组
+// - 点击节点 inline 展开详情
+// - 支持搜索 / 重要 / feel / 保护 筛选
 // ============================================================
+var tlState = {
+  filter: 'all',         // all | important | feel | protected
+  search: '',
+  expandedId: null,
+  detailCache: {},       // id → /api/bucket/:id 返回的完整数据
+};
+var _tlListenersAttached = false;
+
+function tlSortKey(b) {
+  // 优先 event_time(显式标注的事件发生时间),否则 fallback 到 created(写入时间)
+  return b.event_time || (b.metadata && b.metadata.event_time) || b.created || (b.metadata && b.metadata.created) || '';
+}
+function tlHasEventTime(b) {
+  return !!(b.event_time || (b.metadata && b.metadata.event_time));
+}
+function tlMatchesFilter(b) {
+  if (tlState.filter === 'all') return true;
+  if (tlState.filter === 'important') return (b.importance || 5) >= 8;
+  if (tlState.filter === 'feel') return b.type === 'feel';
+  if (tlState.filter === 'protected') return !!(b.protected || b.pinned);
+  return true;
+}
+function tlMatchesSearch(b) {
+  if (!tlState.search) return true;
+  var q = tlState.search.toLowerCase();
+  var hay = ((b.name || '') + ' ' + (b.content_preview || '') + ' ' + (b.tags || []).join(' ') + ' ' + (b.domain || []).join(' ')).toLowerCase();
+  return hay.indexOf(q) !== -1;
+}
+
+function tlAttachListeners() {
+  if (_tlListenersAttached) return;
+  _tlListenersAttached = true;
+
+  var search = document.getElementById('tl-search');
+  if (search) {
+    var t;
+    search.addEventListener('input', function(e) {
+      clearTimeout(t);
+      t = setTimeout(function() {
+        tlState.search = e.target.value.trim();
+        renderTimeline();
+      }, 200);
+    });
+  }
+  // 筛选按钮(timeline-view 里的,只挂一次)
+  document.querySelectorAll('#timeline-view .tl-controls .filter-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+      document.querySelectorAll('#timeline-view .tl-controls .filter-btn').forEach(function(b) {
+        b.classList.remove('active');
+      });
+      btn.classList.add('active');
+      tlState.filter = btn.dataset.tlFilter;
+      renderTimeline();
+    });
+  });
+}
+
 function renderTimeline() {
+  tlAttachListeners();
   var list = document.getElementById('timeline-list');
-  var withTime = (allBuckets || []).filter(function(b) {
-    var t = b.event_time || (b.metadata && b.metadata.event_time);
-    return !!t;
-  });
-  // 按 event_time desc 排序
-  withTime.sort(function(a, b) {
-    var ta = a.event_time || (a.metadata && a.metadata.event_time) || '';
-    var tb = b.event_time || (b.metadata && b.metadata.event_time) || '';
-    return tb.localeCompare(ta);
+  var all = allBuckets || [];
+
+  // 应用筛选 + 搜索
+  var filtered = all.filter(function(b) {
+    return tlMatchesFilter(b) && tlMatchesSearch(b);
   });
 
+  // 切两组:有 event_time 的(主时间线)+ 无 event_time 的(底部"未标注")
+  var timed = filtered.filter(tlHasEventTime);
+  var untimed = filtered.filter(function(b) { return !tlHasEventTime(b); });
+
+  // 各自按 sortKey 倒序
+  timed.sort(function(a, b) { return tlSortKey(b).localeCompare(tlSortKey(a)); });
+  untimed.sort(function(a, b) { return tlSortKey(b).localeCompare(tlSortKey(a)); });
+
+  // 顶部统计:有事件时间的 / 总桶数
+  var totalWithEvent = all.filter(tlHasEventTime).length;
   document.getElementById('timeline-stats').textContent =
-    withTime.length + ' / ' + (allBuckets || []).length + ' 条桶有事件时间';
+    totalWithEvent + ' / ' + all.length + ' 条桶有事件时间';
 
-  if (!withTime.length) {
-    list.innerHTML = '<div class="loading">没有带"事件时间"的桶。新建桶时填事件时间,或在编辑里补上,这里就会自动出现。</div>';
+  if (!filtered.length) {
+    list.innerHTML = '<div class="tl-empty">没有匹配的记忆。试试改筛选或清空搜索。</div>';
     return;
   }
 
-  // 按 YYYY-MM 分组
+  // 按 YYYY-MM 分组(timed)
   var groups = {};
   var groupOrder = [];
-  withTime.forEach(function(b) {
-    var t = b.event_time || (b.metadata && b.metadata.event_time);
-    var ym = String(t).slice(0, 7);  // YYYY-MM
-    if (!groups[ym]) {
-      groups[ym] = [];
-      groupOrder.push(ym);
-    }
+  timed.forEach(function(b) {
+    var ym = String(tlSortKey(b)).slice(0, 7);
+    if (!groups[ym]) { groups[ym] = []; groupOrder.push(ym); }
     groups[ym].push(b);
   });
 
-  // 渲染
   var html = groupOrder.map(function(ym) {
-    var entries = groups[ym].map(function(b) {
-      var t = b.event_time || (b.metadata && b.metadata.event_time);
-      var dateStr = String(t).slice(0, 10);
-      var byUser = (b.created_by === 'user');
-      var isArchived = (b.type === 'archived');
-      var isInternal = isInternalized(b);
-      var icon;
-      if (byUser) icon = '✏️';
-      else if (isArchived) icon = '📦';
-      else if (b.highlight || b.pinned) icon = '📌';
-      else if (b.type === 'feel') icon = '🫧';
-      else if (isInternal) icon = '🌿';
-      else if (b.resolved) icon = '💤';
-      else icon = '💭';
-
-      var metaParts = [];
-      if (isInternal) metaParts.push('已内化(AI 不读)');
-      if (b.highlight || b.pinned) metaParts.push('置顶');
-      if (b.protected || b.pinned) metaParts.push('保护');
-      if (b.resolved) metaParts.push('已解决');
-      if (isArchived) metaParts.push('已归档');
-
-      return '<div class="tl-entry' +
-        (byUser ? ' user-made' : '') +
-        (isArchived ? ' archived' : '') +
-        '" onclick="showDetail(\'' + b.id + '\')">' +
-        '<div class="tl-date">' + esc(dateStr) + '</div>' +
-        '<div class="tl-icon">' + icon + '</div>' +
-        '<div class="tl-body">' +
-          '<div class="tl-name">' + esc(b.name || b.id) + '</div>' +
-          '<div class="tl-preview">' + esc(b.content_preview || '') + '</div>' +
-          (metaParts.length ? '<div class="tl-meta">' + metaParts.join(' · ') + '</div>' : '') +
-        '</div>' +
-      '</div>';
-    }).join('');
-    return '<div class="tl-group">' +
-      '<div class="tl-group-header">' + esc(ym) + '</div>' +
-      entries +
-    '</div>';
+    return tlRenderGroup(ym, groups[ym], false);
   }).join('');
 
+  if (untimed.length) {
+    html += tlRenderGroup('未标注事件时间', untimed, true);
+  }
+
   list.innerHTML = html;
+}
+
+function tlRenderGroup(label, buckets, isUntimed) {
+  var rowsHtml = buckets.map(tlRenderRow).join('');
+  return '<div class="tl-group' + (isUntimed ? ' untimed' : '') + '">' +
+    '<div class="tl-group-header">' + esc(label) + '</div>' +
+    '<div class="tl-rows">' + rowsHtml + '</div>' +
+  '</div>';
+}
+
+function tlRenderRow(b) {
+  var hasEvent = tlHasEventTime(b);
+  var dateRaw = tlSortKey(b);
+  var dateStr = dateRaw ? String(dateRaw).slice(0, 10) : '—';
+  var isArchived = (b.type === 'archived');
+  var isFeel = (b.type === 'feel');
+  var isImportant = (b.importance || 5) >= 8;
+  var isProtected = !!(b.protected || b.pinned);
+  var isInternal = isInternalized(b);
+  var byUser = (b.created_by === 'user');
+  var expanded = (tlState.expandedId === b.id);
+
+  // 节点圆点 class
+  var dotClasses = ['tl-dot'];
+  if (isImportant) dotClasses.push('important');
+  if (isFeel) dotClasses.push('feel');
+  if (isProtected) dotClasses.push('protected');
+
+  // 标题旁的小徽标
+  var badges = [];
+  badges.push(byUser ? '✏️' : '🤖');
+  if (isInternal) badges.push('🌿');
+  if (isProtected) badges.push('🔒');
+  var badgesHtml = '<span class="tl-badges">' + badges.join(' ') + '</span>';
+
+  var rowClasses = ['tl-row'];
+  if (isArchived) rowClasses.push('archived');
+  if (expanded) rowClasses.push('expanded');
+
+  var rowHtml = '<div class="' + rowClasses.join(' ') + '" onclick="tlToggleExpand(\'' + b.id + '\')">' +
+    '<div class="tl-date' + (hasEvent ? '' : ' fallback') + '">' + esc(dateStr) + '</div>' +
+    '<div class="tl-node"><span class="' + dotClasses.join(' ') + '"></span></div>' +
+    '<div class="tl-body">' +
+      '<div class="tl-title">' + esc(b.name || b.id) + badgesHtml + '</div>' +
+      '<div class="tl-summary">' + esc(b.content_preview || '') + '</div>' +
+    '</div>' +
+  '</div>';
+
+  if (expanded) {
+    rowHtml += '<div class="tl-expand-panel" id="tl-expand-' + b.id + '">' +
+      tlRenderExpand(b) +
+    '</div>';
+  }
+  return rowHtml;
+}
+
+function tlRenderExpand(b) {
+  var cached = tlState.detailCache[b.id];
+  if (!cached) {
+    // 触发 fetch,渲染占位
+    tlFetchDetail(b.id);
+    return '<div class="tl-expand-card"><div class="loading">加载详情…</div></div>';
+  }
+  var meta = cached.metadata || {};
+  var protectedFlag = !!(meta.protected || meta.pinned);
+  var highlightFlag = !!(meta.highlight || meta.pinned);
+  var internalizedFlag = !!(meta.internalized || meta.digested);
+  var isArchived = (meta.type === 'archived');
+  var srcLabel = (meta.created_by === 'user') ? '✏️ 我手写' : '🤖 AI 写入';
+  var domain = (meta.domain || []).join(', ') || '—';
+  var tags = (meta.tags || []).join(', ') || '—';
+  var feelLabel = (meta.type === 'feel') ? '🫧 feel' : (meta.type || 'dynamic');
+
+  var actionsHtml =
+    '<div class="actions" onclick="event.stopPropagation()">' +
+      '<button class="btn-primary" onclick="openEditModal(\'' + b.id + '\')">编辑</button>' +
+      '<button onclick="tlToggleProtect(\'' + b.id + '\', ' + (protectedFlag ? 'true' : 'false') + ')">' +
+        (protectedFlag ? '取消保护' : '保护') +
+      '</button>' +
+      (isArchived
+        ? '<button onclick="doUnarchive(\'' + b.id + '\')">取消归档</button>'
+        : '<button onclick="doArchive(\'' + b.id + '\')">归档</button>') +
+    '</div>';
+
+  return '<div class="tl-expand-card" onclick="event.stopPropagation()">' +
+    '<div class="tl-meta-grid">' +
+      '<div class="field"><label>事件时间</label>' + shortDate(meta.event_time) + '</div>' +
+      '<div class="field"><label>写入时间</label>' + shortDate(meta.created) + '</div>' +
+      '<div class="field"><label>来源</label>' + srcLabel + '</div>' +
+      '<div class="field"><label>类型</label>' + feelLabel + '</div>' +
+      '<div class="field"><label>域</label>' + esc(domain) + '</div>' +
+      '<div class="field"><label>标签</label>' + esc(tags) + '</div>' +
+      '<div class="field"><label>重要度</label>' + (meta.importance || 5) + '/10</div>' +
+      '<div class="field"><label>状态</label>' +
+        (highlightFlag ? '📌 ' : '') +
+        (protectedFlag ? '🔒 ' : '') +
+        (internalizedFlag ? '🌿 ' : '') +
+        (meta.resolved ? '💤 ' : '') +
+        (isArchived ? '📦 ' : '') +
+        (highlightFlag || protectedFlag || internalizedFlag || meta.resolved || isArchived ? '' : '—') +
+      '</div>' +
+    '</div>' +
+    '<div class="body-text">' + esc(cached.content || '(空)') + '</div>' +
+    actionsHtml +
+  '</div>';
+}
+
+function tlToggleExpand(id) {
+  if (tlState.expandedId === id) {
+    tlState.expandedId = null;
+  } else {
+    tlState.expandedId = id;
+  }
+  renderTimeline();
+}
+
+async function tlFetchDetail(id) {
+  if (tlState.detailCache[id]) return;
+  try {
+    var res = await fetch(BASE + '/api/bucket/' + id);
+    if (!res.ok) throw new Error(await res.text());
+    tlState.detailCache[id] = await res.json();
+    // 仍是当前展开项,才重渲染
+    if (tlState.expandedId === id) renderTimeline();
+  } catch (e) {
+    var panel = document.getElementById('tl-expand-' + id);
+    if (panel) panel.innerHTML = '<div class="tl-expand-card"><div class="loading">加载失败: ' + esc(e.message) + '</div></div>';
+  }
+}
+
+async function tlToggleProtect(id, currentlyProtected) {
+  var nextVal = currentlyProtected ? 0 : 1;
+  try {
+    var res = await fetch(BASE + '/api/bucket/' + id + '/update', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ protected: nextVal }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    delete tlState.detailCache[id];
+    await loadBuckets();   // 刷新 allBuckets,renderTimeline 由 loadBuckets 触发(timeline 可见时)
+  } catch (e) {
+    alert('切换保护失败: ' + e.message);
+  }
 }
 
 
