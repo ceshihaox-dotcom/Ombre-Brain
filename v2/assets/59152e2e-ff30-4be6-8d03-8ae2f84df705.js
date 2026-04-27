@@ -215,8 +215,6 @@ function DateModuleV2({ date, items, onOpenItem, onOpenDay, density, query, isTo
             <span className="ob-card-count">{items.length} 条记忆</span>
             {hi > 0 && <span className="ob-card-hi-badge">含重要 · {hi}</span>}
             {feels > 0 && <span className="ob-card-feel-badge">feel · {feels}</span>}
-            {isToday && <span className="ob-card-today-badge">今天</span>}
-            {isDense && <span className="ob-card-feel-badge" style={{opacity:0.7}}>密集</span>}
           </div>
           <span className="ob-card-open">展开当日 →</span>
         </div>
