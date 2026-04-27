@@ -91,13 +91,90 @@
     if (patch.protected != null) body.protected = !!patch.protected;
     if (patch.highlight != null) body.highlight = !!patch.highlight;
     if (patch.internalized != null) body.internalized = !!patch.internalized;
-    // feel 在 ombre-brain 是 type 字段(feel / dynamic),update 端点未暴露 type 切换 — 暂跳过
+    if (patch.type != null) body.type = patch.type;            // feel ↔ dynamic
+    if (patch.feel != null) body.type = patch.feel ? 'feel' : 'dynamic';
     var r = await fetch('/api/bucket/' + encodeURIComponent(id) + '/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
     });
     if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  };
+
+  // ---------- 导入工作台专用 ----------
+  // 上传文件(multipart) 或 粘贴原文(裸文本 body)
+  window.__obImportUpload = async function (filenameOrText, isFile, fileObj) {
+    var url = '/api/import/upload?preserve_raw=1';
+    var opts;
+    if (isFile && fileObj) {
+      var fd = new FormData();
+      fd.append('file', fileObj, fileObj.name);
+      opts = { method: 'POST', body: fd };
+    } else {
+      // 粘贴原文 — body 直接是文本,filename 走 query
+      var fname = filenameOrText || ('paste-' + new Date().toISOString().slice(0, 19).replace(/:/g, '') + '.txt');
+      url += '&filename=' + encodeURIComponent(fname);
+      opts = {
+        method: 'POST',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: filenameOrText  // 这里 filenameOrText 实际上是文本内容,见调用约定
+      };
+    }
+    var r = await fetch(url, opts);
+    if (!r.ok) throw new Error('上传失败:' + (await r.text()));
+    return r.json();
+  };
+
+  // 简洁版:粘贴文本(更直观的调用)
+  window.__obImportPasteText = async function (rawText, filenameHint) {
+    var fname = filenameHint || ('paste-' + new Date().toISOString().slice(0, 19).replace(/:/g, '') + '.txt');
+    var r = await fetch('/api/import/upload?preserve_raw=1&filename=' + encodeURIComponent(fname), {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: rawText,
+    });
+    if (!r.ok) throw new Error('上传失败:' + (await r.text()));
+    return r.json();
+  };
+
+  // 上传文件
+  window.__obImportFile = async function (file) {
+    var fd = new FormData();
+    fd.append('file', file, file.name);
+    var r = await fetch('/api/import/upload?preserve_raw=1', { method: 'POST', body: fd });
+    if (!r.ok) throw new Error('上传失败:' + (await r.text()));
+    return r.json();
+  };
+
+  // 拉导入进度(轮询)
+  window.__obImportStatus = async function () {
+    var r = await fetch('/api/import/status');
+    if (!r.ok) throw new Error('GET /api/import/status ' + r.status);
+    return r.json();
+  };
+
+  // 拉最近导入的桶(工作台队列)
+  window.__obImportResults = async function (limit) {
+    var n = limit || 100;
+    var r = await fetch('/api/import/results?limit=' + n);
+    if (!r.ok) throw new Error('GET /api/import/results ' + r.status);
+    var d = await r.json();
+    return d.buckets || [];
+  };
+
+  // 拉单条桶的全库 top-N 相似(给"全库相似"按钮用)
+  window.__obFetchSimilar = async function (id, n) {
+    var r = await fetch('/api/bucket/' + encodeURIComponent(id) + '/similar?n=' + (n || 5));
+    if (!r.ok) throw new Error('GET /similar ' + r.status);
+    var d = await r.json();
+    return d.similar || [];
+  };
+
+  // 删除桶(不入库 = 物理删除)
+  window.__obDeleteBucket = async function (id) {
+    var r = await fetch('/api/bucket/' + encodeURIComponent(id) + '/delete', { method: 'POST' });
+    if (!r.ok) throw new Error('删除失败:' + (await r.text()));
     return r.json();
   };
 })();

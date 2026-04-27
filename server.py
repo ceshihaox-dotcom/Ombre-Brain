@@ -1102,6 +1102,7 @@ async def api_bucket_update(request):
         "name", "domain", "tags", "valence", "arousal", "importance",
         "resolved", "protected", "highlight", "pinned",
         "internalized", "digested", "event_time", "content", "model_valence",
+        "type",  # 支持 feel ↔ dynamic 切换(导入工作台 feel 开关)
     }
     updates = {k: v for k, v in body.items() if k in allowed}
     if not updates:
@@ -1179,6 +1180,49 @@ async def api_bucket_unarchive(request):
     if not success:
         return JSONResponse({"error": "unarchive failed (not in archive?)"}, status_code=400)
     return JSONResponse({"ok": True, "id": bucket_id, "archived": False})
+
+
+@mcp.custom_route("/api/bucket/{bucket_id}/similar", methods=["GET"])
+async def api_bucket_similar(request):
+    """返回该桶在全库内最相似的 top N(by embedding cosine)。导入工作台用。"""
+    from starlette.responses import JSONResponse
+    bucket_id = request.path_params["bucket_id"]
+    try:
+        n = int(request.query_params.get("n", "5"))
+    except Exception:
+        n = 5
+    threshold = float(request.query_params.get("threshold", "0.3"))
+
+    if not embedding_engine or not embedding_engine.enabled:
+        return JSONResponse({"similar": [], "note": "embedding 未启用"})
+
+    target_emb = await embedding_engine.get_embedding(bucket_id)
+    if target_emb is None:
+        return JSONResponse({"similar": [], "note": "目标桶未生成 embedding"})
+
+    all_buckets = await bucket_mgr.list_all(include_archive=False)
+    scored = []
+    for b in all_buckets:
+        bid = b["id"]
+        if bid == bucket_id:
+            continue
+        other_emb = await embedding_engine.get_embedding(bid)
+        if other_emb is None:
+            continue
+        sim = embedding_engine._cosine_similarity(target_emb, other_emb)
+        if sim < threshold:
+            continue
+        meta = b.get("metadata", {})
+        scored.append({
+            "id": bid,
+            "name": meta.get("name", bid),
+            "score": round(float(sim), 3),
+            "date": (meta.get("event_time") or meta.get("created") or "")[:10],
+            "summary": (b.get("content") or "")[:120],
+            "type": meta.get("type", "dynamic"),
+        })
+    scored.sort(key=lambda x: x["score"], reverse=True)
+    return JSONResponse({"similar": scored[:max(1, n)]})
 
 
 @mcp.custom_route("/api/bucket/create", methods=["POST"])
@@ -1675,7 +1719,7 @@ async def api_import_patterns(request):
 
 @mcp.custom_route("/api/import/results", methods=["GET"])
 async def api_import_results(request):
-    """List recently imported/created buckets for review."""
+    """List recently imported/created buckets for review (导入工作台用)."""
     from starlette.responses import JSONResponse
     try:
         limit = int(request.query_params.get("limit", "50"))
@@ -1684,15 +1728,25 @@ async def api_import_results(request):
         all_buckets.sort(key=lambda b: b["metadata"].get("created", ""), reverse=True)
         results = []
         for b in all_buckets[:limit]:
+            meta = b.get("metadata", {})
             results.append({
                 "id": b["id"],
-                "name": b["metadata"].get("name", ""),
-                "content": b["content"][:300],
-                "type": b["metadata"].get("type", ""),
-                "domain": b["metadata"].get("domain", []),
-                "tags": b["metadata"].get("tags", []),
-                "importance": b["metadata"].get("importance", 5),
-                "created": b["metadata"].get("created", ""),
+                "name": meta.get("name", ""),
+                "content": (b.get("content") or "")[:300],
+                "type": meta.get("type", "dynamic"),
+                "domain": meta.get("domain", []),
+                "tags": meta.get("tags", []),
+                "importance": meta.get("importance", 5),
+                "created": meta.get("created", ""),
+                "event_time": meta.get("event_time", ""),
+                "protected": is_protected(meta),
+                "highlight": is_highlighted(meta),
+                "pinned": is_protected(meta) or is_highlighted(meta),
+                "internalized": is_internalized(meta),
+                "resolved": meta.get("resolved", False),
+                "raw_source": meta.get("raw_source", ""),  # preserve_raw=1 时存的原文
+                "valence": meta.get("valence", 0.5),
+                "arousal": meta.get("arousal", 0.3),
             })
         return JSONResponse({"buckets": results, "total": len(all_buckets)})
     except Exception as e:

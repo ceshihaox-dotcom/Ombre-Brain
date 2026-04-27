@@ -331,6 +331,12 @@ class BucketManager:
             _drop("digested")
         if "model_valence" in kwargs:
             post["model_valence"] = max(0.0, min(1.0, float(kwargs["model_valence"])))
+        # type 字段(导入工作台 feel ↔ dynamic 切换):仅改 metadata,
+        # 不在此触发目录移动 — 老桶大批量切换时 IO 成本高,后续 breath/list 都按 metadata 读
+        if "type" in kwargs:
+            new_type = kwargs["type"]
+            if new_type in ("dynamic", "feel", "permanent", "archived"):
+                post["type"] = new_type
         # event_time:用户事后纠正"这事到底发生在哪天"
         # 传 None 或空字符串 → 清掉这个字段(回退到用 created 显示)
         if "event_time" in kwargs:
