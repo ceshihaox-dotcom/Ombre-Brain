@@ -5137,6 +5137,32 @@ body {
 [data-theme="dark"] .ob-shortcuts-hint { background: var(--paper); color: var(--ink); }
 [data-theme="dark"] .ob-shortcuts-hint b { color: var(--accent); }
 </style>
+
+<!-- ombre-overrides — 真实数据下的排版兜底:防长内容把卡片撑出去 -->
+<style>
+.ob-line { min-width: 0; max-width: 100%; overflow: hidden; }
+.ob-line > * { min-width: 0; }
+.ob-line-title {
+  flex: 0 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 32%;
+}
+.ob-line-sep { flex: 0 0 auto; }
+.ob-line-sum {
+  flex: 1 1 auto;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ob-line-time { flex: 0 0 auto; }
+.ob-card, .ob-card-list { max-width: 100%; overflow: hidden; }
+.ob-module { min-width: 0; }
+@media (max-width: 768px) {
+  .ob-line-title { max-width: 40%; }
+}
+</style>
 </head>
 <body>
   
