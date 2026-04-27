@@ -5156,6 +5156,15 @@ body {
 .ob-line-time { flex: 0 0 auto; }
 .ob-card, .ob-card-list { max-width: 100%; overflow: hidden; }
 .ob-module { min-width: 0; }
+
+/* 让密集模式跟普通模式视觉一致(去掉密集的特殊覆盖) */
+.ob-card-dense .ob-line .ob-line-time {
+  font-weight: inherit;
+  color: var(--ink-4);
+  width: 42px;
+}
+.ob-card-dense .ob-line .ob-line-sep { display: inline !important; }
+.ob-card-dense .ob-line .ob-line-sum { opacity: 1; }
 </style>
 </head>
 <body>
