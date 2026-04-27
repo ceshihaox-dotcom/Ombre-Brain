@@ -1413,6 +1413,52 @@ async def dashboard(request):
         return HTMLResponse("<h1>dashboard.html not found</h1>", status_code=404)
 
 
+# ─── v2 时间线视图(/v2) ───────────────────────────────────────────
+# 静态托管 v2/ 目录(index.html + ombre-bridge.js + assets/*)。
+# /v2  → v2/index.html
+# /v2/<rel>  → v2/<rel>(限制在 v2/ 下,防穿越)
+def _serve_v2(rel_path: str):
+    from starlette.responses import Response, JSONResponse
+    import os, mimetypes
+    rel = (rel_path or "").lstrip("/")
+    if not rel:
+        rel = "index.html"
+    # 安全:拒绝绝对路径 / 路径穿越
+    norm = os.path.normpath(rel).replace("\\", "/")
+    if norm.startswith("..") or os.path.isabs(norm):
+        return JSONResponse({"error": "bad path"}, status_code=400)
+    base = os.path.join(os.path.dirname(__file__), "v2")
+    abs_path = os.path.join(base, norm)
+    # 二次确认 abs_path 仍在 v2/ 下
+    if not os.path.realpath(abs_path).startswith(os.path.realpath(base)):
+        return JSONResponse({"error": "bad path"}, status_code=400)
+    if not os.path.isfile(abs_path):
+        return JSONResponse({"error": "not found", "path": norm}, status_code=404)
+    mime, _ = mimetypes.guess_type(abs_path)
+    # 几个 mimetypes 默认认不出的兜底
+    if not mime:
+        if abs_path.endswith(".woff2"):
+            mime = "font/woff2"
+        elif abs_path.endswith(".jsx"):
+            mime = "text/javascript"
+        else:
+            mime = "application/octet-stream"
+    with open(abs_path, "rb") as f:
+        return Response(f.read(), media_type=mime)
+
+
+@mcp.custom_route("/v2", methods=["GET"])
+async def v2_root(request):
+    # 必须重定向到带尾斜杠,否则相对路径(./assets/...)的 base 会算错
+    from starlette.responses import RedirectResponse
+    return RedirectResponse(url="/v2/", status_code=301)
+
+
+@mcp.custom_route("/v2/{rel:path}", methods=["GET"])
+async def v2_rel(request):
+    return _serve_v2(request.path_params.get("rel", ""))
+
+
 @mcp.custom_route("/api/config", methods=["GET"])
 async def api_config_get(request):
     """Get current runtime config (safe fields only, API key masked)."""
