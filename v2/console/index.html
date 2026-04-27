@@ -6507,42 +6507,26 @@ body {
   .imp-aside { grid-column: 1; grid-template-columns: 1fr; }
 }
 
-/* ---- 工作台布局:三栏全高,各自独立滚动,底部对齐 ---- */
-.imp-shell {
-  align-items: stretch;
-  height: calc(100vh - 220px);   /* 留给 topbar + nav + drop bar + batch bar */
-  overflow: hidden;
-  padding-bottom: 0;
-}
+/* ---- 工作台布局:让信纸驱动行高,队列/aside 通过 grid stretch 跟随 ---- */
+.imp-shell { align-items: stretch; }    /* 关键:三栏单元格同高 = max(content) = 信纸高 */
 .imp-queue {
-  position: relative;            /* 不再 sticky,直接撑满 grid 单元格 */
+  position: relative;
   top: auto;
-  height: 100%;
+  height: 100%;                          /* 撑满 grid 单元格 = 信纸高 */
   max-height: 100%;
   overflow: hidden;
   display: flex; flex-direction: column;
+  min-height: 0;
 }
 .imp-queue-list { flex: 1 1 0; min-height: 0; overflow-y: auto; }
-.imp-shell > main {
-  height: 100%;
-  min-height: 0;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-}
-.imp-shell > main > .imp-paper,
-.imp-shell > main > .imp-empty {
-  flex: 1 0 auto;
-  min-height: 100%;   /* 信纸/空状态 至少撑满列,内容多了自动滚动 */
-}
 .imp-aside {
   height: 100%;
-  min-height: 0;
-  overflow-y: auto;
+  max-height: 100%;
   position: relative;
   top: auto;
+  overflow-y: auto;
+  min-height: 0;
 }
-.imp-paper { margin-bottom: 24px; }   /* 底部留点呼吸 */
 
 /* ---- 淡薄滚动条(WebKit + Firefox) ---- */
 .imp-queue-list,
