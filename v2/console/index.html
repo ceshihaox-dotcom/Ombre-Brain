@@ -6521,16 +6521,8 @@ body {
     window.TWEAK_DEFAULTS = TWEAK_DEFAULTS;
   </script>
 
-  <script>
-    // 独立打包：强制进入导入工作台，隐藏顶部 tab 导航
-    if (!window.location.hash || window.location.hash !== '#config') {
-      window.location.hash = '#config';
-    }
-  </script>
-  <style>
-    /* 独立模式：藏掉控制台子页导航 */
-    .console-nav, .ob-nav { display: none !important; }
-  </style>
+  <!-- 移除:Claude Design 生成 artifact 时残留的"独立模式"代码,
+       会强制 hash 跳 #config 并隐藏 nav。集成到真后端后必须删 -->
 
   <script src="./assets/c013b519-37a4-456f-b530-348bcfc7ca12.js"></script>
   <script src="./assets/b440075b-50bc-42a5-8c2e-0eb5dde23b6c.js"></script>
