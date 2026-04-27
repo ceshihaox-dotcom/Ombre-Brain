@@ -6579,8 +6579,9 @@ body {
 [data-theme="dark"] .imp-raw-body::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.12);
 }
-/* 中屏 / 移动端:撤销固定高度,回到自然流 */
-@media (max-width: 1180px) {
+/* 移动端 (<900):撤销固定高度,回自然流;
+   1180-900 之间也保持平行布局,只是 aside 列变窄 */
+@media (max-width: 900px) {
   .imp-shell { height: auto; overflow: visible; }
   .imp-queue, .imp-shell > main, .imp-aside {
     height: auto; max-height: none; overflow: visible;
