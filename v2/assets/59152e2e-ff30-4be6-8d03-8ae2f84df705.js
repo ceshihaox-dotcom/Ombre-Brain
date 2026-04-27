@@ -251,11 +251,20 @@ function LineRow({ it, query, onOpenItem, dense }) {
     >
       <TimelineDotV2 importance={it.importance} highlight={it.highlight} feel={it.feel} />
       <span className="ob-line-time">{it.time}</span>
-      <span className="ob-line-title"><Highlight text={it.title} query={query} kind="title" /></span>
+      <span className="ob-line-title" title={it.title}><Highlight text={cleanTitle(it.title)} query={query} kind="title" /></span>
       <span className="ob-line-sep">·</span>
       <span className="ob-line-sum"><Highlight text={it.summary} query={query} kind="body" /></span>
     </div>
   );
+}
+
+// 标题清洗:无标题/疑似桶 ID 显示"(未命名)";超过 10 字截断 + 省略号
+function cleanTitle(t) {
+  const raw = (t || '').trim();
+  if (!raw) return '(未命名)';
+  if (/^[0-9a-f]{8,}$/i.test(raw)) return '(未命名)';
+  if (raw.length > 10) return raw.slice(0, 10) + '…';
+  return raw;
 }
 
 function TimelineV2({ items, query, filters, density, onOpenItem, onOpenDay, todayDate }) {

@@ -5143,11 +5143,8 @@ body {
 .ob-line { min-width: 0; max-width: 100%; overflow: hidden; }
 .ob-line > * { min-width: 0; }
 .ob-line-title {
-  flex: 0 1 auto;
+  flex: 0 0 auto;       /* 不收缩,标题已经在 JS 里截到 10 字以内 */
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  max-width: 32%;
 }
 .ob-line-sep { flex: 0 0 auto; }
 .ob-line-sum {
@@ -5159,9 +5156,6 @@ body {
 .ob-line-time { flex: 0 0 auto; }
 .ob-card, .ob-card-list { max-width: 100%; overflow: hidden; }
 .ob-module { min-width: 0; }
-@media (max-width: 768px) {
-  .ob-line-title { max-width: 40%; }
-}
 </style>
 </head>
 <body>
