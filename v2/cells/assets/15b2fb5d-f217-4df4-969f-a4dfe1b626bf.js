@@ -47,9 +47,7 @@ function NavBarV2({ active = 'timeline' }) {
 
 function AppV2() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
-  const [data, setData] = uSA([]);
-  const [loading, setLoading] = uSA(true);
-  const [loadError, setLoadError] = uSA(null);
+  const [data, setData] = uSA(MEMORY_DATA);
   const [query, setQuery] = uSA('');
   const [filters, setFilters] = uSA({ importantOnly: false, feelOnly: false, protectedOnly: false });
   const [openDay, setOpenDay] = uSA(null);
@@ -62,21 +60,6 @@ function AppV2() {
   uEA(() => {
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
   }, [dark]);
-
-  // 拉真实数据(由 ombre-bridge.js 提供 API helper)
-  const refresh = async () => {
-    try {
-      setLoadError(null);
-      const rows = await window.__obFetchBuckets();
-      setData(rows);
-      setLoading(false);
-    } catch (e) {
-      console.error('[ombre v2] load failed', e);
-      setLoadError(e.message || String(e));
-      setLoading(false);
-    }
-  };
-  uEA(() => { refresh(); }, []);
 
   // 提示快捷键 3 秒
   uEA(() => {
@@ -129,7 +112,7 @@ function AppV2() {
     const idx = sortedAll.findIndex(i => i.id === openItem.id);
     const next = idx + delta;
     if (next >= 0 && next < sortedAll.length) {
-      openItemWithBody(sortedAll[next]);
+      setOpenItem(sortedAll[next]);
     }
   };
 
@@ -137,33 +120,24 @@ function AppV2() {
   const todayItems = data.filter(it => it.date === TODAY);
   const lastWriteDate = sortedAll[0]?.date;
 
-  const handleSave = async (entry) => {
-    try {
-      await window.__obCreateBucket(entry);
-      setWriteOpen(false);
-      await refresh();
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    } catch (e) {
-      alert('写入失败: ' + e.message);
-    }
-  };
-
-  // 打开单条 modal — 列表只有 content_preview,这里 lazy-load 完整 content 注入 body
-  // 加载期间在 body 显示占位符,避免用户在 body 还没加载完就点 Edit 把空内容存回去
-  const openItemWithBody = async (it) => {
-    if (it.body || it._bodyLoaded) { setOpenItem(it); return; }
-    const loadingItem = { ...it, body: '⌛ 加载完整内容…', _loading: true };
-    setOpenItem(loadingItem);
-    try {
-      const detail = await window.__obFetchBucketDetail(it.id);
-      const merged = { ...it, body: detail.content || '', _meta: detail.metadata, _bodyLoaded: true, _loading: false };
-      setOpenItem(prev => prev && prev.id === it.id ? merged : prev);
-      // 同步到 data 缓存,下次再点不用重拉
-      setData(prev => prev.map(x => x.id === it.id ? merged : x));
-    } catch (e) {
-      console.error('[ombre v2] detail load failed', e);
-      setOpenItem(prev => prev && prev.id === it.id ? { ...prev, body: '(加载失败,稍后重试)', _loading: false } : prev);
-    }
+  const handleSave = (entry) => {
+    const id = 'm' + (data.length + 100);
+    const newItem = {
+      id,
+      date: entry.date, time: entry.time,
+      title: entry.title,
+      summary: entry.summary || entry.title,
+      tags: entry.tags,
+      importance: entry.importance,
+      protected: entry.protected,
+      feel: entry.feel,
+      body: '',
+      artifacts: []
+    };
+    setData(prev => [newItem, ...prev]);
+    setWriteOpen(false);
+    // 自动滚到顶部
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const jumpToToday = () => {
@@ -178,7 +152,7 @@ function AppV2() {
 
   return (
     <div className={`ob-shape-${t.nodeShape || 'circle'}`}>
-      <TopBarV2 dark={dark} onDark={(v) => { setDark(v); setTweak('dark', v); }} data={data} />
+      <TopBarV2 dark={dark} onDark={(v) => { setDark(v); setTweak('dark', v); }} />
       <NavBarV2 />
       <main className="ob-page">
         <header className="ob-page-hd">
@@ -193,17 +167,6 @@ function AppV2() {
             <button className="ob-add-btn" onClick={() => setWriteOpen(true)}>+ 添加事件</button>
           </div>
         </header>
-
-        {loading && (
-          <div style={{padding:'14px 18px',margin:'0 0 16px',background:'rgba(110,79,154,0.08)',border:'1px solid rgba(110,79,154,0.2)',borderRadius:10,color:'#6e4f9a',fontSize:13}}>
-            正在加载真实记忆 …
-          </div>
-        )}
-        {loadError && (
-          <div style={{padding:'14px 18px',margin:'0 0 16px',background:'rgba(139,74,74,0.08)',border:'1px solid rgba(139,74,74,0.3)',borderRadius:10,color:'#8B4A4A',fontSize:13}}>
-            加载失败:{loadError} · <a onClick={refresh} style={{cursor:'pointer',textDecoration:'underline'}}>重试</a>
-          </div>
-        )}
 
         <TodayBar
           todayItems={todayItems}
@@ -243,7 +206,7 @@ function AppV2() {
           filters={filters}
           density={t.density}
           todayDate={TODAY}
-          onOpenItem={(it) => openItemWithBody(it)}
+          onOpenItem={(it) => setOpenItem(it)}
           onOpenDay={(d) => setOpenDay(d)}
         />
       </main>
@@ -267,7 +230,7 @@ function AppV2() {
           items={dayItems}
           accent={t.accent}
           onClose={() => setOpenDay(null)}
-          onOpenItem={(it) => openItemWithBody(it)}
+          onOpenItem={(it) => setOpenItem(it)}
         />
       )}
 
@@ -277,19 +240,10 @@ function AppV2() {
           allItems={data}
           onClose={() => setOpenItem(null)}
           onNavigate={handleNavigate}
-          onOpenItem={(it) => openItemWithBody(it)}
-          onUpdate={async (id, patch) => {
-            // 先做乐观更新让 UI 立刻有反馈
+          onOpenItem={(it) => setOpenItem(it)}
+          onUpdate={(id, patch) => {
             setData(prev => prev.map(x => x.id === id ? { ...x, ...patch } : x));
             setOpenItem(prev => prev && prev.id === id ? { ...prev, ...patch } : prev);
-            try {
-              await window.__obUpdateBucket(id, patch);
-              // 刷新拿权威数据
-              await refresh();
-            } catch (e) {
-              alert('保存失败: ' + e.message + '\n(界面已回滚)');
-              await refresh();
-            }
           }}
         />
       )}
