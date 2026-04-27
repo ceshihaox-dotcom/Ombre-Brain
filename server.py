@@ -1447,6 +1447,32 @@ def _serve_v2(rel_path: str):
         return Response(f.read(), media_type=mime)
 
 
+@mcp.custom_route("/v2-debug", methods=["GET"])
+async def v2_debug(request):
+    """临时诊断:查看 server.py 看到的 v2/ 实际状态"""
+    from starlette.responses import JSONResponse
+    import os
+    here = os.path.dirname(os.path.abspath(__file__))
+    base = os.path.join(here, "v2")
+    info = {
+        "__file__": __file__,
+        "abspath_dirname": here,
+        "v2_path": base,
+        "v2_exists": os.path.isdir(base),
+        "cwd": os.getcwd(),
+        "siblings_of_server": sorted(os.listdir(here))[:50] if os.path.isdir(here) else None,
+    }
+    if info["v2_exists"]:
+        try:
+            info["v2_listing"] = sorted(os.listdir(base))
+            assets_path = os.path.join(base, "assets")
+            if os.path.isdir(assets_path):
+                info["assets_count"] = len(os.listdir(assets_path))
+        except Exception as e:
+            info["v2_listing_err"] = str(e)
+    return JSONResponse(info)
+
+
 @mcp.custom_route("/v2", methods=["GET"])
 async def v2_root(request):
     # 必须重定向到带尾斜杠,否则相对路径(./assets/...)的 base 会算错
