@@ -1418,7 +1418,7 @@ async def dashboard(request):
 # /v2  → v2/index.html
 # /v2/<rel>  → v2/<rel>(限制在 v2/ 下,防穿越)
 def _serve_v2(rel_path: str):
-    from starlette.responses import Response, JSONResponse
+    from starlette.responses import Response, JSONResponse, RedirectResponse
     import os, mimetypes
     rel = (rel_path or "").lstrip("/")
     if not rel:
@@ -1432,6 +1432,14 @@ def _serve_v2(rel_path: str):
     # 二次确认 abs_path 仍在 v2/ 下
     if not os.path.realpath(abs_path).startswith(os.path.realpath(base)):
         return JSONResponse({"error": "bad path"}, status_code=400)
+    # 子目录处理:/v2/cells/ → /v2/cells/index.html;
+    # /v2/cells (无尾斜杠) → 301 → /v2/cells/(相对路径才会算对)
+    if os.path.isdir(abs_path):
+        if not rel_path.endswith("/"):
+            return RedirectResponse(url="/v2/" + norm + "/", status_code=301)
+        candidate = os.path.join(abs_path, "index.html")
+        if os.path.isfile(candidate):
+            abs_path = candidate
     if not os.path.isfile(abs_path):
         return JSONResponse({"error": "not found", "path": norm}, status_code=404)
     mime, _ = mimetypes.guess_type(abs_path)
