@@ -37,6 +37,7 @@ function NavBarV2({ active = 'timeline' }) {
     <nav className="ob-nav">
       <a href="/v2/cells/" className={active === 'cells' ? 'on' : ''}>记忆格 v2</a>
       <a href="/v2/" className={active === 'timeline' ? 'on' : ''}>时间线 v2</a>
+      <a href="/v2/network/" className={active === 'network' ? 'on' : ''}>记忆星图 v2</a>
       <a href="#">Breath 模拟</a>
       <a href="#">记忆网络</a>
       <a href="#">配置</a>
