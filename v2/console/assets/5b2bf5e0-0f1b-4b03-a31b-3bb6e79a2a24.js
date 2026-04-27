@@ -22,6 +22,7 @@ function ConsoleApp() {
   cAE(() => {
     const onHash = () => {
       const r = ROUTES[window.location.hash];
+      console.log('[console-debug] hashchange:', window.location.hash, '→ route =', r || 'breath');
       // 用户点了已下线的 #network → 跳到独立星图
       if (window.location.hash === '#network') {
         window.location.href = '/v2/network/';
@@ -30,9 +31,15 @@ function ConsoleApp() {
       setRoute(r || 'breath');
     };
     window.addEventListener('hashchange', onHash);
+    console.log('[console-debug] initial hash:', window.location.hash, '→ route =', ROUTES[window.location.hash] || 'breath');
     if (!window.location.hash) window.location.hash = 'breath';
     return () => window.removeEventListener('hashchange', onHash);
   }, []);
+
+  // 诊断:每次 route 变化打日志
+  cAE(() => {
+    console.log('[console-debug] route now =', route, '/ data.length =', data.length);
+  }, [route, data]);
 
   cAE(() => {
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
