@@ -6579,10 +6579,29 @@ body {
 [data-theme="dark"] .imp-raw-body::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.12);
 }
-/* 移动端 (<900):撤销固定高度,回自然流;
-   1180-900 之间也保持平行布局,只是 aside 列变窄 */
+/* 反制原 CSS @1180 把 shell 切 2 列 + aside 漂下来的逻辑:
+   只要 >900 就强制 3 列平行,只是 aside 在窄屏下变窄一点 */
+@media (min-width: 901px) {
+  .imp-shell { grid-template-columns: 240px 1fr 280px; }
+  .imp-aside {
+    grid-column: auto;
+    position: relative;
+    margin-top: 0;
+    display: flex;
+    flex-direction: column;
+    grid-template-columns: none;
+    max-height: 100%;
+    overflow-y: auto;
+  }
+  .imp-aside-card { margin-bottom: 12px; }
+}
+@media (min-width: 1280px) {
+  .imp-shell { grid-template-columns: 280px 1fr 320px; }
+}
+
+/* 移动端 (<900):撤销固定高度,回自然流 */
 @media (max-width: 900px) {
-  .imp-shell { height: auto; overflow: visible; }
+  .imp-shell { height: auto; overflow: visible; grid-template-columns: 1fr; }
   .imp-queue, .imp-shell > main, .imp-aside {
     height: auto; max-height: none; overflow: visible;
   }
