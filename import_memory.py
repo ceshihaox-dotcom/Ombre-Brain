@@ -538,6 +538,12 @@ class ImportEngine:
                             await self.embedding_engine.generate_and_store(bucket_id, item["content"])
                         except Exception:
                             pass
+                    # API 级 preserve_raw=1 时,把原始 chunk 文本也存上(供工作台"查看原文"用)
+                    if preserve_raw and bucket_id:
+                        try:
+                            await self.bucket_mgr.update(bucket_id, raw_source=chunk.get("content", ""))
+                        except Exception:
+                            pass
                     self.state.data["memories_raw"] += 1
                     self.state.data["memories_created"] += 1
                 else:
