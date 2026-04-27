@@ -715,13 +715,13 @@ function ImportWorkbench() {
                 </div>
               </div>
 
-              {/* 底部动作 */}
+              {/* 底部动作 — 精修/存疑 是 toggle,再点取消 */}
               <div className="imp-paper-actions">
-                <button className="imp-act imp-act-primary" onClick={markRefined} disabled={active.status === 'refined'}>
-                  {active.status === 'refined' ? '已精修' : '✓ 完成精修'}
+                <button className="imp-act imp-act-primary" onClick={markRefined}>
+                  {active.status === 'refined' ? '↺ 取消精修' : '✓ 完成精修'}
                 </button>
-                <button className="imp-act imp-act-skip" onClick={flagItem} disabled={active.status === 'flagged'}>
-                  ⚑ 标记存疑
+                <button className="imp-act imp-act-skip" onClick={flagItem}>
+                  {active.status === 'flagged' ? '↺ 取消存疑' : '⚑ 标记存疑'}
                 </button>
                 <button className="imp-act" onClick={() => alert('重新脱水暂未实装(需要单独 LLM 端点),下次更新加上')}>
                   ↻ 重新脱水
