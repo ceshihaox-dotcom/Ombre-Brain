@@ -6507,25 +6507,50 @@ body {
   .imp-aside { grid-column: 1; grid-template-columns: 1fr; }
 }
 
-/* ---- 工作台布局:让信纸驱动行高,队列/aside 通过 grid stretch 跟随 ---- */
-.imp-shell { align-items: stretch; }    /* 关键:三栏单元格同高 = max(content) = 信纸高 */
-.imp-queue {
+/* ---- 工作台布局:信纸驱动列高,queue/aside 用 absolute 定位约束 ----
+   关键洞察:grid align-items:stretch 会让所有列等于 max(content),
+   aside 内容多时会把 row 撑高、queue 跟着拉。改成 main 在 block 流里
+   自然驱动 shell 高度,queue 和 aside 绝对定位 top:0/bottom:0 内嵌,
+   超出内容用内部滚动条处理,跟左队列同款行为。 */
+.imp-shell {
+  display: block !important;          /* 撤销原 grid */
   position: relative;
-  top: auto;
-  height: 100%;                          /* 撑满 grid 单元格 = 信纸高 */
-  max-height: 100%;
-  overflow: hidden;
+  padding-top: 24px;
+  padding-bottom: 24px;
+  padding-left: 304px;                 /* 280 queue + 24 gap */
+  padding-right: 344px;                /* 320 aside + 24 gap */
+}
+.imp-queue {
+  position: absolute !important;
+  left: 32px;
+  top: 24px;
+  bottom: 24px;
+  width: 280px;
+  height: auto !important;
+  max-height: none !important;
   display: flex; flex-direction: column;
   min-height: 0;
+  overflow: hidden;
 }
 .imp-queue-list { flex: 1 1 0; min-height: 0; overflow-y: auto; }
 .imp-aside {
-  height: 100%;
-  max-height: 100%;
-  position: relative;
-  top: auto;
+  position: absolute !important;
+  right: 32px;
+  top: 24px;
+  bottom: 24px;
+  width: 320px;
+  height: auto !important;
+  max-height: none !important;
   overflow-y: auto;
   min-height: 0;
+  display: flex; flex-direction: column;
+  gap: 12px;
+}
+.imp-shell > main { width: 100%; min-width: 0; }
+@media (min-width: 901px) and (max-width: 1280px) {
+  .imp-shell { padding-left: 264px; padding-right: 304px; }
+  .imp-queue { width: 240px; left: 24px; }
+  .imp-aside { width: 280px; right: 24px; }
 }
 
 /* ---- 淡薄滚动条(WebKit + Firefox) ---- */
