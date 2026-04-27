@@ -6507,16 +6507,86 @@ body {
   .imp-aside { grid-column: 1; grid-template-columns: 1fr; }
 }
 
-/* ---- 工作台布局强化:防长队列把页面推垮 ---- */
-.imp-shell { align-items: start; }
-.imp-queue {
-  position: sticky;
-  top: 90px;
-  height: calc(100vh - 110px);
-  max-height: calc(100vh - 110px);
+/* ---- 工作台布局:三栏全高,各自独立滚动,底部对齐 ---- */
+.imp-shell {
+  align-items: stretch;
+  height: calc(100vh - 220px);   /* 留给 topbar + nav + drop bar + batch bar */
   overflow: hidden;
+  padding-bottom: 0;
+}
+.imp-queue {
+  position: relative;            /* 不再 sticky,直接撑满 grid 单元格 */
+  top: auto;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  display: flex; flex-direction: column;
 }
 .imp-queue-list { flex: 1 1 0; min-height: 0; overflow-y: auto; }
+.imp-shell > main {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+}
+.imp-aside {
+  height: 100%;
+  min-height: 0;
+  overflow-y: auto;
+  position: relative;
+  top: auto;
+}
+.imp-paper { margin-bottom: 24px; }   /* 底部留点呼吸 */
+
+/* ---- 淡薄滚动条(WebKit + Firefox) ---- */
+.imp-queue-list,
+.imp-shell > main,
+.imp-aside,
+.imp-raw-body {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(150, 142, 168, 0.28) transparent;
+}
+.imp-queue-list::-webkit-scrollbar,
+.imp-shell > main::-webkit-scrollbar,
+.imp-aside::-webkit-scrollbar,
+.imp-raw-body::-webkit-scrollbar { width: 6px; height: 6px; }
+.imp-queue-list::-webkit-scrollbar-track,
+.imp-shell > main::-webkit-scrollbar-track,
+.imp-aside::-webkit-scrollbar-track,
+.imp-raw-body::-webkit-scrollbar-track { background: transparent; }
+.imp-queue-list::-webkit-scrollbar-thumb,
+.imp-shell > main::-webkit-scrollbar-thumb,
+.imp-aside::-webkit-scrollbar-thumb,
+.imp-raw-body::-webkit-scrollbar-thumb {
+  background: rgba(150, 142, 168, 0.22);
+  border-radius: 3px;
+  transition: background .15s;
+}
+.imp-queue-list:hover::-webkit-scrollbar-thumb,
+.imp-shell > main:hover::-webkit-scrollbar-thumb,
+.imp-aside:hover::-webkit-scrollbar-thumb,
+.imp-raw-body:hover::-webkit-scrollbar-thumb {
+  background: rgba(150, 142, 168, 0.45);
+}
+[data-theme="dark"] .imp-queue-list,
+[data-theme="dark"] .imp-shell > main,
+[data-theme="dark"] .imp-aside,
+[data-theme="dark"] .imp-raw-body {
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+[data-theme="dark"] .imp-queue-list::-webkit-scrollbar-thumb,
+[data-theme="dark"] .imp-shell > main::-webkit-scrollbar-thumb,
+[data-theme="dark"] .imp-aside::-webkit-scrollbar-thumb,
+[data-theme="dark"] .imp-raw-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+}
+/* 中屏 / 移动端:撤销固定高度,回到自然流 */
+@media (max-width: 1180px) {
+  .imp-shell { height: auto; overflow: visible; }
+  .imp-queue, .imp-shell > main, .imp-aside {
+    height: auto; max-height: none; overflow: visible;
+  }
+  .imp-queue-list { overflow-y: visible; max-height: none; }
+}
 
 /* ---- 状态 chip(待精修 / 已精修 / 存疑) ---- */
 .imp-status-chip {
