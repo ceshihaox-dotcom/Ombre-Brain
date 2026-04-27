@@ -1432,6 +1432,16 @@ def _serve_v2(rel_path: str):
     # 二次确认 abs_path 仍在 v2/ 下
     if not os.path.realpath(abs_path).startswith(os.path.realpath(base)):
         return JSONResponse({"error": "bad path"}, status_code=400)
+    # console 子 tab 用真实路径(/v2/console/breath/ 等),都映射到同一个 index.html;
+    # JS 端读 pathname 决定 tab,绕开浏览器初始 hash 的诡异行为
+    console_base = os.path.join(base, "console")
+    if abs_path.startswith(console_base) and not os.path.exists(abs_path):
+        # 看是不是 /v2/console/{tab}/ 或 /v2/console/{tab}
+        tail = abs_path[len(console_base):].lstrip(os.sep).rstrip(os.sep).replace("\\", "/")
+        if tail in ("breath", "config", "import"):
+            if not rel_path.endswith("/"):
+                return RedirectResponse(url="/v2/console/" + tail + "/", status_code=301)
+            abs_path = os.path.join(console_base, "index.html")
     # 子目录处理:/v2/cells/ → /v2/cells/index.html;
     # /v2/cells (无尾斜杠) → 301 → /v2/cells/(相对路径才会算对)
     if os.path.isdir(abs_path):
