@@ -6507,23 +6507,27 @@ body {
   .imp-aside { grid-column: 1; grid-template-columns: 1fr; }
 }
 
-/* ---- 工作台布局:回归原生 grid + align-items:start —— 三栏各自内容驱动高度,互不约束 ---- */
+/* ---- 工作台布局:queue 和 aside 互相对齐底部(取较高的一方),paper 保持自己长度 ----
+   做法:shell align-items: stretch 让所有 cell 同高 = max(三者 content),
+   paper 卡片不强行 min-height:100%(自然长度),所以 main cell 视觉上是
+   短信纸 + 下方空白;queue 和 aside cell 自己撑满高度 = max(queue, aside) ---- */
 .imp-shell {
-  align-items: start !important;        /* 每栏独立,本栏多高就多高 */
+  align-items: stretch !important;
 }
 .imp-queue {
   position: relative !important;
   top: auto !important;
-  height: auto !important;
+  height: 100% !important;
   max-height: none !important;
   overflow: hidden;
   display: flex; flex-direction: column;
+  min-height: 0;
 }
-.imp-queue-list { overflow-y: visible; max-height: none; flex: 0 0 auto; }
+.imp-queue-list { flex: 1 1 0; min-height: 0; overflow-y: auto; }
 .imp-aside {
   position: relative !important;
   top: auto !important;
-  height: auto !important;
+  height: 100% !important;
   max-height: none !important;
   overflow: visible !important;
   display: flex !important;
