@@ -337,6 +337,13 @@ class BucketManager:
             new_type = kwargs["type"]
             if new_type in ("dynamic", "feel", "permanent", "archived"):
                 post["type"] = new_type
+        # raw_source(导入工作台"查看原文"用) — 任意字符串
+        if "raw_source" in kwargs:
+            rs = kwargs["raw_source"]
+            if rs is None or rs == "":
+                _drop("raw_source")
+            else:
+                post["raw_source"] = str(rs)[:8000]  # 截到 8KB 避免 metadata 爆炸
         # event_time:用户事后纠正"这事到底发生在哪天"
         # 传 None 或空字符串 → 清掉这个字段(回退到用 created 显示)
         if "event_time" in kwargs:

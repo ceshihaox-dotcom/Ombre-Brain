@@ -175,12 +175,21 @@ function ImportWorkbench() {
     }
   };
 
-  // 完成精修
+  // 完成精修(toggle:再点取消回 pending)
   const markRefined = async () => {
     if (!active) return;
     const prev = { ...active };
-    const newTags = [...(active.tags || []).filter(t => t !== STATUS_TAG_FLAGGED), STATUS_TAG_REFINED];
-    setQueue(qs => qs.map(q => q.id === activeId ? { ...q, tags: newTags, status: 'refined' } : q));
+    const wasRefined = active.status === 'refined';
+    let newTags;
+    if (wasRefined) {
+      // 取消精修 → 回 pending
+      newTags = (active.tags || []).filter(t => t !== STATUS_TAG_REFINED && t !== STATUS_TAG_FLAGGED);
+    } else {
+      // 标记精修(顺手清掉存疑)
+      newTags = [...(active.tags || []).filter(t => t !== STATUS_TAG_FLAGGED && t !== STATUS_TAG_REFINED), STATUS_TAG_REFINED];
+    }
+    const newStatus = statusOf({ tags: newTags });
+    setQueue(qs => qs.map(q => q.id === activeId ? { ...q, tags: newTags, status: newStatus } : q));
     try {
       await window.__obUpdateBucket(activeId, { tags: newTags });
     } catch (e) {
@@ -188,17 +197,19 @@ function ImportWorkbench() {
       await fetchQueue();
       return;
     }
-    // 跳到下一条 pending
-    const idx = queue.findIndex(q => q.id === activeId);
-    const next = queue.slice(idx + 1).find(q => q.status === 'pending')
-      || queue.find(q => q.status === 'pending' && q.id !== activeId);
-    if (next) setActiveId(next.id);
+    if (!wasRefined) {
+      // 跳到下一条 pending
+      const idx = queue.findIndex(q => q.id === activeId);
+      const next = queue.slice(idx + 1).find(q => q.status === 'pending')
+        || queue.find(q => q.status === 'pending' && q.id !== activeId);
+      if (next) setActiveId(next.id);
+    }
     setEditing(null);
     setRawOpen(false);
     setToast({
-      msg: `已精修 "${prev.title}"`,
+      msg: wasRefined ? `已撤销精修标记 "${prev.title}"` : `已精修 "${prev.title}"`,
       undo: async () => {
-        const restored = (prev.tags || []).slice();  // 恢复原 tags
+        const restored = (prev.tags || []).slice();
         setQueue(qs => qs.map(q => q.id === prev.id ? { ...q, tags: restored, status: statusOf({ tags: restored }) } : q));
         setActiveId(prev.id);
         setToast(null);
@@ -209,11 +220,18 @@ function ImportWorkbench() {
     setTimeout(() => setToast(t => (t && t.msg.includes(prev.title)) ? null : t), 4500);
   };
 
-  // 标记存疑
+  // 标记存疑(toggle:再点取消回 pending)
   const flagItem = async () => {
     if (!active) return;
-    const newTags = [...(active.tags || []).filter(t => t !== STATUS_TAG_REFINED), STATUS_TAG_FLAGGED];
-    setQueue(qs => qs.map(q => q.id === activeId ? { ...q, tags: newTags, status: 'flagged' } : q));
+    const wasFlagged = active.status === 'flagged';
+    let newTags;
+    if (wasFlagged) {
+      newTags = (active.tags || []).filter(t => t !== STATUS_TAG_FLAGGED && t !== STATUS_TAG_REFINED);
+    } else {
+      newTags = [...(active.tags || []).filter(t => t !== STATUS_TAG_REFINED && t !== STATUS_TAG_FLAGGED), STATUS_TAG_FLAGGED];
+    }
+    const newStatus = statusOf({ tags: newTags });
+    setQueue(qs => qs.map(q => q.id === activeId ? { ...q, tags: newTags, status: newStatus } : q));
     try {
       await window.__obUpdateBucket(activeId, { tags: newTags });
     } catch (e) {
@@ -221,9 +239,11 @@ function ImportWorkbench() {
       await fetchQueue();
       return;
     }
-    const idx = queue.findIndex(q => q.id === activeId);
-    const next = queue.slice(idx + 1).find(q => q.status === 'pending');
-    if (next) setActiveId(next.id);
+    if (!wasFlagged) {
+      const idx = queue.findIndex(q => q.id === activeId);
+      const next = queue.slice(idx + 1).find(q => q.status === 'pending');
+      if (next) setActiveId(next.id);
+    }
   };
 
   // 不入库 — 物理删除
@@ -665,12 +685,33 @@ function ImportWorkbench() {
                   </div>
                 </div>
                 <div className="imp-attr-row">
+                  <div className="imp-attr-key">事件时间</div>
+                  <input
+                    type="date"
+                    value={(active.timeHint || '').slice(0, 10)}
+                    onChange={(e) => {
+                      const dateOnly = e.target.value;  // YYYY-MM-DD
+                      // 保留原时间(如有)拼成 ISO
+                      const oldTime = (active.timeHint || '').slice(11, 16) || '00:00';
+                      const eventTime = dateOnly ? (dateOnly + 'T' + oldTime + ':00') : '';
+                      setQueue(qs => qs.map(q => q.id === activeId ? { ...q, timeHint: dateOnly + (oldTime ? ' ' + oldTime : '') } : q));
+                      window.__obUpdateBucket(activeId, { event_time: eventTime || null }).catch(e => alert('保存失败:' + e.message));
+                    }}
+                    style={{
+                      flex: 1, padding: '6px 10px',
+                      border: '1px solid var(--line)', borderRadius: 6,
+                      background: 'var(--paper)', color: 'var(--ink)',
+                      fontFamily: 'inherit', fontSize: 12,
+                    }}
+                  />
+                </div>
+                <div className="imp-attr-row">
                   <div className="imp-attr-key">状态</div>
-                  <div className="imp-attr-val">
+                  <span className={`imp-status-chip imp-status-${active.status}`}>
                     {active.status === 'refined' && '✓ 已精修'}
                     {active.status === 'pending' && '⌛ 待精修'}
                     {active.status === 'flagged' && '⚑ 存疑'}
-                  </div>
+                  </span>
                 </div>
               </div>
 
