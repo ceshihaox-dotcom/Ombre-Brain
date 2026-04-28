@@ -26,7 +26,7 @@
       date: date,
       time: time,
       title: b.name || b.id,
-      summary: b.content_preview || '',
+      summary: b.summary || b.content_preview || '',
       body: '',  // 列表 endpoint 不返回 content;打开详情时再 lazy-load
       importance: b.importance || 5,
       tags: tags,
@@ -86,6 +86,7 @@
     var body = {};
     if (patch.title != null) body.name = patch.title;
     if (patch.body != null) body.content = patch.body;
+    if (patch.summary != null) body.summary = patch.summary;
     if (patch.importance != null) body.importance = patch.importance;
     if (patch.tags != null) body.tags = patch.tags;
     if (patch.protected != null) body.protected = !!patch.protected;

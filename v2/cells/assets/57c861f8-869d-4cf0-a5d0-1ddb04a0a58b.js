@@ -102,7 +102,15 @@ function CellsApp() {
     setOpenItem({ ...it, body: '⌛ 加载完整内容…', _loading: true });
     try {
       const detail = await window.__obFetchBucketDetail(it.id);
-      const merged = { ...it, body: detail.content || '', _meta: detail.metadata, _bodyLoaded: true, _loading: false };
+      const persistedSummary = detail.metadata && detail.metadata.summary;
+      const merged = {
+        ...it,
+        body: detail.content || '',
+        summary: persistedSummary || it.summary || '',
+        _meta: detail.metadata,
+        _bodyLoaded: true,
+        _loading: false,
+      };
       setOpenItem(prev => prev && prev.id === it.id ? merged : prev);
       setData(prev => prev.map(x => x.id === it.id ? merged : x));
     } catch (e) {

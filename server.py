@@ -1051,6 +1051,7 @@ async def api_buckets(request):
                 "last_active": meta.get("last_active", ""),
                 "activation_count": meta.get("activation_count", 1),
                 "score": decay_engine.calculate_score(meta),
+                "summary": meta.get("summary", ""),  # 用户编辑过的摘要(v2 modal),空则前端回退用 content_preview
                 "content_preview": strip_wikilinks(b.get("content", ""))[:200],
             })
         result.sort(key=lambda x: x["score"], reverse=True)
@@ -1103,6 +1104,7 @@ async def api_bucket_update(request):
         "resolved", "protected", "highlight", "pinned",
         "internalized", "digested", "event_time", "content", "model_valence",
         "type",  # 支持 feel ↔ dynamic 切换(导入工作台 feel 开关)
+        "summary",  # 用户可编辑的摘要(v2 modal),为空时回退到 content_preview
     }
     updates = {k: v for k, v in body.items() if k in allowed}
     if not updates:
@@ -1287,7 +1289,7 @@ async def api_bucket_similar(request):
             "name": meta.get("name", bid),
             "score": round(float(sim), 3),
             "date": (meta.get("event_time") or meta.get("created") or "")[:10],
-            "summary": (b.get("content") or "")[:120],
+            "summary": meta.get("summary") or (b.get("content") or "")[:120],
             "type": meta.get("type", "dynamic"),
         })
     scored.sort(key=lambda x: x["score"], reverse=True)
@@ -1802,6 +1804,7 @@ async def api_import_results(request):
                 "id": b["id"],
                 "name": meta.get("name", ""),
                 "content": (b.get("content") or "")[:300],
+                "summary": meta.get("summary", ""),  # 用户编辑过的摘要,空则前端回退到 content 前 160 字
                 "type": meta.get("type", "dynamic"),
                 "domain": meta.get("domain", []),
                 "tags": meta.get("tags", []),

@@ -344,6 +344,14 @@ class BucketManager:
                 _drop("raw_source")
             else:
                 post["raw_source"] = str(rs)[:8000]  # 截到 8KB 避免 metadata 爆炸
+        # summary(用户可编辑的摘要,优先于自动 content_preview 显示)
+        # 传 None / 空字符串 → 清掉,回退到 content 自动截前 200 字
+        if "summary" in kwargs:
+            sm = kwargs["summary"]
+            if sm is None or sm == "":
+                _drop("summary")
+            else:
+                post["summary"] = str(sm)[:600]  # 摘要不该超过这个长度
         # event_time:用户事后纠正"这事到底发生在哪天"
         # 传 None 或空字符串 → 清掉这个字段(回退到用 created 显示)
         if "event_time" in kwargs:

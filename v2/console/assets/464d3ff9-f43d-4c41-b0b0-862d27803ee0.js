@@ -87,6 +87,9 @@ function ImportWorkbench() {
   const [similarCache, setSimilarCache] = iwS({});
   const [similarLoading, setSimilarLoading] = iwS(false);
 
+  // 全库相似"查看"打开的完整 modal
+  const [previewItem, setPreviewItem] = iwS(null);
+
   // hover 详情卡:hover 相似项时弹出
   const [hoverItem, setHoverItem] = iwS(null);
   const [hoverPos, setHoverPos] = iwS({ x: 0, y: 0 });
@@ -178,6 +181,86 @@ function ImportWorkbench() {
     } catch (e) {
       alert('保存失败:' + e.message + '\n刷新中...');
       await fetchQueue();
+    }
+  };
+
+  // ---------- 全库相似"查看"→ 打开完整 modal ----------
+  // 把后端 detail 重塑成 ItemModal 期望的 mock shape
+  const reshapeBucketDetail = (id, detail, fallback) => {
+    const meta = (detail && detail.metadata) || {};
+    const evt = meta.event_time || meta.created || '';
+    const date = evt && evt.length >= 10 ? evt.slice(0, 10) : (fallback?.date || '2026-01-01');
+    const time = evt && evt.length >= 16 ? evt.slice(11, 16) : (fallback?.time || '00:00');
+    const tags = (meta.tags || []).slice();
+    return {
+      id,
+      date,
+      time,
+      title: meta.name || fallback?.name || id,
+      summary: meta.summary || (detail && detail.content || '').slice(0, 200) || fallback?.summary || '',
+      body: (detail && detail.content) || '',
+      importance: meta.importance != null ? meta.importance : 5,
+      tags,
+      protected: !!(meta.protected || meta.pinned),
+      feel: meta.type === 'feel',
+      highlight: !!(meta.highlight || meta.pinned),
+      internalized: !!(meta.internalized || meta.digested),
+      artifacts: [],
+    };
+  };
+
+  const openSimPreview = async (sim) => {
+    setPreviewItem({ id: sim.id, title: sim.name || sim.id, summary: sim.summary || '', body: '⌛ 加载完整内容…', importance: 5, tags: [], date: sim.date || '', time: '00:00', _loading: true });
+    try {
+      const detail = await window.__obFetchBucketDetail(sim.id);
+      const shaped = reshapeBucketDetail(sim.id, detail, sim);
+      // 防竞态:用户已经切到下一条或关掉了 modal 就别覆盖
+      setPreviewItem(prev => (prev && prev.id === sim.id) ? shaped : prev);
+    } catch (e) {
+      console.warn('preview detail fail', e);
+      setPreviewItem(prev => (prev && prev.id === sim.id) ? { ...prev, body: '(加载失败)', _loading: false } : prev);
+    }
+  };
+
+  // modal 内部保存/删除回调 — 透传到后端 + 同步 similarCache + 队列
+  const handlePreviewUpdate = async (id, patch) => {
+    if (patch.__delete) {
+      // 真实删除 + 关闭 modal + 把这条从所有 similarCache / 队列里抹掉
+      setSimilarCache(c => {
+        const next = {};
+        for (const k of Object.keys(c)) next[k] = (c[k] || []).filter(s => s.id !== id);
+        return next;
+      });
+      setQueue(qs => qs.filter(q => q.id !== id));
+      setPreviewItem(null);
+      try {
+        const r = await fetch('/api/bucket/' + encodeURIComponent(id) + '/delete', { method: 'POST' });
+        if (!r.ok) throw new Error(await r.text());
+      } catch (e) {
+        alert('删除失败:' + e.message + '\n刷新中...');
+        await fetchQueue();
+      }
+      return;
+    }
+    // 普通更新:乐观刷 modal + similarCache 里的同 id 项(name/summary)
+    setPreviewItem(prev => prev && prev.id === id ? { ...prev, ...patch } : prev);
+    setSimilarCache(c => {
+      const next = {};
+      for (const k of Object.keys(c)) {
+        next[k] = (c[k] || []).map(s => s.id === id ? {
+          ...s,
+          name: patch.title != null ? patch.title : s.name,
+          summary: patch.summary != null ? patch.summary : s.summary,
+        } : s);
+      }
+      return next;
+    });
+    // 如果这条同时在工作台队列里(是当前批次刚导入的),也顺手刷
+    setQueue(qs => qs.map(q => q.id === id ? { ...q, ...patch } : q));
+    try {
+      await window.__obUpdateBucket(id, patch);
+    } catch (e) {
+      alert('保存失败:' + e.message);
     }
   };
 
@@ -847,7 +930,7 @@ function ImportWorkbench() {
                       <div className="imp-sim-hint">{s.summary?.slice(0, 60)}…{s.date && ' · ' + s.date}</div>
                       <div className="imp-sim-actions">
                         <button className="imp-sim-act" onClick={() => alert('合并暂未实装,下次更新加上')}>合并</button>
-                        <button className="imp-sim-act" onClick={() => window.open('/v2/?focus=' + s.id, '_blank')}>查看</button>
+                        <button className="imp-sim-act" onClick={() => openSimPreview(s)}>查看</button>
                       </div>
                     </div>
                   ))}
@@ -938,6 +1021,14 @@ function ImportWorkbench() {
           )}
         </div>
       )}
+
+      {/* 全库相似 → 查看:复用 ItemModal,跟时间线/记忆格里同款 */}
+      {previewItem && window.ConsoleItemModal && React.createElement(window.ConsoleItemModal, {
+        item: previewItem,
+        allItems: [previewItem],
+        onClose: () => setPreviewItem(null),
+        onUpdate: handlePreviewUpdate,
+      })}
     </>
   );
 }
