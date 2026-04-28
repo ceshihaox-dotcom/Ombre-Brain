@@ -95,6 +95,10 @@ function ImportWorkbench() {
   // 重新脱水中的 bucket id(避免重复点)
   const [redehydrating, setRedehydrating] = iwS(null);
 
+  // 合并预览状态:{ a:{id,name}, b:{id,name}, merged_content, tags, domain, importance, valence, arousal, b_summary, b_event_time }
+  const [mergePreview, setMergePreview] = iwS(null);
+  const [mergeLoading, setMergeLoading] = iwS(false);  // preview 或 commit 进行中
+
   // 试跑模式:导入时只跑前 N 个 chunk(控成本)
   const [sampleMode, setSampleMode] = iwS(false);
   const [sampleChunks, setSampleChunks] = iwS(5);
@@ -284,6 +288,77 @@ function ImportWorkbench() {
       setToast(null);
     } finally {
       setRedehydrating(null);
+    }
+  };
+
+  // ---------- 合并到全库相似项(预览 → 重做 → 接受) ----------
+  const fetchMergePreview = async (a, b) => {
+    setMergeLoading(true);
+    try {
+      const r = await fetch(`/api/bucket/${encodeURIComponent(a.id)}/merge-preview?into=${encodeURIComponent(b.id)}`, {
+        method: 'POST',
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+      setMergePreview(data);
+    } catch (e) {
+      alert('合并预览失败:\n' + e.message);
+      setMergePreview(null);
+    } finally {
+      setMergeLoading(false);
+    }
+  };
+
+  const startMerge = async (simItem) => {
+    if (!active) return;
+    if (mergeLoading) return;
+    // simItem = 全库相似项,active = 工作台当前条目;A=active(新), B=sim(老)
+    await fetchMergePreview(active, { id: simItem.id, name: simItem.name });
+  };
+
+  const rerollMerge = async () => {
+    if (!mergePreview) return;
+    await fetchMergePreview(mergePreview.a, mergePreview.b);
+  };
+
+  const commitMerge = async () => {
+    if (!mergePreview || mergeLoading) return;
+    setMergeLoading(true);
+    try {
+      const r = await fetch(`/api/bucket/${encodeURIComponent(mergePreview.a.id)}/merge-commit?into=${encodeURIComponent(mergePreview.b.id)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ merged_content: mergePreview.merged_content }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+      const aId = mergePreview.a.id;
+      const bId = mergePreview.b.id;
+      const bName = mergePreview.b.name;
+      // 乐观:从 queue 抹掉 A;从 similarCache 各 key 里抹掉 A 也抹掉 B(B 已变,缓存失效)
+      setQueue(qs => qs.filter(q => q.id !== aId));
+      setSimilarCache(c => {
+        const next = {};
+        for (const k of Object.keys(c)) {
+          if (k === aId) continue;  // A 没了,它的 cache 直接丢
+          next[k] = (c[k] || []).filter(s => s.id !== aId && s.id !== bId);
+        }
+        return next;
+      });
+      // 切到下一条 pending(A 没了,activeId 失效)
+      setActiveId(prev => {
+        if (prev !== aId) return prev;
+        const remain = queue.filter(q => q.id !== aId);
+        const next = remain.find(q => q.status === 'pending') || remain[0];
+        return next ? next.id : null;
+      });
+      setMergePreview(null);
+      setToast({ msg: `已合并到「${bName}」,A 已删除` });
+      setTimeout(() => setToast(null), 3000);
+    } catch (e) {
+      alert('合并提交失败:\n' + e.message);
+    } finally {
+      setMergeLoading(false);
     }
   };
 
@@ -1175,7 +1250,12 @@ function ImportWorkbench() {
                       </div>
                       <div className="imp-sim-hint">{s.summary?.slice(0, 60)}…{s.date && ' · ' + s.date}</div>
                       <div className="imp-sim-actions">
-                        <button className="imp-sim-act" onClick={() => alert('合并暂未实装,下次更新加上')}>合并</button>
+                        <button
+                          className="imp-sim-act"
+                          onClick={() => startMerge(s)}
+                          disabled={mergeLoading}
+                          title="把当前条目合并到这条相似的老桶里(LLM 整合内容,删 A 保 B)"
+                        >合并</button>
                         <button className="imp-sim-act" onClick={() => openSimPreview(s)}>查看</button>
                       </div>
                     </div>
@@ -1275,6 +1355,119 @@ function ImportWorkbench() {
         onClose: () => setPreviewItem(null),
         onUpdate: handlePreviewUpdate,
       })}
+
+      {/* 合并预览 modal */}
+      {(mergePreview || mergeLoading) && (
+        <div
+          style={{
+            position: 'fixed', inset: 0, zIndex: 60,
+            background: 'rgba(20, 19, 28, 0.55)', backdropFilter: 'blur(2px)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            padding: 20,
+          }}
+          onClick={() => !mergeLoading && setMergePreview(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 'min(720px, 100%)', maxHeight: '88vh', overflow: 'hidden',
+              background: 'var(--paper)', borderRadius: 12,
+              boxShadow: '0 32px 80px -24px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.5) inset',
+              border: '0.5px solid var(--line-2)',
+              display: 'flex', flexDirection: 'column',
+            }}
+          >
+            {/* header */}
+            <div style={{ padding: '18px 24px 12px', borderBottom: '0.5px solid var(--line)', flexShrink: 0 }}>
+              <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', marginBottom: 6 }}>
+                合并预览 · A 合到 B,A 会被删除
+              </div>
+              {mergePreview && (
+                <div style={{ fontSize: 14, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'var(--serif)' }}>
+                  <span style={{ color: 'var(--ink-2)' }}>「{mergePreview.a.name}」</span>
+                  <span style={{ color: 'var(--accent)', fontFamily: 'var(--mono)', fontSize: 14 }}>→</span>
+                  <span style={{ color: 'var(--ink)', fontWeight: 500 }}>「{mergePreview.b.name}」</span>
+                </div>
+              )}
+            </div>
+
+            {/* body */}
+            <div style={{ padding: '16px 24px', overflowY: 'auto', flex: 1 }}>
+              {mergeLoading && !mergePreview && (
+                <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--ink-3)', fontSize: 13 }}>
+                  ⌛ LLM 正在生成合并预览…
+                </div>
+              )}
+              {mergePreview && (
+                <>
+                  <div style={{ fontSize: 11, color: 'var(--ink-3)', fontFamily: 'var(--mono)', marginBottom: 6 }}>合并后内容</div>
+                  <div
+                    style={{
+                      padding: '12px 14px', background: 'var(--paper-2)',
+                      border: '0.5px solid var(--line-2)', borderRadius: 6,
+                      fontSize: 13, lineHeight: 1.7, color: 'var(--ink)',
+                      whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                      maxHeight: 280, overflowY: 'auto', marginBottom: 14,
+                    }}
+                  >
+                    {mergePreview.merged_content}
+                  </div>
+
+                  {/* 元数据并集结果 */}
+                  <div style={{ fontSize: 11, color: 'var(--ink-3)', fontFamily: 'var(--mono)', marginBottom: 6 }}>元数据(并集)</div>
+                  <div style={{ fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.9, fontFamily: 'var(--mono)' }}>
+                    <div><span style={{ color: 'var(--ink-4)' }}>tags    :</span> {(mergePreview.tags || []).join(' · ') || '(空)'}</div>
+                    <div><span style={{ color: 'var(--ink-4)' }}>domain  :</span> {(mergePreview.domain || []).join(' · ') || '(空)'}</div>
+                    <div><span style={{ color: 'var(--ink-4)' }}>imp     :</span> {mergePreview.importance} <span style={{ color: 'var(--ink-4)' }}>· val:</span> {mergePreview.valence} <span style={{ color: 'var(--ink-4)' }}>· aro:</span> {mergePreview.arousal}</div>
+                    {mergePreview.b_summary && (
+                      <div style={{ marginTop: 8 }}>
+                        <span style={{ color: 'var(--ink-4)' }}>summary :</span> <span style={{ fontStyle: 'italic' }}>{mergePreview.b_summary}</span>
+                        <span style={{ color: 'var(--ink-4)', marginLeft: 6 }}>(保留 B 的)</span>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* footer */}
+            <div style={{
+              padding: '12px 24px', borderTop: '0.5px solid var(--line)',
+              display: 'flex', justifyContent: 'flex-end', gap: 8, flexShrink: 0,
+              background: 'var(--paper-2)',
+            }}>
+              <button
+                onClick={() => setMergePreview(null)}
+                disabled={mergeLoading}
+                style={{
+                  padding: '7px 14px', fontSize: 12, fontFamily: 'var(--sans)',
+                  background: 'transparent', border: '0.5px solid var(--line-2)',
+                  borderRadius: 6, color: 'var(--ink-2)', cursor: mergeLoading ? 'wait' : 'pointer',
+                }}
+              >取消</button>
+              <button
+                onClick={rerollMerge}
+                disabled={mergeLoading || !mergePreview}
+                style={{
+                  padding: '7px 14px', fontSize: 12, fontFamily: 'var(--sans)',
+                  background: 'transparent', border: '0.5px solid var(--line-2)',
+                  borderRadius: 6, color: 'var(--ink-2)', cursor: mergeLoading ? 'wait' : 'pointer',
+                }}
+                title="LLM 重新生成合并结果"
+              >{mergeLoading && mergePreview ? '⌛ 重做中…' : '↻ 重做'}</button>
+              <button
+                onClick={commitMerge}
+                disabled={mergeLoading || !mergePreview}
+                style={{
+                  padding: '7px 16px', fontSize: 12, fontFamily: 'var(--sans)', fontWeight: 500,
+                  background: 'var(--ink)', border: '0.5px solid var(--ink)',
+                  borderRadius: 6, color: 'var(--paper)', cursor: mergeLoading ? 'wait' : 'pointer',
+                }}
+              >{mergeLoading ? '⌛ 提交中…' : '✓ 接受合并'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
