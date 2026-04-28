@@ -1017,6 +1017,208 @@ async def dream() -> str:
 
 
 # =============================================================
+# Runtime config endpoints — 前端 config 页面切 API 用
+# 持久化:{buckets_dir}/runtime_config.json
+# 加载链:runtime_config.json > env vars > config.yaml > 默认
+# 安全:API key 只在 GET 时返回 mask 形式;dehydrator 实例热重载
+# =============================================================
+import json as _json_cfg
+
+def _runtime_config_path():
+    return os.path.join(config.get("buckets_dir", "./buckets"), "runtime_config.json")
+
+def _read_runtime_config():
+    p = _runtime_config_path()
+    if not os.path.exists(p):
+        return {"active": None, "profiles": {}}
+    try:
+        with open(p, "r", encoding="utf-8") as f:
+            d = _json_cfg.load(f)
+        if not isinstance(d, dict):
+            return {"active": None, "profiles": {}}
+        d.setdefault("active", None)
+        d.setdefault("profiles", {})
+        return d
+    except Exception as e:
+        logger.warning(f"runtime_config.json read fail: {e}")
+        return {"active": None, "profiles": {}}
+
+def _write_runtime_config(rc: dict):
+    p = _runtime_config_path()
+    os.makedirs(os.path.dirname(p), exist_ok=True)
+    tmp = p + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        _json_cfg.dump(rc, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, p)
+
+def _mask_key(k: str) -> str:
+    if not k or len(k) < 12:
+        return "***" if k else ""
+    return k[:6] + "..." + k[-4:]
+
+def _reload_dehydrator_from_runtime():
+    """读 runtime_config + 应用 active profile 到 dehydrator 实例。"""
+    rc = _read_runtime_config()
+    active_id = rc.get("active")
+    profiles = rc.get("profiles", {})
+    fresh_cfg = {"dehydration": dict(config.get("dehydration", {})), "buckets_dir": config.get("buckets_dir")}
+    if active_id and active_id in profiles:
+        p = profiles[active_id]
+        if p.get("api_key"): fresh_cfg["dehydration"]["api_key"] = p["api_key"]
+        if p.get("base_url"): fresh_cfg["dehydration"]["base_url"] = p["base_url"]
+        if p.get("model"): fresh_cfg["dehydration"]["model"] = p["model"]
+    dehydrator.reload(fresh_cfg)
+
+
+@mcp.custom_route("/api/config/api", methods=["GET"])
+async def api_config_get(request):
+    """读取所有 API profile + 当前激活 + 当前生效配置。api_key 走 mask。"""
+    from starlette.responses import JSONResponse
+    rc = _read_runtime_config()
+    profiles_out = []
+    for pid, p in rc.get("profiles", {}).items():
+        profiles_out.append({
+            "id": pid,
+            "name": p.get("name", pid),
+            "model": p.get("model", ""),
+            "base_url": p.get("base_url", ""),
+            "api_key_mask": _mask_key(p.get("api_key", "")),
+            "has_key": bool(p.get("api_key")),
+        })
+    return JSONResponse({
+        "active": rc.get("active"),
+        "profiles": profiles_out,
+        # 当前 dehydrator 实例上真正生效的(如果 runtime 没设过,反映 env/yaml)
+        "current_effective": {
+            "model": dehydrator.model,
+            "base_url": dehydrator.base_url,
+            "api_key_mask": _mask_key(dehydrator.api_key),
+            "api_available": dehydrator.api_available,
+        },
+    })
+
+
+@mcp.custom_route("/api/config/api/profile", methods=["POST"])
+async def api_config_profile_upsert(request):
+    """新增或更新 profile。body: {id?, name, model, base_url, api_key?}
+    id 没传就生成新的;api_key 留空 → 保留旧值(不覆盖)。"""
+    from starlette.responses import JSONResponse
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    pid = body.get("id") or ""
+    name = (body.get("name") or "").strip()
+    model = (body.get("model") or "").strip()
+    base_url = (body.get("base_url") or "").strip()
+    api_key = body.get("api_key", "")  # 可能为空表示"不改"
+    if not name or not model or not base_url:
+        return JSONResponse({"error": "name / model / base_url 必填"}, status_code=400)
+    rc = _read_runtime_config()
+    profiles = rc.setdefault("profiles", {})
+    if not pid:
+        # 自增 id (id_001, id_002, ...)
+        n = 1
+        while f"p{n:03d}" in profiles:
+            n += 1
+        pid = f"p{n:03d}"
+    existing = profiles.get(pid, {})
+    profiles[pid] = {
+        "name": name,
+        "model": model,
+        "base_url": base_url,
+        "api_key": api_key if api_key else existing.get("api_key", ""),
+    }
+    _write_runtime_config(rc)
+    return JSONResponse({"ok": True, "id": pid})
+
+
+@mcp.custom_route("/api/config/api/profile/{pid}/delete", methods=["POST"])
+async def api_config_profile_delete(request):
+    from starlette.responses import JSONResponse
+    pid = request.path_params["pid"]
+    rc = _read_runtime_config()
+    if pid not in rc.get("profiles", {}):
+        return JSONResponse({"error": "profile 不存在"}, status_code=404)
+    del rc["profiles"][pid]
+    if rc.get("active") == pid:
+        rc["active"] = None  # 删的是当前激活的 → 退回 env/yaml
+        _write_runtime_config(rc)
+        _reload_dehydrator_from_runtime()
+    else:
+        _write_runtime_config(rc)
+    return JSONResponse({"ok": True})
+
+
+@mcp.custom_route("/api/config/api/active", methods=["POST"])
+async def api_config_set_active(request):
+    """切换激活 profile。body: {id} (传 null/空 → 清空,回退到 env/yaml)。"""
+    from starlette.responses import JSONResponse
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    pid = body.get("id") or None
+    rc = _read_runtime_config()
+    if pid and pid not in rc.get("profiles", {}):
+        return JSONResponse({"error": "profile 不存在"}, status_code=404)
+    rc["active"] = pid
+    _write_runtime_config(rc)
+    _reload_dehydrator_from_runtime()
+    return JSONResponse({
+        "ok": True,
+        "active": pid,
+        "current_effective": {
+            "model": dehydrator.model,
+            "base_url": dehydrator.base_url,
+            "api_key_mask": _mask_key(dehydrator.api_key),
+        },
+    })
+
+
+@mcp.custom_route("/api/config/api/test", methods=["POST"])
+async def api_config_test(request):
+    """测试一组配置能否连通。body: {model, base_url, api_key} 直接测;
+    或 {id} 用已存的 profile 测。返回 {ok, latency_ms, error?, sample?}"""
+    from starlette.responses import JSONResponse
+    import time
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    pid = body.get("id")
+    if pid:
+        rc = _read_runtime_config()
+        p = rc.get("profiles", {}).get(pid)
+        if not p:
+            return JSONResponse({"error": "profile 不存在"}, status_code=404)
+        model = p["model"]; base_url = p["base_url"]; api_key = p.get("api_key", "")
+    else:
+        model = (body.get("model") or "").strip()
+        base_url = (body.get("base_url") or "").strip()
+        api_key = body.get("api_key", "")
+    if not model or not base_url or not api_key:
+        return JSONResponse({"error": "model / base_url / api_key 都需要"}, status_code=400)
+    try:
+        from openai import AsyncOpenAI
+        client = AsyncOpenAI(api_key=api_key, base_url=base_url, timeout=20.0)
+        t0 = time.time()
+        resp = await client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": "ping"}],
+            max_tokens=8,
+            temperature=0.0,
+        )
+        latency = int((time.time() - t0) * 1000)
+        sample = ""
+        if resp.choices:
+            sample = (resp.choices[0].message.content or "")[:60]
+        return JSONResponse({"ok": True, "latency_ms": latency, "sample": sample})
+    except Exception as e:
+        return JSONResponse({"ok": False, "error": str(e)[:300]}, status_code=200)
+
+
+# =============================================================
 # Dashboard API endpoints (for lightweight Web UI)
 # 仪表板 API（轻量 Web UI 用）
 # =============================================================

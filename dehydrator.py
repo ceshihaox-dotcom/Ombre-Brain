@@ -211,19 +211,22 @@ class Dehydrator:
     """
 
     def __init__(self, config: dict):
-        # --- Read dehydration API config / 读取脱水 API 配置 ---
+        self._apply_api_config(config)
+
+        # --- SQLite 脱水缓存：content hash → summary ---
+        db_path = os.path.join(config["buckets_dir"], "dehydration_cache.db")
+        self.cache_db_path = db_path
+        self._init_cache_db()
+
+    def _apply_api_config(self, config: dict):
+        """从 config 应用 API 配置(启动 + reload 共用)。"""
         dehy_cfg = config.get("dehydration", {})
         self.api_key = dehy_cfg.get("api_key", "")
         self.model = dehy_cfg.get("model", "deepseek-chat")
         self.base_url = dehy_cfg.get("base_url", "https://api.deepseek.com/v1")
         self.max_tokens = dehy_cfg.get("max_tokens", 1024)
         self.temperature = dehy_cfg.get("temperature", 0.1)
-
-        # --- API availability / 是否有可用的 API ---
         self.api_available = bool(self.api_key)
-
-        # --- Initialize OpenAI-compatible client ---
-        # --- 初始化 OpenAI 兼容客户端 ---
         if self.api_available:
             self.client = AsyncOpenAI(
                 api_key=self.api_key,
@@ -233,11 +236,10 @@ class Dehydrator:
         else:
             self.client = None
 
-        # --- SQLite dehydration cache ---
-        # --- SQLite 脱水缓存：content hash → summary ---
-        db_path = os.path.join(config["buckets_dir"], "dehydration_cache.db")
-        self.cache_db_path = db_path
-        self._init_cache_db()
+    def reload(self, config: dict):
+        """前端切了 API 后重新加载配置。其他持有 dehydrator 引用的模块自动看到新值。"""
+        self._apply_api_config(config)
+        logger.info(f"Dehydrator reloaded: model={self.model} base_url={self.base_url}")
 
     def _init_cache_db(self):
         """Create dehydration cache table if not exists."""
