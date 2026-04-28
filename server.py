@@ -1182,6 +1182,144 @@ async def api_bucket_redehydrate(request):
     })
 
 
+def _build_merge_meta(a_meta: dict, b_meta: dict) -> dict:
+    """把 A、B 元数据合到 B 的字段集合;tags/domain 并集,importance max,情感平均"""
+    a_tags = a_meta.get("tags", []) or []
+    b_tags = b_meta.get("tags", []) or []
+    a_domain = a_meta.get("domain", []) or []
+    b_domain = b_meta.get("domain", []) or []
+    a_imp = a_meta.get("importance", 5)
+    b_imp = b_meta.get("importance", 5)
+    a_v = float(a_meta.get("valence", 0.5))
+    a_a = float(a_meta.get("arousal", 0.3))
+    b_v = float(b_meta.get("valence", 0.5))
+    b_a = float(b_meta.get("arousal", 0.3))
+    return {
+        "tags": list(dict.fromkeys(b_tags + a_tags)),  # 保留 B 顺序,A 的新 tag 追加
+        "domain": list(dict.fromkeys(b_domain + a_domain)),
+        "importance": max(a_imp, b_imp),
+        "valence": round((a_v + b_v) / 2, 2),
+        "arousal": round((a_a + b_a) / 2, 2),
+    }
+
+
+def _check_merge_preconditions(a, b):
+    """返回 (ok: bool, error_response_or_none)。校验两个 bucket 能不能合并"""
+    from starlette.responses import JSONResponse
+    if not a or not b:
+        return False, JSONResponse({"error": "bucket not found"}, status_code=404)
+    if a["id"] == b["id"]:
+        return False, JSONResponse({"error": "不能合并到自己"}, status_code=400)
+    b_meta = b.get("metadata", {})
+    if b_meta.get("protected") or b_meta.get("pinned"):
+        return False, JSONResponse({
+            "error": "目标桶已 protected/钉决,拒绝合并(防止改写核心条目)",
+            "hint": "如果确实想合并,先去取消目标桶的保护标记",
+        }, status_code=409)
+    return True, None
+
+
+@mcp.custom_route("/api/bucket/{bucket_id}/merge-preview", methods=["POST"])
+async def api_bucket_merge_preview(request):
+    """预算合并结果(不写盘)。query: ?into=<target_b_id>。
+    A→B 方向:把 A 合并到 B,删 A 保 B(保留 B 的 last_active/event_time/summary 等积累状态)。
+    返回新 content + 元数据合并后的字段,前端展示给用户预览,确认后再调 merge-commit。"""
+    from starlette.responses import JSONResponse
+    a_id = request.path_params["bucket_id"]
+    b_id = request.query_params.get("into", "")
+    if not b_id:
+        return JSONResponse({"error": "missing ?into=<target_b_id>"}, status_code=400)
+    a = await bucket_mgr.get(a_id)
+    b = await bucket_mgr.get(b_id)
+    ok, err = _check_merge_preconditions(a, b)
+    if not ok:
+        return err
+    a_content = a.get("content", "") or ""
+    b_content = b.get("content", "") or ""
+    if not a_content.strip() and not b_content.strip():
+        return JSONResponse({"error": "两条桶正文都为空,无可合并"}, status_code=400)
+    # LLM 跑合并(B 是旧,A 是新,merge 规则里以新为准但去重)
+    try:
+        merged_content = await dehydrator.merge(b_content, a_content)
+    except Exception as e:
+        return JSONResponse({"error": f"LLM 合并失败: {e}"}, status_code=500)
+    meta_merged = _build_merge_meta(a.get("metadata", {}), b.get("metadata", {}))
+    return JSONResponse({
+        "ok": True,
+        "preview": True,
+        "a": {"id": a_id, "name": a.get("metadata", {}).get("name", a_id)},
+        "b": {"id": b_id, "name": b.get("metadata", {}).get("name", b_id)},
+        "merged_content": merged_content,
+        **meta_merged,
+        # 也把 B 现有 summary/event_time 带回让前端展示"会保留"
+        "b_summary": b.get("metadata", {}).get("summary", ""),
+        "b_event_time": b.get("metadata", {}).get("event_time", ""),
+    })
+
+
+@mcp.custom_route("/api/bucket/{bucket_id}/merge-commit", methods=["POST"])
+async def api_bucket_merge_commit(request):
+    """提交合并:把 A 的内容真正合到 B(用前端预览的 content)+ 删除 A。
+    body: {"merged_content": "..."}  这里直接拿前端确认过的预览内容,避免再跑一次 LLM
+    query: ?into=<target_b_id>"""
+    from starlette.responses import JSONResponse
+    a_id = request.path_params["bucket_id"]
+    b_id = request.query_params.get("into", "")
+    if not b_id:
+        return JSONResponse({"error": "missing ?into=<target_b_id>"}, status_code=400)
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    merged_content = body.get("merged_content", "")
+    if not merged_content or not merged_content.strip():
+        return JSONResponse({"error": "merged_content 必填"}, status_code=400)
+    a = await bucket_mgr.get(a_id)
+    b = await bucket_mgr.get(b_id)
+    ok, err = _check_merge_preconditions(a, b)
+    if not ok:
+        return err
+    meta_merged = _build_merge_meta(a.get("metadata", {}), b.get("metadata", {}))
+    # 1) 更新 B(content + 元数据并集)
+    update_ok = await bucket_mgr.update(
+        b_id,
+        content=merged_content,
+        tags=meta_merged["tags"],
+        domain=meta_merged["domain"],
+        importance=meta_merged["importance"],
+        valence=meta_merged["valence"],
+        arousal=meta_merged["arousal"],
+    )
+    if not update_ok:
+        return JSONResponse({"error": "更新 B 失败"}, status_code=500)
+    # 2) B content 变了,刷 embedding
+    if embedding_engine and embedding_engine.enabled:
+        try:
+            await embedding_engine.generate_and_store(b_id, merged_content)
+        except Exception as e:
+            logger.warning(f"merge: B embedding refresh failed: {e}")
+    # 3) 删 A
+    delete_ok = await bucket_mgr.delete(a_id)
+    if not delete_ok:
+        return JSONResponse({
+            "error": "B 已合并但 A 删除失败,需要手动清理",
+            "b_id": b_id,
+        }, status_code=500)
+    # 4) 顺手清掉 A 的 embedding
+    if embedding_engine:
+        try:
+            embedding_engine.delete_embedding(a_id)
+        except Exception:
+            pass
+    fresh = await bucket_mgr.get(b_id)
+    return JSONResponse({
+        "ok": True,
+        "merged_into": b_id,
+        "deleted": a_id,
+        "metadata": fresh.get("metadata", {}) if fresh else {},
+    })
+
+
 @mcp.custom_route("/api/bucket/{bucket_id}/archive", methods=["POST"])
 async def api_bucket_archive(request):
     """手动归档一条桶,移到 archive/,AI 不再调用。"""
