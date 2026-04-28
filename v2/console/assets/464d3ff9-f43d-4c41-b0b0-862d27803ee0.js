@@ -287,7 +287,19 @@ function ImportWorkbench() {
       setTimeout(() => setToast(null), 3200);
     } catch (e) {
       console.error('[redehydrate] failed', e);
-      alert('重新脱水失败:\n' + e.message);  // 用 alert 而不是 toast,因为可能很长
+      const msg = e.message || String(e);
+      // 识别常见错误类型给更友好提示
+      let friendly = msg;
+      if (/503|UNAVAILABLE|high demand|overloaded/i.test(msg)) {
+        friendly = '当前模型暂时过载(503),等几分钟再试。\n或在 /v2/console/config/ 切换到另一个 profile(如 Claude → Gemini)。\n\n原始错误:\n' + msg;
+      } else if (/429|rate|quota/i.test(msg)) {
+        friendly = '触发 API 速率限制(429)。等一会儿再试,或者切换到别的 profile。\n\n原始错误:\n' + msg;
+      } else if (/401|403|invalid.*key|authentication/i.test(msg)) {
+        friendly = 'API key 验证失败 — 去 /v2/console/config/ 检查激活的 profile 是否填对了 key。\n\n原始错误:\n' + msg;
+      } else if (/无法解析|parse|JSON/i.test(msg)) {
+        friendly = 'LLM 输出无法解析(可能截断或非 JSON)。这一条记忆原文可能太长或太特殊,LLM 没产生合法 JSON。\n建议:\n· 切换到能力更强的 profile(如 Claude Sonnet) 再试\n· 或先手动编辑这条把内容缩短\n\n原始错误:\n' + msg;
+      }
+      alert('重新脱水失败:\n\n' + friendly);
       setToast(null);
     } finally {
       setRedehydrating(null);
