@@ -213,7 +213,16 @@ function ConfigPage() {
       <ConsoleCard label="API Profiles" sub={`${data.profiles.length} 个 profile · 点左侧 ◉ 切换激活;导入用 Claude Sonnet,日常用 Gemini Flash 都很方便`}>
         {!editing && (
           <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 10 }}>
-            <button className="oc-btn oc-btn-primary" onClick={startNew} style={{ fontSize: 11, padding: '5px 12px' }}>+ 新建 profile</button>
+            <button
+              className="oc-btn"
+              onClick={startNew}
+              style={{
+                fontSize: 11, padding: '5px 12px',
+                background: 'color-mix(in oklab, var(--accent) 8%, var(--paper))',
+                color: 'var(--accent)',
+                borderColor: 'var(--accent)',
+              }}
+            >+ 新建 profile</button>
           </div>
         )}
 
@@ -276,7 +285,7 @@ function ConfigPage() {
                 </div>
                 <div style={{ display: 'flex', gap: 4 }}>
                   <button className="oc-btn oc-btn-ghost" onClick={() => testProfile(p.id)} disabled={t === 'pending' || !p.has_key} style={{ fontSize: 10.5, padding: '3px 9px' }} title={p.has_key ? '发送一个 ping 请求测试连通' : '没填 key 无法测试'}>
-                    {t === 'pending' ? '⌛' : '⚡ 测试'}
+                    {t === 'pending' ? '◐ 测试中' : '◇ 测试'}
                   </button>
                   <button className="oc-btn oc-btn-ghost" onClick={() => startEdit(p)} style={{ fontSize: 10.5, padding: '3px 9px' }}>编辑</button>
                   <button className="oc-btn oc-btn-ghost" onClick={() => deleteProfile(p.id, p.name)} style={{ fontSize: 10.5, padding: '3px 9px', color: '#8B4A4A' }}>删除</button>
@@ -340,7 +349,7 @@ function ConfigPage() {
               )}
               <div className="oc-btn-row" style={{ marginTop: 12 }}>
                 <button className="oc-btn oc-btn-ghost" onClick={testDraft} disabled={td === 'pending' || !editing.api_key}>
-                  {td === 'pending' ? '⌛ 测试中…' : '⚡ 测试连接'}
+                  {td === 'pending' ? '◐ 测试中…' : '◇ 测试连接'}
                 </button>
                 <button className="oc-btn oc-btn-ghost" onClick={cancelEdit}>取消</button>
                 <button className="oc-btn oc-btn-primary" onClick={saveProfile} style={{ marginLeft: 'auto' }}>

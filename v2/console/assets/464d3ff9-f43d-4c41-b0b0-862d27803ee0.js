@@ -100,6 +100,7 @@ function ImportWorkbench() {
   // 合并预览状态:{ a:{id,name}, b:{id,name}, merged_content, tags, domain, importance, valence, arousal, b_summary, b_event_time }
   const [mergePreview, setMergePreview] = iwS(null);
   const [mergeLoading, setMergeLoading] = iwS(false);  // preview 或 commit 进行中
+  const [mergeLoadingPair, setMergeLoadingPair] = iwS(null);  // {aName, bName} 首次合并 loading 遮罩展示用
 
   // 试跑模式:导入时只跑前 N 个 chunk(控成本)
   const [sampleMode, setSampleMode] = iwS(false);
@@ -315,7 +316,12 @@ function ImportWorkbench() {
     if (!active) return;
     if (mergeLoading) return;
     // simItem = 全库相似项,active = 工作台当前条目;A=active(新), B=sim(老)
-    await fetchMergePreview(active, { id: simItem.id, name: simItem.name });
+    setMergeLoadingPair({ aName: active.title, bName: simItem.name });
+    try {
+      await fetchMergePreview(active, { id: simItem.id, name: simItem.name });
+    } finally {
+      setMergeLoadingPair(null);
+    }
   };
 
   const rerollMerge = async () => {
@@ -1341,18 +1347,23 @@ function ImportWorkbench() {
         // saveEdit 走这条路:接受合并,把 modal 里编辑过的 draft 一起带上
         onUpdate: (id, draft) => commitMerge(draft),
       })}
-      {/* loading 时(还没拿到 preview 数据,或 reroll 中)显示一个简易遮罩 */}
+      {/* 首次合并 loading 遮罩 — paper 风格 + spinner + A→B 对照 */}
       {!mergePreview && mergeLoading && (
-        <div style={{
-          position: 'fixed', inset: 0, zIndex: 60,
-          background: 'rgba(20,19,28,0.45)', backdropFilter: 'blur(2px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}>
-          <div style={{
-            padding: '20px 28px', background: 'var(--paper)',
-            border: '0.5px solid var(--line-2)', borderRadius: 10,
-            fontSize: 13, color: 'var(--ink-2)', fontFamily: 'var(--mono)',
-          }}>⌛ LLM 正在生成合并预览…</div>
+        <div className="ob-merge-loader-mask">
+          <div className="ob-merge-loader-card">
+            <div className="ob-merge-loader-spinner" />
+            <div className="ob-merge-loader-title">正在合并</div>
+            {mergeLoadingPair && (
+              <div className="ob-merge-loader-pair">
+                <span className="ob-merge-loader-pair-name">「{mergeLoadingPair.aName}」</span>
+                <span className="ob-merge-loader-pair-arrow">→</span>
+                <span className="ob-merge-loader-pair-name">「{mergeLoadingPair.bName}」</span>
+              </div>
+            )}
+            <div className="ob-merge-loader-hint">
+              LLM 整合两段内容<span className="ob-merge-loader-dots" />
+            </div>
+          </div>
         </div>
       )}
     </>
