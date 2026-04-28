@@ -1250,6 +1250,9 @@ async def api_bucket_merge_preview(request):
         "a": {"id": a_id, "name": a.get("metadata", {}).get("name", a_id)},
         "b": {"id": b_id, "name": b.get("metadata", {}).get("name", b_id)},
         "merged_content": merged_content,
+        # 原文供前端"对比"面板用 — Claude Design 设计的对比视图会渲染这俩
+        "a_content": a_content,
+        "b_content": b_content,
         **meta_merged,
         # 也把 B 现有 summary/event_time 带回让前端展示"会保留"
         "b_summary": b.get("metadata", {}).get("summary", ""),
