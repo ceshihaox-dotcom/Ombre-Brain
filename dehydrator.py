@@ -683,7 +683,7 @@ class Dehydrator:
                     {"role": "system", "content": REDEHYDRATE_PROMPT},
                     {"role": "user", "content": content[:4000]},
                 ],
-                max_tokens=2048,  # Gemini 2.5 Flash 启用 thinking 时会吃 token,留足余量
+                max_tokens=8192,  # Gemini thinking 会吃配额 / Claude 输出冗长,留足
                 temperature=0.2,
             )
             if not response.choices:
