@@ -119,6 +119,7 @@ def load_config(config_path: str = None) -> dict:
         if os.path.exists(rc_path):
             with open(rc_path, "r", encoding="utf-8") as f:
                 rc = json.load(f)
+            # API profile 激活
             active_id = rc.get("active")
             profiles = rc.get("profiles", {})
             if active_id and active_id in profiles:
@@ -129,6 +130,12 @@ def load_config(config_path: str = None) -> dict:
                     config.setdefault("dehydration", {})["base_url"] = p["base_url"]
                 if p.get("model"):
                     config.setdefault("dehydration", {})["model"] = p["model"]
+            # 策略参数(合并阈值 / max_recall)
+            strategy = rc.get("strategy", {})
+            if strategy.get("merge_threshold") is not None:
+                config["merge_threshold"] = int(strategy["merge_threshold"])
+            if strategy.get("max_recall") is not None:
+                config.setdefault("matching", {})["max_results"] = int(strategy["max_recall"])
     except Exception:
         pass  # runtime config 出问题不影响启动,沉默退化到 env/yaml
 

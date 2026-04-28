@@ -1176,6 +1176,52 @@ async def api_config_set_active(request):
     })
 
 
+@mcp.custom_route("/api/config/strategy", methods=["GET"])
+async def api_config_strategy_get(request):
+    """读取当前生效的策略参数(merge_threshold / max_recall)。"""
+    from starlette.responses import JSONResponse
+    return JSONResponse({
+        "merge_threshold": int(config.get("merge_threshold", 75)),
+        "max_recall": int(config.get("matching", {}).get("max_results", 5)),
+    })
+
+
+@mcp.custom_route("/api/config/strategy", methods=["POST"])
+async def api_config_strategy_set(request):
+    """更新策略参数。body: { merge_threshold?: 0~100, max_recall?: 1~50 }
+    持久化到 runtime_config.json + 内存中 config dict 即时刷新(下次调用就生效)。"""
+    from starlette.responses import JSONResponse
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    rc = _read_runtime_config()
+    strategy = rc.setdefault("strategy", {})
+    if "merge_threshold" in body:
+        try:
+            v = max(0, min(100, int(body["merge_threshold"])))
+            strategy["merge_threshold"] = v
+            config["merge_threshold"] = v
+        except (ValueError, TypeError):
+            return JSONResponse({"error": "merge_threshold 必须是 0-100 整数"}, status_code=400)
+    if "max_recall" in body:
+        try:
+            v = max(1, min(50, int(body["max_recall"])))
+            strategy["max_recall"] = v
+            config.setdefault("matching", {})["max_results"] = v
+            # bucket_mgr 启动时把 max_results 缓存到了实例字段,顺手刷新
+            try: bucket_mgr.max_results = v
+            except Exception: pass
+        except (ValueError, TypeError):
+            return JSONResponse({"error": "max_recall 必须是 1-50 整数"}, status_code=400)
+    _write_runtime_config(rc)
+    return JSONResponse({
+        "ok": True,
+        "merge_threshold": int(config.get("merge_threshold", 75)),
+        "max_recall": int(config.get("matching", {}).get("max_results", 5)),
+    })
+
+
 @mcp.custom_route("/api/config/api/test", methods=["POST"])
 async def api_config_test(request):
     """测试一组配置能否连通。body: {model, base_url, api_key} 直接测;
