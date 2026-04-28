@@ -79,6 +79,8 @@ function ImportWorkbench() {
   // 上传相关
   const [uploading, setUploading] = iwS(false);
   const [importStatus, setImportStatus] = iwS(null);  // 后端 import_engine 状态
+  const importPollRef = iwR(null);                     // 轮询定时器
+  const importDismissedRef = iwR(false);               // 用户主动关掉进度条后不再自动展示
   const [pasteOpen, setPasteOpen] = iwS(false);
   const [pasteText, setPasteText] = iwS('');
   const [pasteName, setPasteName] = iwS('');
@@ -118,6 +120,59 @@ function ImportWorkbench() {
   }, []);
 
   iwE(() => { fetchQueue(); }, [fetchQueue]);
+
+  // ---------- 导入进度轮询 ----------
+  const stopImportPolling = () => {
+    if (importPollRef.current) {
+      clearInterval(importPollRef.current);
+      importPollRef.current = null;
+    }
+  };
+
+  const startImportPolling = () => {
+    if (importPollRef.current) return;  // 已在轮询
+    importDismissedRef.current = false;
+    const tick = async () => {
+      try {
+        const s = await window.__obImportStatus();
+        setImportStatus(s);
+        // 跑着的时候顺手刷队列让新桶实时浮现
+        if (s.status === 'running') {
+          fetchQueue();
+        }
+        if (s.status === 'completed' || s.status === 'error' || s.status === 'idle') {
+          stopImportPolling();
+          fetchQueue();  // 收尾再刷一次
+          // 完成后保留进度条 12 秒让用户看到结果,然后自动收
+          if (s.status === 'completed') {
+            setTimeout(() => {
+              setImportStatus(prev => prev && prev.status === 'completed' ? null : prev);
+            }, 12000);
+          }
+        }
+      } catch (e) {
+        console.warn('[import status] poll fail', e);
+      }
+    };
+    tick();  // 立刻拉一次
+    importPollRef.current = setInterval(tick, 1500);
+  };
+
+  // 页面卸载时停轮询
+  iwE(() => () => stopImportPolling(), []);
+
+  // 启动时若后端正在跑(刷新页面回来),也接上轮询
+  iwE(() => {
+    (async () => {
+      try {
+        const s = await window.__obImportStatus();
+        if (s && (s.status === 'running' || s.status === 'paused')) {
+          setImportStatus(s);
+          startImportPolling();
+        }
+      } catch (e) { /* ignore */ }
+    })();
+  }, []);
 
   // 派生:过滤
   const filtered = iwM(() => {
@@ -432,11 +487,10 @@ function ImportWorkbench() {
     }
     setUploading(false);
     if (succeeded > 0) {
-      const tag = maxChunks > 0 ? `(试跑模式 · 前 ${maxChunks} 块)` : '';
-      setToast({ msg: `已开始解析 ${succeeded} 个文件 ${tag},等几秒会自动刷新` });
-      setTimeout(fetchQueue, 4000);
-      setTimeout(fetchQueue, 12000);
-      setTimeout(() => setToast(null), 6000);
+      const tag = maxChunks > 0 ? ` (试跑 · 前 ${maxChunks} 块)` : '';
+      setToast({ msg: `已开始解析 ${succeeded} 个文件${tag}` });
+      setTimeout(() => setToast(null), 4000);
+      startImportPolling();  // 启动进度轮询,1.5s 一次
     }
   };
 
@@ -445,10 +499,9 @@ function ImportWorkbench() {
     setUploading(true);
     try {
       await window.__obImportPasteText(pasteText, pasteName.trim() || undefined);
-      setToast({ msg: '已开始解析粘贴的内容,等几秒会自动刷新' });
-      setTimeout(fetchQueue, 4000);
-      setTimeout(fetchQueue, 12000);
-      setTimeout(() => setToast(null), 6000);
+      setToast({ msg: '已开始解析粘贴的内容' });
+      setTimeout(() => setToast(null), 3000);
+      startImportPolling();
       setPasteText('');
       setPasteName('');
       setPasteOpen(false);
@@ -642,6 +695,73 @@ function ImportWorkbench() {
           加载失败:{loadError} · <a onClick={fetchQueue} style={{ cursor: 'pointer', textDecoration: 'underline' }}>重试</a>
         </div>
       )}
+
+      {/* 导入进度横幅 — running/paused/error/completed 都显示一会儿 */}
+      {importStatus && importStatus.status !== 'idle' && !importDismissedRef.current && (() => {
+        const s = importStatus;
+        const total = s.total_chunks || 0;
+        const done = s.processed || 0;
+        const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
+        const isRunning = s.status === 'running';
+        const isDone = s.status === 'completed';
+        const isErr = s.status === 'error';
+        const isPaused = s.status === 'paused';
+        const recent = s.recent_extracted || [];
+        const tone = isErr ? '#8B4A4A' : (isDone ? '#5b8a5b' : 'var(--accent)');
+        const bg = isErr ? 'rgba(139,74,74,0.06)' : (isDone ? 'rgba(91,138,91,0.06)' : 'rgba(110,79,154,0.06)');
+        const border = isErr ? 'rgba(139,74,74,0.25)' : (isDone ? 'rgba(91,138,91,0.25)' : 'rgba(110,79,154,0.22)');
+        return (
+          <div style={{ margin: '0 28px 14px', padding: '14px 18px', background: bg, border: '1px solid ' + border, borderRadius: 10, fontSize: 12.5, color: 'var(--ink-2)', position: 'relative' }}>
+            {/* 头:状态 + 计数 + 关闭 */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, fontFamily: 'var(--mono)' }}>
+              <span style={{ color: tone, fontWeight: 600 }}>
+                {isRunning && '⌛ 解析中'}
+                {isPaused && '⏸ 已暂停'}
+                {isDone && '✓ 解析完成'}
+                {isErr && '✕ 解析出错'}
+              </span>
+              <span style={{ color: 'var(--ink-3)' }}>· {done}/{total} 块 · {pct}%</span>
+              <span style={{ color: 'var(--ink-3)' }}>·  新建 {s.memories_created || 0} · 合并 {s.memories_merged || 0}{s.memories_raw ? ' · 原文 ' + s.memories_raw : ''}</span>
+              {isRunning && (
+                <button
+                  onClick={async () => {
+                    try { await fetch('/api/import/pause', { method: 'POST' }); } catch (e) { /* ignore */ }
+                  }}
+                  style={{ marginLeft: 'auto', padding: '3px 10px', fontSize: 11, background: 'transparent', border: '1px solid ' + border, borderRadius: 5, color: tone, cursor: 'pointer', fontFamily: 'var(--mono)' }}
+                >
+                  ⏸ 暂停
+                </button>
+              )}
+              <button
+                onClick={() => { importDismissedRef.current = true; setImportStatus(null); }}
+                style={{ marginLeft: isRunning ? 6 : 'auto', padding: '3px 8px', fontSize: 11, background: 'transparent', border: 'none', color: 'var(--ink-4)', cursor: 'pointer' }}
+                title="关闭"
+              >✕</button>
+            </div>
+            {/* 进度条 */}
+            <div style={{ height: 6, background: 'rgba(0,0,0,0.06)', borderRadius: 3, overflow: 'hidden', marginBottom: 8 }}>
+              <div style={{ width: pct + '%', height: '100%', background: tone, transition: 'width .4s ease' }} />
+            </div>
+            {/* 最近提取(实时看 LLM 在干什么) */}
+            {recent.length > 0 && (
+              <div style={{ fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.7 }}>
+                <span style={{ color: 'var(--ink-4)', marginRight: 6 }}>最近提取:</span>
+                {recent.slice(-3).reverse().map((r, i) => (
+                  <div key={i} style={{ marginLeft: 12, color: 'var(--ink-2)' }}>
+                    <b style={{ color: 'var(--ink)' }}>· {r.name || '(无标题)'}</b>
+                    {r.summary && <span style={{ color: 'var(--ink-3)', marginLeft: 8 }}>{r.summary}</span>}
+                  </div>
+                ))}
+              </div>
+            )}
+            {isErr && s.errors && s.errors.length > 0 && (
+              <div style={{ fontSize: 11, color: '#8B4A4A', marginTop: 6, fontFamily: 'var(--mono)' }}>
+                {s.errors.slice(-1)[0]}
+              </div>
+            )}
+          </div>
+        );
+      })()}
 
       {/* 批次条 */}
       <div className="imp-batchbar">

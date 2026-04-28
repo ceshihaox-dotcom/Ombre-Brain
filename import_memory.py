@@ -275,6 +275,7 @@ class ImportState:
             "status": "idle",  # idle | running | paused | completed | error
             "started_at": "",
             "updated_at": "",
+            "recent_extracted": [],  # 最近 5 条提取的 [{name, summary}],前端进度条实时展示
         }
 
     def load(self) -> bool:
@@ -313,6 +314,7 @@ class ImportState:
             "status": "running",
             "started_at": now_iso(),
             "updated_at": now_iso(),
+            "recent_extracted": [],
         }
 
     @property
@@ -523,6 +525,17 @@ class ImportEngine:
             logger.warning(f"LLM extraction failed: {e}")
             self.state.data["api_calls"] += 1
             return
+
+        # 实时记录最近提取的几条,前端进度条展示用
+        for it in items:
+            recent = self.state.data.setdefault("recent_extracted", [])
+            recent.append({
+                "name": str(it.get("name", ""))[:30],
+                "summary": str(it.get("summary", ""))[:80],
+            })
+            # 只保留最近 5 条,避免 state 文件膨胀
+            if len(recent) > 5:
+                self.state.data["recent_extracted"] = recent[-5:]
 
         if not items:
             return
