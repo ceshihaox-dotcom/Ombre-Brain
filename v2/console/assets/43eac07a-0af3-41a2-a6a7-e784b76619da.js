@@ -84,9 +84,28 @@ function BreathPage({ items }) {
     <main className="oc-main">
       <ConsolePageHd
         title="Breath 模拟"
-        sub={<>记忆唤起的 5 阶段管线 —— 输入 query 与情感坐标，观察候选记忆如何被四维评分、过滤、重排。这里调试到的权重与阈值，会同步影响真实唤起。</>}
+        sub={<>记忆唤起的 5 阶段管线可视化 —— 输入 query 与情感坐标,观察候选记忆如何被四维评分、过滤、重排。</>}
         rightSlot={<div className="ob-page-counter"><b>{items.length}</b> 候选 · <b>{finalList.length}</b> 命中</div>}
       />
+
+      {/* 概念演示提示 — 防止误解为真实行为 */}
+      <div style={{
+        margin: '0 0 14px',
+        padding: '10px 14px',
+        background: 'color-mix(in oklab, #b08040 6%, var(--paper))',
+        border: '0.5px solid color-mix(in oklab, #b08040 35%, var(--line-2))',
+        borderLeft: '2px solid #b08040',
+        borderRadius: 8,
+        display: 'flex', alignItems: 'flex-start', gap: 10,
+        fontSize: 12, lineHeight: 1.6, color: 'var(--ink-2)',
+      }}>
+        <span style={{ color: '#b08040', fontFamily: 'var(--mono)', fontSize: 11, flexShrink: 0, marginTop: 1 }}>⚠ 概念演示</span>
+        <span>
+          此页是 breath 唤起逻辑的<b>可视化教学</b>,使用前端简化模型(4 维加权)。
+          后端真实 breath 走的是 <code style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--ink-3)' }}>BM25 关键词 + embedding 语义</code> 混合检索,
+          调这里的权重和阈值<b style={{ color: '#b08040' }}>不影响真实行为</b>。想看真实唤起结果请用工作台"全库相似"或 breath 工具直接调用。
+        </span>
+      </div>
 
       {/* 管线可视化 */}
       <ConsoleCard>
