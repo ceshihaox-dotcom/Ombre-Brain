@@ -147,6 +147,7 @@ function CellsApp() {
           onClose={() => setOpenItem(null)}
           onNavigate={handleNavigate}
           onOpenItem={(it) => openItemWithBody(it)}
+          onUpdate={handleUpdate}
         />
       )}
 

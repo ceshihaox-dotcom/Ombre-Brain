@@ -64,6 +64,15 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
     setDraft(null);
   };
 
+  const confirmDelete = () => {
+    if (!onUpdate) return;
+    if (!window.confirm(`确定删除「${item.title || '这条记忆'}」吗?\n该操作不可撤销。`)) return;
+    onUpdate(item.id, { __delete: true });
+    setEditing(false);
+    setDraft(null);
+    if (onClose) onClose();
+  };
+
   // 快速 toggle（在查看态下用）
   const toggleField = (key) => {
     if (!onUpdate) return;
@@ -287,6 +296,12 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
           <div className="ob-modal-actions">
             {editing ? (
               <>
+                {onUpdate && (
+                  <>
+                    <button className="ob-modal-btn ob-modal-btn-danger" onClick={confirmDelete} title="删除这条记忆">删除</button>
+                    <span className="ob-modal-actions-sep" aria-hidden="true" />
+                  </>
+                )}
                 <button className="ob-modal-btn" onClick={cancelEdit}>取消</button>
                 <button className="ob-modal-btn ob-modal-btn-primary" onClick={saveEdit}>保存</button>
               </>
