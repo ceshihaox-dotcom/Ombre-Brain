@@ -679,105 +679,39 @@ function ImportWorkbench() {
 
   return (
     <>
-      {/* 顶部拖拽 + 粘贴入口 */}
+      {/* 拖拽区 + 粘贴面板 — Claude Design v3 组件 */}
       <div
-        className={`imp-drop${over ? ' over' : ''}${uploading ? ' uploading' : ''}`}
+        style={{ margin: '0 28px 14px' }}
         onDragOver={(e) => { e.preventDefault(); setOver(true); }}
-        onDragLeave={() => setOver(false)}
+        onDragLeave={(e) => {
+          // 只在真离开外框时关闭(child 内部冒泡的 leave 不触发)
+          if (e.currentTarget.contains(e.relatedTarget)) return;
+          setOver(false);
+        }}
         onDrop={onDrop}
-        onClick={() => fileRef.current?.click()}
-        style={{ cursor: uploading ? 'wait' : 'pointer' }}
       >
-        <div className="imp-drop-mark">⌖</div>
-        <div className="imp-drop-text">
-          <div className="imp-drop-title">
-            {uploading ? '正在上传 — AI 解析中…' : '拖拽文件到此处或点击 —— 自动解析'}
-          </div>
-          <div className="imp-drop-hint">
-            CLAUDE JSON · CHATGPT ZIP · DEEPSEEK · MARKDOWN · TXT
-            <span style={{ marginLeft: 12 }} onClick={(e) => { e.stopPropagation(); setPasteOpen(o => !o); }}>
-              <a style={{ cursor: 'pointer', color: 'var(--accent)' }}>or 粘贴原文 →</a>
-            </span>
-          </div>
-          {/* 试跑模式 — 控成本,只跑前 N 个 chunk */}
-          <div
-            className="imp-drop-sample"
-            onClick={(e) => e.stopPropagation()}
-            style={{ marginTop: 10, fontSize: 11, color: 'var(--ink-3)', display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--mono)' }}
-          >
-            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={sampleMode}
-                onChange={(e) => setSampleMode(e.target.checked)}
-                style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
-              />
-              <span>🧪 试跑模式</span>
-            </label>
-            {sampleMode && (
-              <>
-                <span>· 仅前</span>
-                <input
-                  type="number"
-                  min="1" max="200"
-                  value={sampleChunks}
-                  onChange={(e) => setSampleChunks(e.target.value)}
-                  style={{
-                    width: 50, fontSize: 11, fontFamily: 'var(--mono)',
-                    padding: '2px 6px', border: '0.5px solid var(--line-2)',
-                    borderRadius: 4, background: 'var(--paper)', color: 'var(--ink)',
-                    textAlign: 'center',
-                  }}
-                />
-                <span>个对话块(约 {(parseInt(sampleChunks, 10) || 5) * 12} KB)</span>
-                <span style={{ color: 'var(--ink-4)', marginLeft: 'auto' }}>试水/控成本用</span>
-              </>
-            )}
-          </div>
-        </div>
+        {window.ImportDropZone && React.createElement(window.ImportDropZone, {
+          isOver: over,
+          draggedFiles: null,  // 浏览器 dragover 阶段拿不到文件元数据,松手后才有,组件会回退到"松手即开始解析"
+          tryMode: sampleMode,
+          onTryModeChange: setSampleMode,
+          onPickFiles: () => { if (!uploading) fileRef.current?.click(); },
+          onPasteToggle: () => setPasteOpen(o => !o),
+        })}
         <input ref={fileRef} type="file" multiple style={{ display: 'none' }} onChange={onPickFile} />
-      </div>
 
-      {/* 粘贴原文 — 折叠面板 */}
-      {pasteOpen && (
-        <div style={{
-          margin: '0 28px 14px', padding: '14px 18px',
-          background: 'var(--paper)', border: '1px solid var(--line)', borderRadius: 10,
-          display: 'flex', flexDirection: 'column', gap: 8,
-        }} onClick={(e) => e.stopPropagation()}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-            <span style={{ fontSize: 12, color: 'var(--ink-3)' }}>粘贴原文(任意对话片段 / Markdown / 笔记)</span>
-            <input
-              value={pasteName}
-              onChange={(e) => setPasteName(e.target.value)}
-              placeholder="文件名(可选)"
-              style={{
-                marginLeft: 'auto', flex: '0 1 220px', fontSize: 12,
-                padding: '4px 10px', border: '1px solid var(--line)', borderRadius: 6, background: 'var(--paper)', color: 'var(--ink)',
-              }}
-            />
-            <button onClick={() => setPasteOpen(false)} style={{ background: 'transparent', border: 'none', cursor: 'pointer', color: 'var(--ink-3)' }}>✕</button>
-          </div>
-          <textarea
-            value={pasteText}
-            onChange={(e) => setPasteText(e.target.value)}
-            placeholder="例如:&#10;— 你: ...&#10;— Claude: ...&#10;&#10;直接粘进来,后端会脱水成多条记忆桶。"
-            rows={8}
-            style={{
-              width: '100%', resize: 'vertical', minHeight: 120,
-              padding: 10, border: '1px solid var(--line)', borderRadius: 8,
-              fontFamily: 'var(--mono)', fontSize: 12, lineHeight: 1.6,
-              background: 'var(--paper)', color: 'var(--ink)',
-            }}
-          />
-          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-            <button onClick={() => { setPasteText(''); setPasteName(''); }} style={{ padding: '6px 14px', fontSize: 12, background: 'var(--paper-2)', border: '1px solid var(--line)', borderRadius: 6, cursor: 'pointer', color: 'var(--ink-2)' }}>清空</button>
-            <button onClick={submitPaste} disabled={uploading || !pasteText.trim()} style={{ padding: '6px 14px', fontSize: 12, background: 'var(--accent)', border: '1px solid var(--accent)', borderRadius: 6, cursor: uploading ? 'wait' : 'pointer', color: '#fff' }}>
-              {uploading ? '上传中…' : '开始解析'}
-            </button>
-          </div>
-        </div>
-      )}
+        {window.ImportPasteSheet && React.createElement(window.ImportPasteSheet, {
+          open: pasteOpen,
+          value: pasteText,
+          filename: pasteName,
+          onChange: setPasteText,
+          onFilenameChange: setPasteName,
+          onClose: () => setPasteOpen(false),
+          onOpen: () => setPasteOpen(true),
+          onClear: () => { setPasteText(''); setPasteName(''); },
+          onSubmit: () => submitPaste(),
+        })}
+      </div>
 
       {/* loading / 错误 banner */}
       {loading && (
@@ -791,86 +725,34 @@ function ImportWorkbench() {
         </div>
       )}
 
-      {/* 导入进度横幅 — running/paused/error/completed 都显示一会儿 */}
-      {importStatus && importStatus.status !== 'idle' && !importDismissedRef.current && (() => {
-        const s = importStatus;
-        const total = s.total_chunks || 0;
-        const done = s.processed || 0;
-        const pct = total > 0 ? Math.min(100, Math.round((done / total) * 100)) : 0;
-        const isRunning = s.status === 'running';
-        const isDone = s.status === 'completed';
-        const isErr = s.status === 'error';
-        const isPaused = s.status === 'paused';
-        const recent = s.recent_extracted || [];
-        const tone = isErr ? '#8B4A4A' : (isDone ? '#5b8a5b' : 'var(--accent)');
-        const bg = isErr ? 'rgba(139,74,74,0.06)' : (isDone ? 'rgba(91,138,91,0.06)' : 'rgba(110,79,154,0.06)');
-        const border = isErr ? 'rgba(139,74,74,0.25)' : (isDone ? 'rgba(91,138,91,0.25)' : 'rgba(110,79,154,0.22)');
-        return (
-          <div style={{ margin: '0 28px 14px', padding: '14px 18px', background: bg, border: '1px solid ' + border, borderRadius: 10, fontSize: 12.5, color: 'var(--ink-2)', position: 'relative' }}>
-            {/* 头:状态 + 计数 + 关闭 */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, fontFamily: 'var(--mono)' }}>
-              <span style={{ color: tone, fontWeight: 600 }}>
-                {isRunning && '⌛ 解析中'}
-                {isPaused && '⏸ 已暂停'}
-                {isDone && '✓ 解析完成'}
-                {isErr && '✕ 解析出错'}
-              </span>
-              <span style={{ color: 'var(--ink-3)' }}>· {done}/{total} 块 · {pct}%</span>
-              <span style={{ color: 'var(--ink-3)' }}>·  新建 {s.memories_created || 0} · 合并 {s.memories_merged || 0}{s.memories_raw ? ' · 原文 ' + s.memories_raw : ''}</span>
-              {isRunning && (
-                <button
-                  onClick={async () => {
-                    try { await fetch('/api/import/pause', { method: 'POST' }); } catch (e) { /* ignore */ }
-                  }}
-                  style={{ marginLeft: 'auto', padding: '3px 10px', fontSize: 11, background: 'transparent', border: '1px solid ' + border, borderRadius: 5, color: tone, cursor: 'pointer', fontFamily: 'var(--mono)' }}
-                >
-                  ⏸ 暂停
-                </button>
-              )}
-              <button
-                onClick={() => { importDismissedRef.current = true; setImportStatus(null); }}
-                style={{ marginLeft: isRunning ? 6 : 'auto', padding: '3px 8px', fontSize: 11, background: 'transparent', border: 'none', color: 'var(--ink-4)', cursor: 'pointer' }}
-                title="关闭"
-              >✕</button>
-            </div>
-            {/* 进度条 */}
-            <div style={{ height: 6, background: 'rgba(0,0,0,0.06)', borderRadius: 3, overflow: 'hidden', marginBottom: 8 }}>
-              <div style={{ width: pct + '%', height: '100%', background: tone, transition: 'width .4s ease' }} />
-            </div>
-            {/* 最近提取(实时看 LLM 在干什么) */}
-            {recent.length > 0 && (
-              <div style={{ fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.7 }}>
-                <span style={{ color: 'var(--ink-4)', marginRight: 6 }}>最近提取:</span>
-                {recent.slice(-3).reverse().map((r, i) => (
-                  <div key={i} style={{ marginLeft: 12, color: 'var(--ink-2)' }}>
-                    <b style={{ color: 'var(--ink)' }}>· {r.name || '(无标题)'}</b>
-                    {r.summary && <span style={{ color: 'var(--ink-3)', marginLeft: 8 }}>{r.summary}</span>}
-                  </div>
-                ))}
-              </div>
-            )}
-            {/* LLM 解析失败的诊断:0 提取且有 last_llm_output → 露原文给用户看 */}
-            {recent.length === 0 && s.last_llm_output && s.last_llm_parsed_ok === false && (
-              <div style={{ fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.6, marginTop: 6 }}>
-                <span style={{ color: '#8B4A4A', marginRight: 6 }}>⚠ LLM 输出未解析成功(也可能 LLM 觉得无可提取),原文片段:</span>
-                <pre style={{
-                  marginTop: 4, padding: '6px 8px', maxHeight: 240, overflow: 'auto',
-                  background: 'rgba(0,0,0,0.04)', border: '0.5px solid var(--line-2)', borderRadius: 4,
-                  fontSize: 10.5, fontFamily: 'var(--mono)', color: 'var(--ink-2)',
-                  whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                }}>
-                  {String(s.last_llm_output).slice(0, 3000)}
-                </pre>
-              </div>
-            )}
-            {isErr && s.errors && s.errors.length > 0 && (
-              <div style={{ fontSize: 11, color: '#8B4A4A', marginTop: 6, fontFamily: 'var(--mono)' }}>
-                {s.errors.slice(-1)[0]}
-              </div>
-            )}
-          </div>
-        );
-      })()}
+      {/* 导入进度横幅 — Claude Design v3 组件 */}
+      {importStatus && importStatus.status !== 'idle' && !importDismissedRef.current && window.ImportProgressBanner && (
+        <div style={{ margin: '0 28px 14px' }}>
+          {React.createElement(window.ImportProgressBanner, {
+            state: importStatus,
+            onPause: async () => {
+              try { await fetch('/api/import/pause', { method: 'POST' }); } catch (e) { /* ignore */ }
+            },
+            onResume: () => alert('继续(resume)暂未实装,请重新上传文件继续'),
+            onCancel: () => { importDismissedRef.current = true; setImportStatus(null); stopImportPolling(); },
+            onDismiss: () => { importDismissedRef.current = true; setImportStatus(null); },
+            onRetry: () => alert('重试/跳过此块暂未实装,请重新上传文件'),
+            onCopyLLM: () => {
+              const txt = importStatus.last_llm_output || '';
+              if (!txt) return;
+              if (navigator.clipboard) {
+                navigator.clipboard.writeText(txt).then(
+                  () => setToast({ msg: 'LLM 原文已复制' }),
+                  () => alert('复制失败,可手动选中:\n' + txt.slice(0, 500))
+                );
+              } else {
+                alert(txt.slice(0, 500));
+              }
+              setTimeout(() => setToast(null), 2000);
+            },
+          })}
+        </div>
+      )}
 
       {/* 批次条 */}
       <div className="imp-batchbar">
