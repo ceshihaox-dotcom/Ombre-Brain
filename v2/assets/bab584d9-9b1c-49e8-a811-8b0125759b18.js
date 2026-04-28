@@ -142,36 +142,35 @@ function AppV2() {
   const todayItems = data.filter(it => it.date === TODAY);
   const lastWriteDate = sortedAll[0]?.date;
 
-  // 追踪当前视口最居中的日期 day-block,给 TodayBar "查看今天"按钮决定显示状态:
-  // 看今天 → 按钮淡(不需要);看其他天 → 按钮醒目(一键回今天)
-  const [viewingDate, setViewingDate] = uSA(TODAY);
+  // 今天聚焦模式:点"查看今天"切换 ON/OFF
+  // ON: 今天的 day-block 居中 + 其他天减淡;OFF: 全部正常
+  const [focusToday, setFocusToday] = uSA(false);
+
+  // 注入动态 CSS 实现"非今天减淡"(today selector 含动态日期,纯静态 CSS 写不出来)
   uEA(() => {
-    if (data.length === 0) return;
-    const observer = new IntersectionObserver((entries) => {
-      // 找视口里最居中的可见 day-block
-      const visible = entries.filter(e => e.isIntersecting);
-      if (visible.length === 0) return;
-      const viewportCenter = window.innerHeight / 2;
-      let closest = null;
-      let minDist = Infinity;
-      for (const e of visible) {
-        const rect = e.target.getBoundingClientRect();
-        const blockCenter = rect.top + rect.height / 2;
-        const dist = Math.abs(blockCenter - viewportCenter);
-        if (dist < minDist) { minDist = dist; closest = e.target; }
-      }
-      if (closest) {
-        const label = closest.getAttribute('data-screen-label') || '';
-        const date = label.startsWith('day-') ? label.slice(4) : '';
-        if (date) setViewingDate(date);
-      }
-    }, { threshold: [0, 0.25, 0.5, 0.75, 1], rootMargin: '-10% 0px -50% 0px' });
-    // 等下一帧 DOM 渲染好再 observe
-    const tm = setTimeout(() => {
-      document.querySelectorAll('[data-screen-label^="day-"]').forEach(el => observer.observe(el));
-    }, 100);
-    return () => { clearTimeout(tm); observer.disconnect(); };
-  }, [data.length]);
+    let style = document.getElementById('ob-focus-style');
+    if (!style) {
+      style = document.createElement('style');
+      style.id = 'ob-focus-style';
+      document.head.appendChild(style);
+    }
+    if (focusToday) {
+      style.textContent = `
+        [data-screen-label^="day-"] {
+          opacity: 0.22;
+          filter: grayscale(0.4);
+          transition: opacity .35s ease, filter .35s ease;
+        }
+        [data-screen-label="day-${TODAY}"] {
+          opacity: 1 !important;
+          filter: none !important;
+        }
+      `;
+    } else {
+      style.textContent = '';
+    }
+    return () => { if (style) style.textContent = ''; };
+  }, [focusToday]);
 
   const handleSave = async (entry) => {
     try {
@@ -211,8 +210,18 @@ function AppV2() {
   };
 
   const jumpToToday = () => {
-    const el = document.querySelector(`[data-screen-label="day-${TODAY}"]`);
-    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    // 切换聚焦模式;如果将要进入 ON,就 scroll 今天到视口中心
+    setFocusToday(prev => {
+      const next = !prev;
+      if (next) {
+        // 等下一帧让 className 先生效再 scroll,避免动画跳跃
+        setTimeout(() => {
+          const el = document.querySelector(`[data-screen-label="day-${TODAY}"]`);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 30);
+      }
+      return next;
+    });
   };
 
   const jumpToItem = (it) => {
@@ -253,7 +262,7 @@ function AppV2() {
           todayItems={todayItems}
           lastWriteDate={lastWriteDate}
           todayDate={TODAY}
-          viewingDate={viewingDate}
+          focusToday={focusToday}
           onWrite={() => setWriteOpen(true)}
           onJumpToday={jumpToToday}
         />
