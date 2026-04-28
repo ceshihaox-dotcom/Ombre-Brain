@@ -137,7 +137,7 @@ function CellRow({
       </div>
 
       <div className="ob-cell-sum">
-        {item.summary || (item.body ? item.body.slice(0, 80) : '（无摘要）')}
+        {(item.body || item.preview || '').slice(0, 80) || '（暂无内容）'}
       </div>
 
       <ImpDot value={item.importance} />
@@ -180,7 +180,7 @@ function CardCell({ item, todayDate, selected, isFlash, onOpen, onToggleSelect, 
       <div className={`ob-card-cell-title ${untitled ? 'untitled' : ''}`}>
         {untitled ? `《未命名 · 写于 ${relTime(item.date, item.time, todayDate)}》` : item.title}
       </div>
-      <div className="ob-card-cell-sum">{item.summary || (item.body || '').slice(0, 200)}</div>
+      <div className="ob-card-cell-sum">{(item.body || item.preview || '').slice(0, 200)}</div>
       <div className="ob-card-cell-foot">
         <span>{item.date}</span>
         <span className={`ob-card-cell-imp ${isHi ? 'hi' : ''}`}>{item.importance.toFixed(1)}</span>
