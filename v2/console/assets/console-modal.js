@@ -33,27 +33,29 @@ function cmFormatDate(d) {
 function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate, mode, onReroll, rerollLoading, commitLoading, mergeHeader }) {
   // mode === 'merge' → 强制 editing,footer 显示"取消/↻重做/✓接受合并",隐藏导航/删除
   const isMerge = mode === 'merge';
+  const buildDraft = (it) => ({
+    title: it?.title || '',
+    summary: it?.summary || '',
+    body: it?.body || '',
+    date: it?.date || '',
+    time: it?.time || '',
+    importance: it?.importance || 5,
+    tags: [...(it?.tags || [])],
+    protected: !!it?.protected,
+    pinned: !!it?.pinned,
+    feel: !!it?.feel,
+    highlight: !!it?.highlight,
+    internalized: !!it?.internalized,
+  });
   const [editing, setEditing] = cmS(isMerge);
-  const [draft, setDraft] = cmS(isMerge ? null : null);
+  // 首帧懒初始化:merge 模式直接把 draft 填好,避免 view=null 解引用炸白屏
+  const [draft, setDraft] = cmS(() => isMerge && item ? buildDraft(item) : null);
 
   cmE(() => {
     if (isMerge) {
-      // merge 模式:每次 item 变都重置 draft 用新合并结果填回
+      // merge 模式:reroll 后 item 变 → 用新合并结果重置 draft
       setEditing(true);
-      setDraft({
-        title: item?.title || '',
-        summary: item?.summary || '',
-        body: item?.body || '',
-        date: item?.date || '',
-        time: item?.time || '',
-        importance: item?.importance || 5,
-        tags: [...(item?.tags || [])],
-        protected: !!item?.protected,
-        pinned: !!item?.pinned,
-        feel: !!item?.feel,
-        highlight: !!item?.highlight,
-        internalized: !!item?.internalized,
-      });
+      setDraft(buildDraft(item));
       return;
     }
     setEditing(false);
@@ -137,7 +139,8 @@ function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate, mode,
   const hasNext = idx < sorted.length - 1;
 
   const f = cmFormatDate(item.date || '');
-  const view = editing ? draft : item;
+  // editing 但 draft 还没建好(merge 模式首帧)→ 退到 item 防 null 解引用炸
+  const view = (editing && draft) ? draft : item;
   const isHi = view.importance >= 8 || view.highlight;
   const cells = Array.from({ length: 10 }, (_, i) => i < view.importance);
 
