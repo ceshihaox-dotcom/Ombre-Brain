@@ -578,10 +578,10 @@ function ImportWorkbench() {
     }
   };
 
-  // 不入库 — 物理删除
+  // 不入库 — 软删除(移到回收站,可恢复)
   const deleteItem = async () => {
     if (!active) return;
-    if (!confirm(`删除 "${active.title}"?此操作不可撤销,会从记忆库永久移除。`)) return;
+    if (!confirm(`不入库「${active.title}」?\n移到回收站,可在 /v2/console/trash/ 恢复。`)) return;
     try {
       await window.__obDeleteBucket(activeId);
     } catch (e) {

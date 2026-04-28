@@ -68,7 +68,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
 
   const confirmDelete = () => {
     if (!onUpdate) return;
-    if (!window.confirm(`确定删除「${item.title || '这条记忆'}」吗?\n该操作不可撤销。`)) return;
+    if (!window.confirm(`删除「${item.title || '这条记忆'}」?\n移到回收站,可在 /v2/console/trash/ 恢复。`)) return;
     onUpdate(item.id, { __delete: true });
     setEditing(false);
     setDraft(null);

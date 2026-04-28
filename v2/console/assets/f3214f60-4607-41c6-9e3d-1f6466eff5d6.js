@@ -38,9 +38,7 @@ function ConsoleTopBar({ stats, dark, onDark, search, setSearch }) {
 }
 
 // ── 二级导航 tab ──
-function ConsoleNav({ active }) {
-  // 网络 tab 已被独立 constellation 取代,这里不再展示
-  // 内部 tab 改用路径路由(避免浏览器 hash autocomplete 把 hash 改回 #config 的诡异行为)
+function ConsoleNav({ active, trashCount = 0 }) {
   const tabs = [
     { id: 'cells',     label: '记忆格 v2',  href: '/v2/cells/' },
     { id: 'timeline',  label: '时间线 v2',  href: '/v2/' },
@@ -48,6 +46,7 @@ function ConsoleNav({ active }) {
     { id: 'breath',    label: 'Breath 模拟', href: '/v2/console/breath/' },
     { id: 'config',    label: '配置',       href: '/v2/console/config/' },
     { id: 'import',    label: '导入',       href: '/v2/console/import/' },
+    { id: 'trash',     label: '回收站',     href: '/v2/console/trash/' },
   ];
   return (
     <nav className="ob-nav">
@@ -58,6 +57,14 @@ function ConsoleNav({ active }) {
           className={active === t.id ? 'on' : ''}
         >
           {t.label}
+          {t.id === 'trash' && trashCount > 0 && (
+            <span style={{
+              marginLeft: 5, fontSize: 9.5, fontFamily: 'var(--mono)',
+              padding: '1px 5px', borderRadius: 8,
+              background: 'color-mix(in oklab, var(--accent) 18%, var(--paper))',
+              color: 'var(--accent)',
+            }}>{trashCount}</span>
+          )}
         </a>
       ))}
     </nav>

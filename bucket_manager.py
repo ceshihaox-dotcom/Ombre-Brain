@@ -61,6 +61,7 @@ class BucketManager:
         self.dynamic_dir = os.path.join(self.base_dir, "dynamic")
         self.archive_dir = os.path.join(self.base_dir, "archive")
         self.feel_dir = os.path.join(self.base_dir, "feel")
+        self.trash_dir = os.path.join(self.base_dir, "trash")  # 软删除目录(回收站),可 restore
         self.fuzzy_threshold = config.get("matching", {}).get("fuzzy_threshold", 50)
         self.max_results = config.get("matching", {}).get("max_results", 5)
 
@@ -410,21 +411,119 @@ class BucketManager:
     # ---------------------------------------------------------
     async def delete(self, bucket_id: str) -> bool:
         """
-        Delete a memory bucket file.
-        删除指定的记忆桶文件。
+        Soft-delete: 移到 trash/ 目录(可在回收站恢复),保留 metadata.original_type
+        防止 restore 时丢失原本类型(permanent/dynamic/feel)。
+        历史(2026-04-28):之前是 os.remove() 物理删,误删无法恢复;改为软删 +
+        新加 purge() 走真删。
         """
         file_path = self._find_bucket_file(bucket_id)
         if not file_path:
             return False
 
         try:
-            os.remove(file_path)
-        except OSError as e:
-            logger.error(f"Failed to delete bucket file / 删除桶文件失败: {file_path}: {e}")
+            post = frontmatter.load(file_path)
+            domain = post.get("domain", ["未分类"])
+            primary_domain = sanitize_name(domain[0]) if domain else "未分类"
+            trash_subdir = os.path.join(self.trash_dir, primary_domain)
+            os.makedirs(trash_subdir, exist_ok=True)
+            dest = safe_path(trash_subdir, os.path.basename(file_path))
+
+            # 记下 restore 时要恢复的原 type(默认 dynamic)
+            original_type = post.get("type", "dynamic")
+            if original_type != "trashed":
+                post["original_type"] = original_type
+            post["type"] = "trashed"
+            post["trashed_at"] = now_iso()
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(frontmatter.dumps(post))
+            shutil.move(file_path, str(dest))
+        except Exception as e:
+            logger.error(f"Failed to soft-delete bucket / 软删除桶失败: {bucket_id}: {e}")
             return False
 
-        logger.info(f"Deleted bucket / 删除记忆桶: {bucket_id}")
+        logger.info(f"Soft-deleted bucket / 移到回收站: {bucket_id} → trash/{primary_domain}/")
         return True
+
+    # ---------------------------------------------------------
+    # Restore: 从回收站移回原 type 目录
+    # ---------------------------------------------------------
+    async def restore(self, bucket_id: str) -> bool:
+        file_path = self._find_bucket_file(bucket_id)
+        if not file_path:
+            return False
+        if not os.path.normpath(file_path).startswith(os.path.normpath(self.trash_dir)):
+            logger.warning(f"restore: bucket {bucket_id} 不在 trash 里,跳过")
+            return False
+        try:
+            post = frontmatter.load(file_path)
+            original_type = post.get("original_type", "dynamic")
+            domain = post.get("domain", ["未分类"])
+            primary_domain = sanitize_name(domain[0]) if domain else "未分类"
+
+            if original_type == "permanent":
+                target_dir = self.permanent_dir
+            elif original_type == "feel":
+                target_dir = self.feel_dir
+                primary_domain = "沉淀物"  # feel 子目录固定
+            elif original_type == "archived":
+                target_dir = self.archive_dir
+            else:
+                target_dir = self.dynamic_dir
+                original_type = "dynamic"
+
+            dest_subdir = os.path.join(target_dir, primary_domain)
+            os.makedirs(dest_subdir, exist_ok=True)
+            dest = safe_path(dest_subdir, os.path.basename(file_path))
+
+            post["type"] = original_type
+            # 清掉 trash 元数据
+            for k in ("original_type", "trashed_at"):
+                try:
+                    if k in post:
+                        del post[k]
+                except Exception:
+                    pass
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(frontmatter.dumps(post))
+            shutil.move(file_path, str(dest))
+        except Exception as e:
+            logger.error(f"Failed to restore bucket / 恢复桶失败: {bucket_id}: {e}")
+            return False
+        logger.info(f"Restored bucket / 从回收站恢复: {bucket_id} → {original_type}/{primary_domain}/")
+        return True
+
+    # ---------------------------------------------------------
+    # Purge: 真物理删除(回收站里点"永久删除")
+    # ---------------------------------------------------------
+    async def purge(self, bucket_id: str) -> bool:
+        file_path = self._find_bucket_file(bucket_id)
+        if not file_path:
+            return False
+        try:
+            os.remove(file_path)
+        except OSError as e:
+            logger.error(f"Failed to purge bucket file / 物理删除桶失败: {file_path}: {e}")
+            return False
+        logger.info(f"Purged bucket / 物理删除记忆桶: {bucket_id}")
+        return True
+
+    # ---------------------------------------------------------
+    # List trash: 列回收站里所有桶
+    # ---------------------------------------------------------
+    async def list_trash(self) -> list[dict]:
+        buckets = []
+        if not os.path.exists(self.trash_dir):
+            return buckets
+        for root, _, files in os.walk(self.trash_dir):
+            for fname in files:
+                if not fname.endswith(".md"):
+                    continue
+                bucket = self._load_bucket(os.path.join(root, fname))
+                if bucket:
+                    buckets.append(bucket)
+        # 按 trashed_at 倒序
+        buckets.sort(key=lambda b: b.get("metadata", {}).get("trashed_at", ""), reverse=True)
+        return buckets
 
     # ---------------------------------------------------------
     # Touch bucket (refresh activation time + increment count)
@@ -846,16 +945,14 @@ class BucketManager:
         """
         if not bucket_id:
             return None
-        for dir_path in [self.permanent_dir, self.dynamic_dir, self.archive_dir, self.feel_dir]:
+        for dir_path in [self.permanent_dir, self.dynamic_dir, self.archive_dir, self.feel_dir, self.trash_dir]:
             if not os.path.exists(dir_path):
                 continue
             for root, _, files in os.walk(dir_path):
                 for fname in files:
                     if not fname.endswith(".md"):
                         continue
-                    # Match by exact ID segment in filename
-                    # 通过文件名中的 ID 片段精确匹配
-                    name_part = fname[:-3]  # remove .md
+                    name_part = fname[:-3]
                     if name_part == bucket_id or name_part.endswith(f"_{bucket_id}"):
                         return os.path.join(root, fname)
         return None

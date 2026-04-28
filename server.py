@@ -1600,7 +1600,8 @@ async def api_bucket_archive(request):
 
 @mcp.custom_route("/api/bucket/{bucket_id}/delete", methods=["POST"])
 async def api_bucket_delete(request):
-    """物理删除一条桶。dashboard 编辑模态框的"删除"按钮调用。不可撤销。"""
+    """软删除:移到回收站(可在 /v2/trash/ 恢复)。embedding 不动,搜索时
+    被 trash type 自然过滤。要真删调 /purge。"""
     from starlette.responses import JSONResponse
     bucket_id = request.path_params["bucket_id"]
     bucket = await bucket_mgr.get(bucket_id)
@@ -1609,13 +1610,74 @@ async def api_bucket_delete(request):
     success = await bucket_mgr.delete(bucket_id)
     if not success:
         return JSONResponse({"error": "delete failed"}, status_code=500)
-    # 顺手清掉 embedding,避免 SQLite 残留
+    return JSONResponse({"ok": True, "id": bucket_id, "soft_deleted": True})
+
+
+@mcp.custom_route("/api/bucket/{bucket_id}/restore", methods=["POST"])
+async def api_bucket_restore(request):
+    """从回收站恢复:把桶从 trash 移回原 type 目录。"""
+    from starlette.responses import JSONResponse
+    bucket_id = request.path_params["bucket_id"]
+    bucket = await bucket_mgr.get(bucket_id)
+    if not bucket:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    success = await bucket_mgr.restore(bucket_id)
+    if not success:
+        return JSONResponse({"error": "restore failed (可能不在回收站)"}, status_code=400)
+    return JSONResponse({"ok": True, "id": bucket_id, "restored": True})
+
+
+@mcp.custom_route("/api/bucket/{bucket_id}/purge", methods=["POST"])
+async def api_bucket_purge(request):
+    """永久删除:物理删文件 + 清 embedding。不可撤销。
+    通常只从回收站界面调用(经过二次确认)。"""
+    from starlette.responses import JSONResponse
+    bucket_id = request.path_params["bucket_id"]
+    bucket = await bucket_mgr.get(bucket_id)
+    if not bucket:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    success = await bucket_mgr.purge(bucket_id)
+    if not success:
+        return JSONResponse({"error": "purge failed"}, status_code=500)
     if embedding_engine:
         try:
             embedding_engine.delete_embedding(bucket_id)
         except Exception:
             pass
-    return JSONResponse({"ok": True, "id": bucket_id, "deleted": True})
+    return JSONResponse({"ok": True, "id": bucket_id, "purged": True})
+
+
+@mcp.custom_route("/api/trash", methods=["GET"])
+async def api_trash_list(request):
+    """列回收站所有桶。返回 mock 兼容形态(content_preview / summary 等)。"""
+    from starlette.responses import JSONResponse
+    try:
+        trashed = await bucket_mgr.list_trash()
+        result = []
+        for b in trashed:
+            meta = b.get("metadata", {})
+            result.append({
+                "id": b["id"],
+                "name": meta.get("name", b["id"]),
+                "type": meta.get("type", "trashed"),
+                "original_type": meta.get("original_type", "dynamic"),
+                "domain": meta.get("domain", []),
+                "tags": meta.get("tags", []),
+                "valence": meta.get("valence", 0.5),
+                "arousal": meta.get("arousal", 0.3),
+                "importance": meta.get("importance", 5),
+                "protected": is_protected(meta),
+                "highlight": is_highlighted(meta),
+                "internalized": is_internalized(meta),
+                "event_time": meta.get("event_time", ""),
+                "created": meta.get("created", ""),
+                "trashed_at": meta.get("trashed_at", ""),
+                "summary": meta.get("summary", ""),
+                "content_preview": strip_wikilinks(b.get("content", ""))[:200],
+            })
+        return JSONResponse({"trash": result, "count": len(result)})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
 
 
 @mcp.custom_route("/api/bucket/{bucket_id}/unarchive", methods=["POST"])
@@ -2002,7 +2064,7 @@ def _serve_v2(rel_path: str):
     if abs_path.startswith(console_base) and not os.path.exists(abs_path):
         # 看是不是 /v2/console/{tab}/ 或 /v2/console/{tab}
         tail = abs_path[len(console_base):].lstrip(os.sep).rstrip(os.sep).replace("\\", "/")
-        if tail in ("breath", "config", "import"):
+        if tail in ("breath", "config", "import", "trash"):
             if not rel_path.endswith("/"):
                 return RedirectResponse(url="/v2/console/" + tail + "/", status_code=301)
             abs_path = os.path.join(console_base, "index.html")
