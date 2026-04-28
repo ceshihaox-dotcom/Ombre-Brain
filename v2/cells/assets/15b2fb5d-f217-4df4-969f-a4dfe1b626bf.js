@@ -2,7 +2,11 @@
 
 const { useState: uSA, useEffect: uEA, useMemo: uMA, useRef: uRA } = React;
 
-const TODAY = '2026-04-26';
+const TODAY = (() => {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+})();
 const NOW = '23:30';
 
 function TopBarV2({ dark, onDark, compact, data }) {
