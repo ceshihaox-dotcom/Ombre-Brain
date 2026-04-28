@@ -196,7 +196,14 @@ function ImportWorkbench() {
     try {
       const r = await fetch('/api/bucket/' + encodeURIComponent(active.id) + '/redehydrate', { method: 'POST' });
       const data = await r.json();
-      if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+      if (!r.ok) {
+        // 422 通常是 LLM 输出解析失败 —— 把原文打到 console 方便排查
+        if (data.raw_output) {
+          console.warn('[redehydrate] LLM 原始输出:', data.raw_output);
+        }
+        const snippet = data.raw_output ? '\n\nLLM 原文片段(已打到 console):\n' + String(data.raw_output).slice(0, 200) : '';
+        throw new Error((data.error || ('HTTP ' + r.status)) + snippet);
+      }
       // 把新元数据合到本地 queue,隐藏状态 tag 保留
       setQueue(qs => qs.map(q => q.id === active.id ? {
         ...q,
@@ -206,11 +213,13 @@ function ImportWorkbench() {
           ? data.new_meta.tags.concat((q.tags || []).filter(t => String(t).startsWith('__')))
           : q.tags,
       } : q));
-      setToast({ msg: '重新脱水完成' });
-      setTimeout(() => setToast(null), 2400);
+      const applied = (data.applied || []).join('/');
+      setToast({ msg: `重新脱水完成 · 已更新: ${applied || '无字段'}` });
+      setTimeout(() => setToast(null), 3200);
     } catch (e) {
-      setToast({ msg: '重新脱水失败: ' + e.message });
-      setTimeout(() => setToast(null), 4000);
+      console.error('[redehydrate] failed', e);
+      alert('重新脱水失败:\n' + e.message);  // 用 alert 而不是 toast,因为可能很长
+      setToast(null);
     } finally {
       setRedehydrating(null);
     }

@@ -1152,6 +1152,18 @@ async def api_bucket_redehydrate(request):
         new_meta = await dehydrator.redehydrate(content)
     except RuntimeError as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+    # 抠出诊断字段
+    raw_output = new_meta.pop("_raw_output", "")
+    parse_ok = new_meta.pop("_parse_ok", True)
+    # parse 失败或 LLM 没产出关键字段 → 不写盘,把原始输出回传让前端能看到 LLM 到底说了什么
+    has_meaningful = bool(new_meta.get("name") or new_meta.get("summary") or new_meta.get("tags"))
+    if not parse_ok or not has_meaningful:
+        return JSONResponse({
+            "error": "LLM 输出无法解析或为空" if not parse_ok else "LLM 没产出有效字段",
+            "raw_output": raw_output[:1500],
+            "parse_ok": parse_ok,
+            "new_meta": new_meta,
+        }, status_code=422)
     # 写回 bucket(只覆盖这次产出的字段;importance/event_time/状态 flag 全保留)
     update_kwargs = {k: v for k, v in new_meta.items() if v not in (None, "", [])}
     if update_kwargs:
@@ -1165,6 +1177,7 @@ async def api_bucket_redehydrate(request):
         "id": bucket_id,
         "applied": sorted(update_kwargs.keys()),
         "new_meta": new_meta,
+        "raw_output": raw_output[:500],  # 成功时也带上,前端可选展示
         "metadata": fresh.get("metadata", {}) if fresh else {},
     })
 

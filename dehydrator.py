@@ -667,10 +667,11 @@ class Dehydrator:
     async def redehydrate(self, content: str) -> dict:
         """
         Re-extract name + summary + tags + domain + valence + arousal from existing bucket content.
-        Returns: {"name", "summary", "domain", "valence", "arousal", "tags"}
+        Returns: {"name", "summary", "domain", "valence", "arousal", "tags", "_raw_output", "_parse_ok"}
+        _raw_output / _parse_ok 用于诊断:LLM 原文 + 是否成功解析为 JSON
         """
         if not content or not content.strip():
-            return self._default_redehydrate()
+            return {**self._default_redehydrate(), "_raw_output": "", "_parse_ok": False}
         if not self.api_available:
             raise RuntimeError("脱水 API 不可用,请配置 OMBRE_API_KEY")
         try:
@@ -684,11 +685,45 @@ class Dehydrator:
                 temperature=0.2,
             )
             if not response.choices:
-                return self._default_redehydrate()
+                logger.warning(f"redehydrate: LLM returned no choices for bucket")
+                return {**self._default_redehydrate(), "_raw_output": "(no choices)", "_parse_ok": False}
             raw = response.choices[0].message.content or ""
-            return self._parse_redehydrate(raw)
+            logger.info(f"redehydrate raw output: {raw[:400]}")  # 关键诊断日志
+            parsed, ok = self._parse_redehydrate_v2(raw)
+            return {**parsed, "_raw_output": raw, "_parse_ok": ok}
         except Exception as e:
             raise RuntimeError(f"重新脱水失败: {e}") from e
+
+    def _parse_redehydrate_v2(self, raw: str) -> tuple[dict, bool]:
+        """返回 (parsed_dict, parse_ok)。比旧版 _parse_redehydrate 多一个成功标志。"""
+        try:
+            cleaned = raw.strip()
+            # 处理多种 markdown 包装
+            if cleaned.startswith("```json"):
+                cleaned = cleaned[7:].strip()
+            elif cleaned.startswith("```"):
+                cleaned = cleaned[3:].strip()
+            if cleaned.endswith("```"):
+                cleaned = cleaned[:-3].strip()
+            result = json.loads(cleaned)
+        except (json.JSONDecodeError, IndexError, ValueError) as e:
+            logger.warning(f"Redehydrate JSON parse failed: {e}; raw snippet: {raw[:200]}")
+            return self._default_redehydrate(), False
+        if not isinstance(result, dict):
+            return self._default_redehydrate(), False
+        try:
+            valence = max(0.0, min(1.0, float(result.get("valence", 0.5))))
+            arousal = max(0.0, min(1.0, float(result.get("arousal", 0.3))))
+        except (ValueError, TypeError):
+            valence, arousal = 0.5, 0.3
+        return {
+            "name": str(result.get("name", ""))[:20],
+            "summary": str(result.get("summary", ""))[:200],
+            "domain": result.get("domain", ["未分类"])[:3],
+            "valence": valence,
+            "arousal": arousal,
+            "tags": [str(t) for t in result.get("tags", [])][:15],
+        }, True
 
     def _parse_redehydrate(self, raw: str) -> dict:
         try:
