@@ -88,6 +88,8 @@ function ImportWorkbench() {
   // 全库相似 cache(key=bucket_id)
   const [similarCache, setSimilarCache] = iwS({});
   const [similarLoading, setSimilarLoading] = iwS(false);
+  // 全库相似过滤:只显示已精修(隐藏待办/存疑/无状态),处理大量待办时避免合并俩半成品
+  const [simShowRefinedOnly, setSimShowRefinedOnly] = iwS(false);
 
   // 全库相似"查看"打开的完整 modal
   const [previewItem, setPreviewItem] = iwS(null);
@@ -1241,42 +1243,96 @@ function ImportWorkbench() {
               )}
 
               {/* 全库相似(后端 embedding) */}
-              <div className="imp-aside-card">
-                <div className="imp-aside-title">
-                  全库相似 {similarLoading && <span style={{ opacity: 0.5, fontSize: 11 }}>· 加载中</span>}
-                  {!similarLoading && fullSimilar.length > 0 && <span style={{ opacity: 0.7 }}> · {fullSimilar.length}</span>}
-                </div>
-                <div className="imp-aside-body" style={{ marginTop: 4 }}>
-                  {fullSimilar.length === 0 && !similarLoading && (
-                    <div style={{ fontSize: 11, color: 'var(--ink-4)', fontStyle: 'italic' }}>
-                      暂无显著相似(可能是 embedding 还没生成,或全库都不相似)
+              {(() => {
+                // 给每条算 status(用同一个 statusOf,接受后端透出的 tags)
+                const enriched = fullSimilar.map(s => ({ ...s, _status: statusOf({ tags: s.tags || [] }) }));
+                const visible = simShowRefinedOnly ? enriched.filter(s => s._status === 'refined') : enriched;
+                const hiddenCount = enriched.length - visible.length;
+                return (
+                  <div className="imp-aside-card">
+                    <div className="imp-aside-title" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                      <span>
+                        全库相似
+                        {similarLoading && <span style={{ opacity: 0.5, fontSize: 11 }}> · 加载中</span>}
+                        {!similarLoading && enriched.length > 0 && (
+                          <span style={{ opacity: 0.7 }}> · {visible.length}{hiddenCount > 0 ? `/${enriched.length}` : ''}</span>
+                        )}
+                      </span>
+                      {enriched.length > 0 && (
+                        <label
+                          style={{
+                            marginLeft: 'auto', display: 'inline-flex', alignItems: 'center',
+                            gap: 4, fontSize: 10.5, color: 'var(--ink-3)', fontFamily: 'var(--mono)',
+                            cursor: 'pointer', userSelect: 'none',
+                          }}
+                          title="勾上后只看已精修的目标桶,避免合并两个待办半成品"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={simShowRefinedOnly}
+                            onChange={(e) => setSimShowRefinedOnly(e.target.checked)}
+                            style={{ accentColor: 'var(--accent)', cursor: 'pointer', margin: 0 }}
+                          />
+                          <span>只看已精修</span>
+                        </label>
+                      )}
                     </div>
-                  )}
-                  {fullSimilar.map((s) => (
-                    <div
-                      key={s.id}
-                      className="imp-sim-item"
-                      onMouseEnter={(e) => onSimEnter(e, s, false)}
-                      onMouseLeave={onSimLeave}
-                    >
-                      <div className="imp-sim-hd">
-                        <div className="imp-sim-title">{s.name}</div>
-                        <div className="imp-sim-score">{Math.round(s.score * 100)}%</div>
-                      </div>
-                      <div className="imp-sim-hint">{s.summary?.slice(0, 60)}…{s.date && ' · ' + s.date}</div>
-                      <div className="imp-sim-actions">
-                        <button
-                          className="imp-sim-act"
-                          onClick={() => startMerge(s)}
-                          disabled={mergeLoading}
-                          title="把当前条目合并到这条相似的老桶里(LLM 整合内容,删 A 保 B)"
-                        >合并</button>
-                        <button className="imp-sim-act" onClick={() => openSimPreview(s)}>查看</button>
-                      </div>
+                    <div className="imp-aside-body" style={{ marginTop: 4 }}>
+                      {enriched.length === 0 && !similarLoading && (
+                        <div style={{ fontSize: 11, color: 'var(--ink-4)', fontStyle: 'italic' }}>
+                          暂无显著相似(可能是 embedding 还没生成,或全库都不相似)
+                        </div>
+                      )}
+                      {enriched.length > 0 && visible.length === 0 && !similarLoading && (
+                        <div style={{ fontSize: 11, color: 'var(--ink-4)', fontStyle: 'italic' }}>
+                          已精修的相似项为空。{hiddenCount} 条相似还在待办/存疑,取消勾选查看。
+                        </div>
+                      )}
+                      {visible.map((s) => {
+                        const st = s._status;
+                        const stLabel = st === 'refined' ? '✓ 已精修' : st === 'flagged' ? '⚑ 存疑' : '⌛ 待办';
+                        const stColor = st === 'refined' ? '#5b8a5b' : st === 'flagged' ? '#b08040' : 'var(--ink-3)';
+                        const stBg = st === 'refined' ? 'rgba(91,138,91,0.10)' : st === 'flagged' ? 'rgba(176,128,64,0.10)' : 'rgba(0,0,0,0.04)';
+                        return (
+                          <div
+                            key={s.id}
+                            className="imp-sim-item"
+                            onMouseEnter={(e) => onSimEnter(e, s, false)}
+                            onMouseLeave={onSimLeave}
+                          >
+                            <div className="imp-sim-hd">
+                              <div className="imp-sim-title">{s.name}</div>
+                              <div className="imp-sim-score">{Math.round(s.score * 100)}%</div>
+                            </div>
+                            <div className="imp-sim-hint" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                              <span
+                                style={{
+                                  fontSize: 10, fontFamily: 'var(--mono)',
+                                  padding: '1px 6px', borderRadius: 3,
+                                  background: stBg, color: stColor,
+                                  letterSpacing: '0.02em', flexShrink: 0,
+                                }}
+                              >{stLabel}</span>
+                              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {s.summary?.slice(0, 60)}…{s.date && ' · ' + s.date}
+                              </span>
+                            </div>
+                            <div className="imp-sim-actions">
+                              <button
+                                className="imp-sim-act"
+                                onClick={() => startMerge(s)}
+                                disabled={mergeLoading}
+                                title={st !== 'refined' ? '注意:这条还是待办/存疑,合并后会一起进入 B' : '把当前条目合并到这条相似的老桶里'}
+                              >合并</button>
+                              <button className="imp-sim-act" onClick={() => openSimPreview(s)}>查看</button>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  ))}
-                </div>
-              </div>
+                  </div>
+                );
+              })()}
 
               {/* 摘要由来 / 标签理由 / 重要度推算 — 后端没存,留位 */}
               {active.aiReasons?.summary && (

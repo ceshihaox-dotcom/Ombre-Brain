@@ -1478,6 +1478,7 @@ async def api_bucket_similar(request):
             "date": (meta.get("event_time") or meta.get("created") or "")[:10],
             "summary": meta.get("summary") or (b.get("content") or "")[:120],
             "type": meta.get("type", "dynamic"),
+            "tags": meta.get("tags", []) or [],  # 前端 statusOf 用,判断 pending/refined/flagged
         })
     scored.sort(key=lambda x: x["score"], reverse=True)
     return JSONResponse({"similar": scored[:max(1, n)]})
