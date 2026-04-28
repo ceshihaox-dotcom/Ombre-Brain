@@ -68,6 +68,8 @@ function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate }) {
       title: item.title,
       summary: item.summary || '',
       body: item.body || '',
+      date: item.date || '',
+      time: item.time || '',
       importance: item.importance,
       tags: [...(item.tags || [])],
       protected: !!item.protected,
@@ -162,9 +164,29 @@ function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate }) {
           )}
 
           <div className="ob-modal-sub">
-            <span><b>{f.y}-{f.m}-{f.day}</b> · {f.wk}</span>
-            <span className="ob-modal-sub-sep">·</span>
-            <span style={{ fontFamily: 'var(--mono)' }}>{item.time || '--:--'}</span>
+            {editing ? (
+              <>
+                <input
+                  type="date"
+                  className="ob-modal-edit-when"
+                  value={draft.date}
+                  onChange={(e) => setDraft(d => ({ ...d, date: e.target.value }))}
+                />
+                <span className="ob-modal-sub-sep">·</span>
+                <input
+                  type="time"
+                  className="ob-modal-edit-when"
+                  value={draft.time}
+                  onChange={(e) => setDraft(d => ({ ...d, time: e.target.value }))}
+                />
+              </>
+            ) : (
+              <>
+                <span><b>{f.y}-{f.m}-{f.day}</b> · {f.wk}</span>
+                <span className="ob-modal-sub-sep">·</span>
+                <span style={{ fontFamily: 'var(--mono)' }}>{item.time || '--:--'}</span>
+              </>
+            )}
             <span className="ob-modal-sub-sep">·</span>
             {editing ? (
               <span className="ob-modal-imp-bar">

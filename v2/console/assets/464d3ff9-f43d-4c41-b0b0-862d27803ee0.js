@@ -818,24 +818,43 @@ function ImportWorkbench() {
                 </div>
                 <div className="imp-attr-row">
                   <div className="imp-attr-key">事件时间</div>
-                  <input
-                    type="date"
-                    value={(active.timeHint || '').slice(0, 10)}
-                    onChange={(e) => {
-                      const dateOnly = e.target.value;  // YYYY-MM-DD
-                      // 保留原时间(如有)拼成 ISO
-                      const oldTime = (active.timeHint || '').slice(11, 16) || '00:00';
-                      const eventTime = dateOnly ? (dateOnly + 'T' + oldTime + ':00') : '';
-                      setQueue(qs => qs.map(q => q.id === activeId ? { ...q, timeHint: dateOnly + (oldTime ? ' ' + oldTime : '') } : q));
-                      window.__obUpdateBucket(activeId, { event_time: eventTime || null }).catch(e => alert('保存失败:' + e.message));
-                    }}
-                    style={{
-                      flex: 1, padding: '6px 10px',
-                      border: '1px solid var(--line)', borderRadius: 6,
-                      background: 'var(--paper)', color: 'var(--ink)',
-                      fontFamily: 'inherit', fontSize: 12,
-                    }}
-                  />
+                  <div style={{ flex: 1, display: 'flex', gap: 6 }}>
+                    <input
+                      type="date"
+                      value={(active.timeHint || '').slice(0, 10)}
+                      onChange={(e) => {
+                        const dateOnly = e.target.value;  // YYYY-MM-DD
+                        const oldTime = (active.timeHint || '').slice(11, 16) || '';
+                        const eventTime = dateOnly ? (dateOnly + 'T' + (oldTime || '00:00') + ':00') : '';
+                        setQueue(qs => qs.map(q => q.id === activeId ? { ...q, timeHint: dateOnly + (oldTime ? ' ' + oldTime : '') } : q));
+                        window.__obUpdateBucket(activeId, { event_time: eventTime || null }).catch(err => alert('保存失败:' + err.message));
+                      }}
+                      style={{
+                        flex: 2, padding: '6px 10px',
+                        border: '1px solid var(--line)', borderRadius: 6,
+                        background: 'var(--paper)', color: 'var(--ink)',
+                        fontFamily: 'inherit', fontSize: 12,
+                      }}
+                    />
+                    <input
+                      type="time"
+                      value={(active.timeHint || '').slice(11, 16)}
+                      onChange={(e) => {
+                        const timeOnly = e.target.value;  // HH:MM
+                        const dateOnly = (active.timeHint || '').slice(0, 10);
+                        if (!dateOnly) return;  // 没日期就先别改时间
+                        const eventTime = dateOnly + 'T' + (timeOnly || '00:00') + ':00';
+                        setQueue(qs => qs.map(q => q.id === activeId ? { ...q, timeHint: dateOnly + (timeOnly ? ' ' + timeOnly : '') } : q));
+                        window.__obUpdateBucket(activeId, { event_time: eventTime }).catch(err => alert('保存失败:' + err.message));
+                      }}
+                      style={{
+                        flex: 1, padding: '6px 10px',
+                        border: '1px solid var(--line)', borderRadius: 6,
+                        background: 'var(--paper)', color: 'var(--ink)',
+                        fontFamily: 'inherit', fontSize: 12,
+                      }}
+                    />
+                  </div>
                 </div>
                 <div className="imp-attr-row">
                   <div className="imp-attr-key">状态</div>

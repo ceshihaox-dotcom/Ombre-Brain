@@ -92,6 +92,14 @@
     if (patch.protected != null) body.protected = !!patch.protected;
     if (patch.highlight != null) body.highlight = !!patch.highlight;
     if (patch.internalized != null) body.internalized = !!patch.internalized;
+    // event_time:patch 里的 date/time 组装成 ISO,空 → 后端会清掉 metadata.event_time
+    if (patch.event_time != null) {
+      body.event_time = patch.event_time;
+    } else if (patch.date != null || patch.time != null) {
+      var d = patch.date || '';
+      var t = patch.time || '';
+      body.event_time = d ? (t ? d + 'T' + t + ':00' : d) : '';
+    }
     // feel 在 ombre-brain 是 type 字段(feel / dynamic),update 端点未暴露 type 切换 — 暂跳过
     var r = await fetch('/api/bucket/' + encodeURIComponent(id) + '/update', {
       method: 'POST',
