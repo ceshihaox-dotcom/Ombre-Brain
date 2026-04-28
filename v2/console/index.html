@@ -4000,6 +4000,17 @@ body {
 .ob-modal-edit-when:focus { outline: none; border-color: var(--accent); background: var(--paper-2); }
 [data-theme="dark"] .ob-modal-edit-when::-webkit-calendar-picker-indicator { filter: invert(0.8); }
 
+/* 全库相似列表:鼠标滚轮可滚,但完全隐藏滚动条 */
+.imp-sim-scroll {
+  scrollbar-width: none;             /* Firefox */
+  -ms-overflow-style: none;          /* IE/Edge */
+}
+.imp-sim-scroll::-webkit-scrollbar {  /* Chromium/Safari */
+  width: 0;
+  height: 0;
+  display: none;
+}
+
 /* ===== 合并预览 · 原文对比面板(Claude Design) ===== */
 .ob-merge-cmp-wrap {
   margin: 4px 0 2px;
