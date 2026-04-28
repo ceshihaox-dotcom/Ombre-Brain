@@ -709,7 +709,7 @@ function ImportWorkbench() {
                     autoFocus
                     value={active.summary}
                     onChange={(e) => setQueue(qs => qs.map(q => q.id === activeId ? { ...q, summary: e.target.value } : q))}
-                    onBlur={() => setEditing(null)}
+                    onBlur={() => { updateActive({ summary: active.summary }); setEditing(null); }}
                   />
                 ) : (active.summary || <span style={{ color: 'var(--ink-4)' }}>(无摘要,正文首段会作为摘要)</span>)}
               </div>
