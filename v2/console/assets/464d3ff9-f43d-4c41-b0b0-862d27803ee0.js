@@ -229,10 +229,10 @@ function ImportWorkbench() {
         } : q));
       }).catch(e => console.warn('detail load fail', e));
     }
-    // 全库相似(异步,不阻塞 UI)
+    // 全库相似(异步,不阻塞 UI),拉 20 条让用户在隐藏滚动条里浏览
     if (!similarCache[active.id]) {
       setSimilarLoading(true);
-      window.__obFetchSimilar(active.id, 5).then(sim => {
+      window.__obFetchSimilar(active.id, 20).then(sim => {
         setSimilarCache(c => ({ ...c, [active.id]: sim }));
         setSimilarLoading(false);
       }).catch(e => {
@@ -1244,40 +1244,45 @@ function ImportWorkbench() {
 
               {/* 全库相似(后端 embedding) */}
               {(() => {
-                // 给每条算 status(用同一个 statusOf,接受后端透出的 tags)
                 const enriched = fullSimilar.map(s => ({ ...s, _status: statusOf({ tags: s.tags || [] }) }));
                 const visible = simShowRefinedOnly ? enriched.filter(s => s._status === 'refined') : enriched;
                 const hiddenCount = enriched.length - visible.length;
+                // 状态点配色:待办无点(默认),已精修绿,存疑橙
+                const dotColor = (st) => st === 'refined' ? '#5b8a5b' : st === 'flagged' ? '#b08040' : null;
+                const dotTitle = (st) => st === 'refined' ? '已精修' : st === 'flagged' ? '存疑' : '待办';
                 return (
                   <div className="imp-aside-card">
-                    <div className="imp-aside-title" style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                    <div className="imp-aside-title" style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span>
                         全库相似
                         {similarLoading && <span style={{ opacity: 0.5, fontSize: 11 }}> · 加载中</span>}
                         {!similarLoading && enriched.length > 0 && (
-                          <span style={{ opacity: 0.7 }}> · {visible.length}{hiddenCount > 0 ? `/${enriched.length}` : ''}</span>
+                          <span style={{ opacity: 0.7 }}> · {visible.length}{hiddenCount > 0 && simShowRefinedOnly ? `/${enriched.length}` : ''}</span>
                         )}
                       </span>
                       {enriched.length > 0 && (
-                        <label
+                        <button
+                          type="button"
+                          onClick={() => setSimShowRefinedOnly(v => !v)}
+                          title="只看已精修的目标桶,避免合并两个待办半成品"
                           style={{
-                            marginLeft: 'auto', display: 'inline-flex', alignItems: 'center',
-                            gap: 4, fontSize: 10.5, color: 'var(--ink-3)', fontFamily: 'var(--mono)',
-                            cursor: 'pointer', userSelect: 'none',
+                            marginLeft: 'auto',
+                            padding: '2px 8px',
+                            fontSize: 10, fontFamily: 'var(--mono)',
+                            letterSpacing: '0.04em',
+                            background: simShowRefinedOnly ? 'color-mix(in oklab, var(--accent) 12%, var(--paper))' : 'transparent',
+                            color: simShowRefinedOnly ? 'var(--accent)' : 'var(--ink-3)',
+                            border: '0.5px solid ' + (simShowRefinedOnly ? 'var(--accent)' : 'var(--line-2)'),
+                            borderRadius: 10, cursor: 'pointer',
+                            transition: 'all 120ms ease',
                           }}
-                          title="勾上后只看已精修的目标桶,避免合并两个待办半成品"
-                        >
-                          <input
-                            type="checkbox"
-                            checked={simShowRefinedOnly}
-                            onChange={(e) => setSimShowRefinedOnly(e.target.checked)}
-                            style={{ accentColor: 'var(--accent)', cursor: 'pointer', margin: 0 }}
-                          />
-                          <span>只看已精修</span>
-                        </label>
+                        >仅已精修</button>
                       )}
                     </div>
-                    <div className="imp-aside-body" style={{ marginTop: 4 }}>
+                    <div
+                      className="imp-aside-body imp-sim-scroll"
+                      style={{ marginTop: 4, maxHeight: '52vh', overflowY: 'auto' }}
+                    >
                       {enriched.length === 0 && !similarLoading && (
                         <div style={{ fontSize: 11, color: 'var(--ink-4)', fontStyle: 'italic' }}>
                           暂无显著相似(可能是 embedding 还没生成,或全库都不相似)
@@ -1289,10 +1294,7 @@ function ImportWorkbench() {
                         </div>
                       )}
                       {visible.map((s) => {
-                        const st = s._status;
-                        const stLabel = st === 'refined' ? '✓ 已精修' : st === 'flagged' ? '⚑ 存疑' : '⌛ 待办';
-                        const stColor = st === 'refined' ? '#5b8a5b' : st === 'flagged' ? '#b08040' : 'var(--ink-3)';
-                        const stBg = st === 'refined' ? 'rgba(91,138,91,0.10)' : st === 'flagged' ? 'rgba(176,128,64,0.10)' : 'rgba(0,0,0,0.04)';
+                        const dc = dotColor(s._status);
                         return (
                           <div
                             key={s.id}
@@ -1301,28 +1303,28 @@ function ImportWorkbench() {
                             onMouseLeave={onSimLeave}
                           >
                             <div className="imp-sim-hd">
-                              <div className="imp-sim-title">{s.name}</div>
+                              <div className="imp-sim-title" style={{ display: 'flex', alignItems: 'center', gap: 6, minWidth: 0 }}>
+                                {dc && (
+                                  <span
+                                    title={dotTitle(s._status)}
+                                    style={{
+                                      width: 6, height: 6, borderRadius: '50%',
+                                      background: dc, flexShrink: 0,
+                                      boxShadow: '0 0 0 1.5px ' + (s._status === 'refined' ? 'rgba(91,138,91,0.18)' : 'rgba(176,128,64,0.18)'),
+                                    }}
+                                  />
+                                )}
+                                <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.name}</span>
+                              </div>
                               <div className="imp-sim-score">{Math.round(s.score * 100)}%</div>
                             </div>
-                            <div className="imp-sim-hint" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                              <span
-                                style={{
-                                  fontSize: 10, fontFamily: 'var(--mono)',
-                                  padding: '1px 6px', borderRadius: 3,
-                                  background: stBg, color: stColor,
-                                  letterSpacing: '0.02em', flexShrink: 0,
-                                }}
-                              >{stLabel}</span>
-                              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                                {s.summary?.slice(0, 60)}…{s.date && ' · ' + s.date}
-                              </span>
-                            </div>
+                            <div className="imp-sim-hint">{s.summary?.slice(0, 60)}…{s.date && ' · ' + s.date}</div>
                             <div className="imp-sim-actions">
                               <button
                                 className="imp-sim-act"
                                 onClick={() => startMerge(s)}
                                 disabled={mergeLoading}
-                                title={st !== 'refined' ? '注意:这条还是待办/存疑,合并后会一起进入 B' : '把当前条目合并到这条相似的老桶里'}
+                                title={s._status !== 'refined' ? '注意:这条还是待办/存疑,合并后会一起进入 B' : '把当前条目合并到这条相似的老桶里'}
                               >合并</button>
                               <button className="imp-sim-act" onClick={() => openSimPreview(s)}>查看</button>
                             </div>
