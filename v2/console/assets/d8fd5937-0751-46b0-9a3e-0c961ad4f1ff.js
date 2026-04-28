@@ -443,19 +443,91 @@ function ConfigPage() {
         })()}
       </ConsoleCard>
 
+      {/* 向量化 Embedding */}
+      <ConsoleCard label="向量化 Embedding" sub="为每条记忆生成稠密向量,用于语义检索与相似聚合。">
+        <div className="oc-field">
+          <div className="oc-field-label">启用</div>
+          <span style={{ fontSize: 12, color: 'var(--ink-2)', fontFamily: 'var(--mono)' }}>
+            ✓ 已开启 · 新写入会自动 embed
+          </span>
+        </div>
+        <div className="oc-field">
+          <div className="oc-field-label">Model</div>
+          <code style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-2)' }}>gemini-embedding-001</code>
+        </div>
+        <div className="oc-field">
+          <div className="oc-field-label">来源</div>
+          <code style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--ink-3)' }}>
+            OMBRE_EMBED_API_KEY · OMBRE_EMBED_BASE_URL (env)
+          </code>
+        </div>
+        <div className="oc-field-help" style={{ paddingLeft: 126, marginTop: -4, color: 'var(--ink-4)', fontSize: 11 }}>
+          embedding 不常切(免费层够用),目前从环境变量读;后续按需加运行时切换
+        </div>
+      </ConsoleCard>
+
+      {/* 回忆与合并策略 */}
+      <ConsoleCard label="回忆 / 合并策略" sub={<>如何唤起与合并相似记忆 · <span style={{ color: 'var(--ink-4)', fontFamily: 'var(--mono)', fontSize: 10.5 }}>只读 · 待实装写入</span></>}>
+        <div className="oc-field">
+          <div className="oc-field-label">合并阈值</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <input type="range" min={0} max={100} step={1} value={75} disabled className="oc-slider" style={{ flex: 1, opacity: 0.5 }} />
+            <code style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-2)' }}>75</code>
+          </div>
+        </div>
+        <div className="oc-field-help" style={{ paddingLeft: 126, marginTop: -8, color: 'var(--ink-4)', fontSize: 11 }}>
+          0–100 · 越高越严格(少合并),越低越松(频繁合并) · 当前由 config.yaml 控制
+        </div>
+        <div className="oc-field">
+          <div className="oc-field-label">夜间合并窗口</div>
+          <code style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-3)' }}>暂未实装</code>
+        </div>
+        <div className="oc-field">
+          <div className="oc-field-label">Max Recall</div>
+          <code style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-3)' }}>暂未实装</code>
+        </div>
+        <div className="oc-field">
+          <div className="oc-field-label">钉决策略</div>
+          <code style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-2)' }}>仅手动钉决</code>
+        </div>
+        <div className="oc-field">
+          <div className="oc-field-label">自动内化</div>
+          <code style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-3)' }}>暂未实装</code>
+        </div>
+      </ConsoleCard>
+
+      {/* LLM 调用参数 */}
+      <ConsoleCard label="LLM 调用参数" sub={<>脱水/合并/打标的 token 与温度 · <span style={{ color: 'var(--ink-4)', fontFamily: 'var(--mono)', fontSize: 10.5 }}>只读 · 待实装写入</span></>}>
+        <div className="oc-field">
+          <div className="oc-field-label">Max Tokens</div>
+          <code style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-2)' }}>1024 (默认)</code>
+        </div>
+        <div className="oc-field-help" style={{ paddingLeft: 126, marginTop: -4, color: 'var(--ink-4)', fontSize: 11 }}>
+          注:导入用 4096+,redehydrate 用 2048+,代码内已硬编码,这里改不动
+        </div>
+        <div className="oc-field">
+          <div className="oc-field-label">Temperature</div>
+          <code style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-2)' }}>0.1 (脱水) / 0.0 (导入) / 0.2 (redehydrate)</code>
+        </div>
+      </ConsoleCard>
+
       {/* 系统信息 */}
       <ConsoleCard label="系统信息" sub="只读 · 用于诊断">
         <div className="oc-field">
-          <div className="oc-field-label">Embedding</div>
-          <code style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-2)' }}>
-            走独立的 OMBRE_EMBED_API_KEY / OMBRE_EMBED_BASE_URL,不在此切
+          <div className="oc-field-label">配置加载链</div>
+          <code style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--ink-2)' }}>
+            runtime_config.json → env vars → config.yaml → 默认
           </code>
         </div>
         <div className="oc-field">
-          <div className="oc-field-label">配置文件</div>
-          <code style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-2)' }}>
-            runtime_config.json (持久盘) · config.yaml (启动) · 环境变量 (兜底)
+          <div className="oc-field-label">runtime 文件</div>
+          <code style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--ink-2)' }}>
+            {`{buckets_dir}/runtime_config.json`}
           </code>
+        </div>
+        <div className="oc-field">
+          <div className="oc-field-label">Transport</div>
+          <code style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'var(--ink-2)' }}>streamable-http</code>
         </div>
       </ConsoleCard>
     </main>
