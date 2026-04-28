@@ -82,6 +82,14 @@
     return r.json();
   };
 
+  // 全库语义相似(embedding cosine) — modal "可能关联"区用
+  window.__obFetchSimilar = async function (id, n) {
+    var r = await fetch('/api/bucket/' + encodeURIComponent(id) + '/similar?n=' + (n || 5));
+    if (!r.ok) throw new Error('GET /similar ' + r.status);
+    var d = await r.json();
+    return d.similar || [];
+  };
+
   // 更新桶 — ItemModal save / 快速 toggle 走这里
   window.__obUpdateBucket = async function (id, patch) {
     var body = {};
