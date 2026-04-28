@@ -148,11 +148,13 @@
     return r.json();
   };
 
-  // 上传文件
-  window.__obImportFile = async function (file) {
+  // 上传文件;maxChunks > 0 → sample 模式,只跑前 N 个 chunk(试水/控成本)
+  window.__obImportFile = async function (file, maxChunks) {
     var fd = new FormData();
     fd.append('file', file, file.name);
-    var r = await fetch('/api/import/upload?preserve_raw=1', { method: 'POST', body: fd });
+    var url = '/api/import/upload?preserve_raw=1';
+    if (maxChunks && maxChunks > 0) url += '&max_chunks=' + maxChunks;
+    var r = await fetch(url, { method: 'POST', body: fd });
     if (!r.ok) throw new Error('上传失败:' + (await r.text()));
     return r.json();
   };

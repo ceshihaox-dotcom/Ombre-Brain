@@ -93,6 +93,10 @@ function ImportWorkbench() {
   // 重新脱水中的 bucket id(避免重复点)
   const [redehydrating, setRedehydrating] = iwS(null);
 
+  // 试跑模式:导入时只跑前 N 个 chunk(控成本)
+  const [sampleMode, setSampleMode] = iwS(false);
+  const [sampleChunks, setSampleChunks] = iwS(5);
+
   // hover 详情卡:hover 相似项时弹出
   const [hoverItem, setHoverItem] = iwS(null);
   const [hoverPos, setHoverPos] = iwS({ x: 0, y: 0 });
@@ -411,11 +415,16 @@ function ImportWorkbench() {
   // ---------- 上传 ----------
   const handleFiles = async (files) => {
     if (!files || !files.length) return;
+    const maxChunks = sampleMode ? Math.max(1, parseInt(sampleChunks, 10) || 5) : 0;
+    if (sampleMode) {
+      const ok = window.confirm(`试跑模式开启:每个文件只解析前 ${maxChunks} 个对话块(约 ${maxChunks * 12} KB)。\n用于试水,看效果和实际花费再决定要不要全量。\n继续?`);
+      if (!ok) return;
+    }
     setUploading(true);
     let succeeded = 0;
     for (const f of files) {
       try {
-        await window.__obImportFile(f);
+        await window.__obImportFile(f, maxChunks);
         succeeded++;
       } catch (e) {
         alert(`上传 ${f.name} 失败:` + e.message);
@@ -423,8 +432,8 @@ function ImportWorkbench() {
     }
     setUploading(false);
     if (succeeded > 0) {
-      setToast({ msg: `已开始解析 ${succeeded} 个文件,等几秒会自动刷新` });
-      // 后台解析需要时间,延迟拉两次
+      const tag = maxChunks > 0 ? `(试跑模式 · 前 ${maxChunks} 块)` : '';
+      setToast({ msg: `已开始解析 ${succeeded} 个文件 ${tag},等几秒会自动刷新` });
       setTimeout(fetchQueue, 4000);
       setTimeout(fetchQueue, 12000);
       setTimeout(() => setToast(null), 6000);
@@ -541,6 +550,41 @@ function ImportWorkbench() {
             <span style={{ marginLeft: 12 }} onClick={(e) => { e.stopPropagation(); setPasteOpen(o => !o); }}>
               <a style={{ cursor: 'pointer', color: 'var(--accent)' }}>or 粘贴原文 →</a>
             </span>
+          </div>
+          {/* 试跑模式 — 控成本,只跑前 N 个 chunk */}
+          <div
+            className="imp-drop-sample"
+            onClick={(e) => e.stopPropagation()}
+            style={{ marginTop: 10, fontSize: 11, color: 'var(--ink-3)', display: 'flex', alignItems: 'center', gap: 8, fontFamily: 'var(--mono)' }}
+          >
+            <label style={{ display: 'inline-flex', alignItems: 'center', gap: 5, cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={sampleMode}
+                onChange={(e) => setSampleMode(e.target.checked)}
+                style={{ accentColor: 'var(--accent)', cursor: 'pointer' }}
+              />
+              <span>🧪 试跑模式</span>
+            </label>
+            {sampleMode && (
+              <>
+                <span>· 仅前</span>
+                <input
+                  type="number"
+                  min="1" max="200"
+                  value={sampleChunks}
+                  onChange={(e) => setSampleChunks(e.target.value)}
+                  style={{
+                    width: 50, fontSize: 11, fontFamily: 'var(--mono)',
+                    padding: '2px 6px', border: '0.5px solid var(--line-2)',
+                    borderRadius: 4, background: 'var(--paper)', color: 'var(--ink)',
+                    textAlign: 'center',
+                  }}
+                />
+                <span>个对话块(约 {(parseInt(sampleChunks, 10) || 5) * 12} KB)</span>
+                <span style={{ color: 'var(--ink-4)', marginLeft: 'auto' }}>试水/控成本用</span>
+              </>
+            )}
           </div>
         </div>
         <input ref={fileRef} type="file" multiple style={{ display: 'none' }} onChange={onPickFile} />

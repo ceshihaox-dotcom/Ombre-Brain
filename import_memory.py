@@ -421,6 +421,7 @@ class ImportEngine:
         filename: str = "",
         preserve_raw: bool = False,
         resume: bool = False,
+        max_chunks: int = 0,
     ) -> dict:
         """
         Start or resume an import.
@@ -458,6 +459,11 @@ class ImportEngine:
             if not self._chunks:
                 self._running = False
                 return {"error": "No processable chunks after splitting"}
+
+            # Sample mode: 只跑前 N 个 chunk(试水/控制成本用)
+            if max_chunks and max_chunks > 0 and max_chunks < len(self._chunks):
+                logger.info(f"Sample mode: limiting to first {max_chunks}/{len(self._chunks)} chunks")
+                self._chunks = self._chunks[:max_chunks]
 
             self.state.reset(filename, source_hash, len(self._chunks))
             self.state.save()
