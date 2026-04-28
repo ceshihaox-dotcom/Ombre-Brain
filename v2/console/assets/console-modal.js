@@ -30,6 +30,53 @@ function cmFormatDate(d) {
   return { y, m, day, wk, dt };
 }
 
+// 合并预览专用:可折叠的 A 原文 / B 原文 / 合并结果 三栏对比(Claude Design 出品)
+function MergeComparePanel({ aName, bName, aContent, bContent, mergedContent }) {
+  const [open, setOpen] = cmS(false);
+  const aLen = (aContent || '').length;
+  const bLen = (bContent || '').length;
+  const mLen = (mergedContent || '').length;
+  const segments = [
+    { key: 'a', label: 'A · 原文', name: aName, len: aLen, content: aContent, role: 'a' },
+    { key: 'b', label: 'B · 原文 · 目标桶', name: bName, len: bLen, content: bContent, role: 'b' },
+    { key: 'm', label: '合并结果 · LLM', name: null, len: mLen, content: mergedContent, role: 'merged' },
+  ];
+  return (
+    <div className="ob-merge-cmp-wrap">
+      <button
+        type="button"
+        className={`ob-merge-cmp-trigger ${open ? 'is-open' : ''}`}
+        onClick={() => setOpen(o => !o)}
+      >
+        <span className="ob-merge-cmp-caret">{open ? '▾' : '▸'}</span>
+        <span className="ob-merge-cmp-trigger-label">
+          {open ? '收起原文对比' : '展开原文对比'}
+        </span>
+        <span className="ob-merge-cmp-counts">
+          A {aLen} · B {bLen} · 合并 {mLen} 字
+        </span>
+      </button>
+      {open && (
+        <div className="ob-merge-cmp-body">
+          {segments.map((seg) => (
+            <div key={seg.key} className={`ob-merge-cmp-seg ob-merge-cmp-seg--${seg.role}`}>
+              <div className="ob-merge-cmp-bar">
+                <span className="ob-merge-cmp-bar-tag">{seg.label}</span>
+                {seg.name && <span className="ob-merge-cmp-bar-name">「{seg.name}」</span>}
+                <span className="ob-merge-cmp-bar-spacer" />
+                <span className="ob-merge-cmp-bar-len">{seg.len} 字</span>
+              </div>
+              <div className="ob-merge-cmp-content">
+                {seg.content || <span className="ob-merge-cmp-empty">(空)</span>}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate, mode, onReroll, rerollLoading, commitLoading, mergeHeader }) {
   // mode === 'merge' → 强制 editing,footer 显示"取消/↻重做/✓接受合并",隐藏导航/删除
   const isMerge = mode === 'merge';
@@ -270,6 +317,16 @@ function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate, mode,
 
           {editing ? (
             <>
+              {/* 仅 merge 模式 + 有 a_content/b_content 数据时,在正文上方插原文对比折叠面板 */}
+              {isMerge && mergeHeader && mergeHeader.aContent != null && (
+                <MergeComparePanel
+                  aName={mergeHeader.aName}
+                  bName={mergeHeader.bName}
+                  aContent={mergeHeader.aContent}
+                  bContent={mergeHeader.bContent}
+                  mergedContent={draft.body}
+                />
+              )}
               <div className="ob-modal-section">正文</div>
               <textarea
                 className="ob-modal-edit-body"

@@ -4000,6 +4000,139 @@ body {
 .ob-modal-edit-when:focus { outline: none; border-color: var(--accent); background: var(--paper-2); }
 [data-theme="dark"] .ob-modal-edit-when::-webkit-calendar-picker-indicator { filter: invert(0.8); }
 
+/* ===== 合并预览 · 原文对比面板(Claude Design) ===== */
+.ob-merge-cmp-wrap {
+  margin: 4px 0 2px;
+  font-family: var(--sans);
+}
+.ob-merge-cmp-trigger {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  color: var(--ink-2);
+  font-family: var(--sans);
+  font-size: 12px;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+.ob-merge-cmp-trigger:hover {
+  border-color: var(--line-2);
+  color: var(--ink);
+}
+.ob-merge-cmp-trigger.is-open {
+  border-color: var(--line-2);
+  color: var(--ink);
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-color: transparent;
+}
+.ob-merge-cmp-caret {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  width: 10px;
+  text-align: center;
+}
+.ob-merge-cmp-trigger-label {
+  font-family: var(--serif);
+  font-size: 13px;
+  letter-spacing: 0.01em;
+}
+.ob-merge-cmp-counts {
+  margin-left: auto;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  letter-spacing: 0.02em;
+}
+.ob-merge-cmp-body {
+  border: 1px solid var(--line-2);
+  border-top: none;
+  border-bottom-left-radius: 4px;
+  border-bottom-right-radius: 4px;
+  background: var(--paper);
+  overflow: hidden;
+}
+.ob-merge-cmp-seg + .ob-merge-cmp-seg {
+  border-top: 1px solid var(--line);
+}
+.ob-merge-cmp-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.04em;
+  color: var(--ink-3);
+  border-bottom: 1px dashed var(--line);
+}
+.ob-merge-cmp-bar-tag {
+  text-transform: uppercase;
+  color: var(--ink-2);
+}
+.ob-merge-cmp-bar-name {
+  font-family: var(--serif);
+  font-size: 12px;
+  letter-spacing: 0;
+  color: var(--ink-2);
+  text-transform: none;
+}
+.ob-merge-cmp-bar-spacer { flex: 1; }
+.ob-merge-cmp-bar-len { color: var(--ink-4); }
+.ob-merge-cmp-seg--a .ob-merge-cmp-bar {
+  background: color-mix(in oklab, var(--paper-2) 70%, var(--paper));
+}
+.ob-merge-cmp-seg--b .ob-merge-cmp-bar {
+  background: color-mix(in oklab, var(--paper-2) 100%, transparent);
+}
+.ob-merge-cmp-seg--merged {
+  position: relative;
+  box-shadow: inset 2px 0 0 var(--accent);
+}
+.ob-merge-cmp-seg--merged .ob-merge-cmp-bar {
+  background: color-mix(in oklab, var(--accent) 5%, var(--paper));
+  color: var(--ink-2);
+}
+.ob-merge-cmp-seg--merged .ob-merge-cmp-bar-tag {
+  color: var(--accent);
+}
+.ob-merge-cmp-seg--merged .ob-merge-cmp-bar-tag::before {
+  content: "● ";
+  color: var(--accent);
+  font-size: 9px;
+  vertical-align: 1px;
+  margin-right: 2px;
+}
+.ob-merge-cmp-content {
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 12px 14px;
+  font-family: var(--serif);
+  font-size: 13.5px;
+  line-height: 1.78;
+  color: var(--ink);
+  white-space: pre-wrap;
+  word-break: break-word;
+  text-wrap: pretty;
+}
+.ob-merge-cmp-content::-webkit-scrollbar { width: 6px; }
+.ob-merge-cmp-content::-webkit-scrollbar-thumb {
+  background: var(--line-2);
+  border-radius: 3px;
+}
+.ob-merge-cmp-empty {
+  color: var(--ink-4);
+  font-style: italic;
+  font-family: var(--sans);
+  font-size: 12px;
+}
+
 /* 上一条 / 下一条 浮动按钮 */
 .ob-modal-nav {
   position: absolute;

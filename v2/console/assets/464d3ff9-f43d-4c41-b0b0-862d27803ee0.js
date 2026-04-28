@@ -1388,7 +1388,12 @@ function ImportWorkbench() {
         },
         allItems: [],
         mode: 'merge',
-        mergeHeader: { aName: mergePreview.a.name, bName: mergePreview.b.name },
+        mergeHeader: {
+          aName: mergePreview.a.name,
+          bName: mergePreview.b.name,
+          aContent: mergePreview.a_content || '',
+          bContent: mergePreview.b_content || '',
+        },
         rerollLoading: mergeLoading,
         commitLoading: mergeLoading,
         onClose: () => { if (!mergeLoading) setMergePreview(null); },
