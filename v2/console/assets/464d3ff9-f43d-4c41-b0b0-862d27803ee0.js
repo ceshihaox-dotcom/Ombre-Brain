@@ -106,15 +106,16 @@ function ImportWorkbench() {
   const hoverTimerRef = iwR(null);
 
   // ---------- 拉真实数据 ----------
-  const fetchQueue = iwC(async () => {
+  const fetchQueue = iwC(async (opts = {}) => {
     try {
-      setLoadError(null);
+      if (!opts.silent) setLoadError(null);
       const rows = await window.__obImportResults(100);
       setQueue(rows.map(bucketToItem));
       setLoading(false);
     } catch (e) {
       console.error('[import-workbench] load failed', e);
-      setLoadError(e.message || String(e));
+      // 静默模式(轮询触发):只在 console 报错,不弹红色 banner
+      if (!opts.silent) setLoadError(e.message || String(e));
       setLoading(false);
     }
   }, []);
@@ -136,13 +137,13 @@ function ImportWorkbench() {
       try {
         const s = await window.__obImportStatus();
         setImportStatus(s);
-        // 跑着的时候顺手刷队列让新桶实时浮现
+        // 跑着的时候顺手刷队列让新桶实时浮现(silent:502 时别弹红 banner)
         if (s.status === 'running') {
-          fetchQueue();
+          fetchQueue({ silent: true });
         }
         if (s.status === 'completed' || s.status === 'error' || s.status === 'idle') {
           stopImportPolling();
-          fetchQueue();
+          fetchQueue({ silent: true });
           // 完成后:有产出才自动收(12 秒);0 产出 / 解析失败 → 一直挂着等用户手动关
           const hasOutput = (s.memories_created || 0) + (s.memories_merged || 0) + (s.memories_raw || 0) > 0;
           if (s.status === 'completed' && hasOutput && s.last_llm_parsed_ok !== false) {

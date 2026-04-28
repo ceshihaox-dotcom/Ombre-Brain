@@ -602,7 +602,7 @@ class ImportEngine:
                 {"role": "system", "content": IMPORT_EXTRACT_PROMPT},
                 {"role": "user", "content": chunk_content[:12000]},
             ],
-            max_tokens=8192,  # Sonnet 4.6 / Gemini 2.5 都需要余量,5 条记忆 + content 整合容易撑到 5-6k
+            max_tokens=16384,  # Sonnet 4.6 上限 64k,留足以防中途截断
             temperature=0.0,
         )
 
@@ -663,6 +663,42 @@ class ImportEngine:
                     items = json.loads(cleaned[start:end + 1])
             except (json.JSONDecodeError, IndexError, ValueError):
                 pass
+
+        # 4) 终极兜底:输出被截断(数组没收尾),逐个挖完整 {...} 对象救回来
+        if items is None:
+            recovered = []
+            depth = 0
+            in_str = False
+            escape = False
+            obj_start = -1
+            for i, c in enumerate(cleaned):
+                if escape:
+                    escape = False
+                    continue
+                if in_str:
+                    if c == '\\':
+                        escape = True
+                    elif c == '"':
+                        in_str = False
+                    continue
+                if c == '"':
+                    in_str = True
+                    continue
+                if c == '{':
+                    if depth == 0:
+                        obj_start = i
+                    depth += 1
+                elif c == '}':
+                    depth -= 1
+                    if depth == 0 and obj_start >= 0:
+                        try:
+                            recovered.append(json.loads(cleaned[obj_start:i + 1]))
+                        except (json.JSONDecodeError, ValueError):
+                            pass
+                        obj_start = -1
+            if recovered:
+                logger.info(f"Import extraction recovered {len(recovered)} items from truncated output")
+                items = recovered
 
         if items is None:
             logger.warning(f"Import extraction JSON parse failed; raw: {raw[:300]}")
