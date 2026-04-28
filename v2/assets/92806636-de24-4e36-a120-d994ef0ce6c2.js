@@ -375,26 +375,76 @@ function SiblingsRow({ items, current, onOpen }) {
   );
 }
 
-// 关联记忆
+// 关联记忆 — 走 embedding 全库语义相似(/api/bucket/:id/similar)替代旧的 tag 共现打分
 function RelatedRow({ all, current, onOpen }) {
-  const score = (a) => {
-    if (a.id === current.id || a.date === current.date) return -1;
-    let s = 0;
-    const tags = new Set(current.tags || []);
-    for (const t of (a.tags || [])) if (tags.has(t)) s += 1;
-    if (a.feel && current.feel) s += 0.5;
-    if (a.importance >= 8 && current.importance >= 8) s += 0.5;
-    return s;
-  };
-  const ranked = [...all].map(a => [a, score(a)]).filter(([, s]) => s > 0).sort((a, b) => b[1] - a[1]).slice(0, 3).map(([a]) => a);
-  if (ranked.length === 0) return null;
+  const [similar, setSimilar] = uS(null);   // null = loading, [] = no result, [...] = items
+  const [errMsg, setErrMsg] = uS('');
+
+  uE(() => {
+    if (!current?.id) return;
+    let cancelled = false;
+    setSimilar(null);
+    setErrMsg('');
+    const fn = window.__obFetchSimilar;
+    if (!fn) {
+      setErrMsg('embedding 未启用');
+      setSimilar([]);
+      return;
+    }
+    fn(current.id, 3).then(items => {
+      if (cancelled) return;
+      // 过滤掉同日条目(同日已经在 SiblingsRow 显示)
+      const filtered = (items || []).filter(s => s.date !== current.date);
+      setSimilar(filtered);
+    }).catch(e => {
+      if (cancelled) return;
+      setErrMsg(e.message || String(e));
+      setSimilar([]);
+    });
+    return () => { cancelled = true; };
+  }, [current?.id]);
+
+  if (similar === null) {
+    return (
+      <>
+        <div className="ob-modal-section">可能关联 · 语义相似</div>
+        <div className="ob-siblings">
+          <div style={{ padding: '12px 14px', fontSize: 12, color: 'var(--ink-3)', fontStyle: 'italic' }}>
+            正在计算相似度…
+          </div>
+        </div>
+      </>
+    );
+  }
+  if (similar.length === 0) return null;
+
+  // 用 all 数组里完整 mock 优先,缺了就用 similar 自带最小字段合成
+  const allMap = new Map((all || []).map(a => [a.id, a]));
+  const itemsToShow = similar.slice(0, 3).map(s => {
+    const full = allMap.get(s.id);
+    return {
+      ...(full || {
+        id: s.id, title: s.name || s.id, summary: s.summary || '',
+        date: s.date || '', time: '', tags: [], importance: 5,
+      }),
+      _simScore: s.score,
+    };
+  });
+
   return (
     <>
-      <div className="ob-modal-section">可能关联 · 基于标签</div>
+      <div className="ob-modal-section">可能关联 · 语义相似</div>
       <div className="ob-siblings">
-        {ranked.map(it => (
+        {itemsToShow.map(it => (
           <button key={it.id} className="ob-sibling related" onClick={() => onOpen(it)}>
-            <div className="ob-sibling-time">{it.date} · {it.time}</div>
+            <div className="ob-sibling-time">
+              {it.date}{it.time ? ' · ' + it.time : ''}
+              {it._simScore != null && (
+                <span style={{ marginLeft: 8, opacity: 0.55, fontFamily: 'var(--mono)' }}>
+                  {Math.round(it._simScore * 100)}%
+                </span>
+              )}
+            </div>
             <div className={`ob-sibling-title ${it.importance >= 8 ? 'hi' : ''} ${it.feel ? 'feel' : ''}`}>{it.title}</div>
             <div className="ob-sibling-sum">{it.summary}</div>
           </button>
