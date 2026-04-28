@@ -1136,6 +1136,39 @@ async def api_bucket_update(request):
     })
 
 
+@mcp.custom_route("/api/bucket/{bucket_id}/redehydrate", methods=["POST"])
+async def api_bucket_redehydrate(request):
+    """对单条记忆重新提炼:LLM 跑一遍 content,生成新的 name/summary/tags/domain/valence/arousal。
+    工作台"↻ 重新脱水"按钮调用。protected 桶 importance 不动(锁 10)。"""
+    from starlette.responses import JSONResponse
+    bucket_id = request.path_params["bucket_id"]
+    bucket = await bucket_mgr.get(bucket_id)
+    if not bucket:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    content = bucket.get("content", "")
+    if not content.strip():
+        return JSONResponse({"error": "正文为空,无可提炼内容"}, status_code=400)
+    try:
+        new_meta = await dehydrator.redehydrate(content)
+    except RuntimeError as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+    # 写回 bucket(只覆盖这次产出的字段;importance/event_time/状态 flag 全保留)
+    update_kwargs = {k: v for k, v in new_meta.items() if v not in (None, "", [])}
+    if update_kwargs:
+        success = await bucket_mgr.update(bucket_id, **update_kwargs)
+        if not success:
+            return JSONResponse({"error": "写回失败"}, status_code=500)
+        # content 没变,embedding 不用重算
+    fresh = await bucket_mgr.get(bucket_id)
+    return JSONResponse({
+        "ok": True,
+        "id": bucket_id,
+        "applied": sorted(update_kwargs.keys()),
+        "new_meta": new_meta,
+        "metadata": fresh.get("metadata", {}) if fresh else {},
+    })
+
+
 @mcp.custom_route("/api/bucket/{bucket_id}/archive", methods=["POST"])
 async def api_bucket_archive(request):
     """手动归档一条桶,移到 archive/,AI 不再调用。"""

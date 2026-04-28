@@ -113,6 +113,7 @@ class BucketManager:
         highlight: bool = False,
         event_time: str = None,
         created_by: str = None,
+        summary: str = None,
     ) -> str:
         """
         Create a new memory bucket, return bucket ID.
@@ -165,6 +166,8 @@ class BucketManager:
             metadata["protected"] = True
         if highlight:
             metadata["highlight"] = True
+        if summary:
+            metadata["summary"] = str(summary)[:600]
 
         # --- Assemble Markdown file (frontmatter + body) ---
         # --- 组装 Markdown 文件 ---

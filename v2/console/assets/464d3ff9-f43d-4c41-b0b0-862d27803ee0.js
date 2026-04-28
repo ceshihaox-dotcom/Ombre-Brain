@@ -90,6 +90,9 @@ function ImportWorkbench() {
   // 全库相似"查看"打开的完整 modal
   const [previewItem, setPreviewItem] = iwS(null);
 
+  // 重新脱水中的 bucket id(避免重复点)
+  const [redehydrating, setRedehydrating] = iwS(null);
+
   // hover 详情卡:hover 相似项时弹出
   const [hoverItem, setHoverItem] = iwS(null);
   const [hoverPos, setHoverPos] = iwS({ x: 0, y: 0 });
@@ -181,6 +184,35 @@ function ImportWorkbench() {
     } catch (e) {
       alert('保存失败:' + e.message + '\n刷新中...');
       await fetchQueue();
+    }
+  };
+
+  // ---------- 重新脱水(单条 LLM 重做 name/summary/tags/domain/情感) ----------
+  const redehydrateActive = async () => {
+    if (!active || redehydrating) return;
+    if (!window.confirm(`重新脱水会让 LLM 重新生成「${active.title || '这条'}」的标题、一句话摘要、标签和情感参数。\n正文不变,重要度也保留。继续?`)) return;
+    setRedehydrating(active.id);
+    setToast({ msg: '正在重新脱水…(等几秒)' });
+    try {
+      const r = await fetch('/api/bucket/' + encodeURIComponent(active.id) + '/redehydrate', { method: 'POST' });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+      // 把新元数据合到本地 queue,隐藏状态 tag 保留
+      setQueue(qs => qs.map(q => q.id === active.id ? {
+        ...q,
+        title: data.new_meta.name || q.title,
+        summary: data.new_meta.summary || q.summary,
+        tags: data.new_meta.tags && data.new_meta.tags.length
+          ? data.new_meta.tags.concat((q.tags || []).filter(t => String(t).startsWith('__')))
+          : q.tags,
+      } : q));
+      setToast({ msg: '重新脱水完成' });
+      setTimeout(() => setToast(null), 2400);
+    } catch (e) {
+      setToast({ msg: '重新脱水失败: ' + e.message });
+      setTimeout(() => setToast(null), 4000);
+    } finally {
+      setRedehydrating(null);
     }
   };
 
@@ -874,8 +906,13 @@ function ImportWorkbench() {
                 <button className="imp-act imp-act-skip" onClick={flagItem}>
                   {active.status === 'flagged' ? '↺ 取消存疑' : '⚑ 标记存疑'}
                 </button>
-                <button className="imp-act" onClick={() => alert('重新脱水暂未实装(需要单独 LLM 端点),下次更新加上')}>
-                  ↻ 重新脱水
+                <button
+                  className="imp-act"
+                  onClick={redehydrateActive}
+                  disabled={redehydrating === active.id}
+                  title="LLM 重新生成标题/摘要/标签/情感(正文和重要度保留)"
+                >
+                  {redehydrating === active.id ? '⌛ 提炼中…' : '↻ 重新脱水'}
                 </button>
                 <button className="imp-act" onClick={() => alert('拆分暂未实装(需要新 API 拆桶逻辑),下次更新加上')}>
                   ↯ 拆分
