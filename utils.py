@@ -11,6 +11,7 @@
 
 import os
 import re
+import json
 import uuid
 import yaml
 import logging
@@ -109,6 +110,27 @@ def load_config(config_path: str = None) -> dict:
     env_buckets_dir = os.environ.get("OMBRE_BUCKETS_DIR", "")
     if env_buckets_dir:
         config["buckets_dir"] = env_buckets_dir
+
+    # --- runtime_config.json 覆盖 (前端 config 页可改,持久盘) ---
+    # 优先级:runtime_config.json > env vars > config.yaml > 默认
+    # 文件位置:{buckets_dir}/runtime_config.json
+    try:
+        rc_path = os.path.join(config.get("buckets_dir", "./buckets"), "runtime_config.json")
+        if os.path.exists(rc_path):
+            with open(rc_path, "r", encoding="utf-8") as f:
+                rc = json.load(f)
+            active_id = rc.get("active")
+            profiles = rc.get("profiles", {})
+            if active_id and active_id in profiles:
+                p = profiles[active_id]
+                if p.get("api_key"):
+                    config.setdefault("dehydration", {})["api_key"] = p["api_key"]
+                if p.get("base_url"):
+                    config.setdefault("dehydration", {})["base_url"] = p["base_url"]
+                if p.get("model"):
+                    config.setdefault("dehydration", {})["model"] = p["model"]
+    except Exception:
+        pass  # runtime config 出问题不影响启动,沉默退化到 env/yaml
 
     # --- Validate bucket storage path before touching the filesystem ---
     # --- 启动期校验存储路径，防止配错把数据写到非持久位置 ---
