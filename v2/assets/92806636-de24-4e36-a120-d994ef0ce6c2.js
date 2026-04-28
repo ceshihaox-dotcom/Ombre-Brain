@@ -16,7 +16,9 @@ function DarkToggle({ dark, onChange }) {
 }
 
 // ── 今天状态条 ────────────────────────────────────────
-function TodayBar({ todayItems, lastWriteDate, todayDate, onWrite, onJumpToday }) {
+function TodayBar({ todayItems, lastWriteDate, todayDate, viewingDate, onWrite, onJumpToday }) {
+  // 看今天 → 按钮淡(不需要);看其他天 → 按钮醒目浮起(一键回今天)
+  const isOnToday = !viewingDate || viewingDate === todayDate;
   let state, label, sub;
   if (todayItems.length > 0) {
     state = 'on';
@@ -57,7 +59,25 @@ function TodayBar({ todayItems, lastWriteDate, todayDate, onWrite, onJumpToday }
         <div className="ob-today-sub">{sub}</div>
         <div className="ob-today-actions">
           {todayItems.length > 0 && (
-            <button className="ob-today-btn ghost" onClick={onJumpToday}>查看今天 ↓</button>
+            <button
+              className={`ob-today-btn ${isOnToday ? 'ghost is-quiet' : 'jump-back'}`}
+              onClick={onJumpToday}
+              title={isOnToday ? '已经在今天的位置' : '滚回今天'}
+              style={isOnToday ? {
+                opacity: 0.32,
+                transition: 'opacity .25s, transform .25s',
+              } : {
+                opacity: 1,
+                background: 'color-mix(in oklab, var(--accent) 12%, var(--paper))',
+                color: 'var(--accent)',
+                borderColor: 'var(--accent)',
+                fontWeight: 500,
+                animation: 'ob-today-jump-pulse 1.6s ease-in-out infinite',
+                transition: 'opacity .25s, transform .25s',
+              }}
+            >
+              {isOnToday ? '查看今天 ↓' : '↑ 回今天'}
+            </button>
           )}
           <button className="ob-today-btn primary" onClick={onWrite}>+ 写一条</button>
         </div>

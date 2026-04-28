@@ -141,7 +141,11 @@ function CellsApp() {
       )}
       <CellsView
         items={data}
-        todayDate="2026-04-26"
+        todayDate={(() => {
+          const d = new Date();
+          const pad = n => String(n).padStart(2, '0');
+          return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+        })()}
         flashId={flashId}
         onOpenItem={(it) => openItemWithBody(it)}
         onUpdateItem={handleUpdate}

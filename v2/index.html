@@ -4379,6 +4379,12 @@ body {
   0%,100% { outline-color: rgba(210, 145, 179, 0.8); }
   50%     { outline-color: rgba(210, 145, 179, 0.3); }
 }
+/* "回今天"按钮 — 用户滚到其他天时呼吸提示 */
+@keyframes ob-today-jump-pulse {
+  0%,100% { box-shadow: 0 0 0 0 color-mix(in oklab, var(--accent) 30%, transparent); }
+  50%     { box-shadow: 0 0 0 6px color-mix(in oklab, var(--accent) 0%, transparent); }
+}
+.ob-today-btn:hover { transform: translateY(-1px); }
 
 /* ── 卡片变体 ── */
 .ob-card.ob-card-hi {
