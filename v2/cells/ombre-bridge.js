@@ -2,16 +2,45 @@
 // 在 babel 脚本之前加载,提供全局 helper
 
 (function () {
+  // ISO(UTC) → 本地 date/time;无时区标记的当 UTC 兜底
+  function isoToLocal(s) {
+    if (!s) return { date: '', time: '' };
+    var iso = String(s);
+    if (!/Z$|[+\-]\d{2}:?\d{2}$/.test(iso)) iso = iso + 'Z';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) {
+      var raw = String(s);
+      return {
+        date: raw.length >= 10 ? raw.slice(0, 10) : '',
+        time: raw.length >= 16 ? raw.slice(11, 16) : '',
+      };
+    }
+    var pad = function (n) { return String(n).padStart(2, '0'); };
+    return {
+      date: d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()),
+      time: pad(d.getHours()) + ':' + pad(d.getMinutes()),
+    };
+  }
+  function localToUtcIso(date, time) {
+    if (!date) return '';
+    var t = time || '00:00';
+    var d = new Date(date + 'T' + t + ':00');
+    if (isNaN(d.getTime())) return '';
+    return d.toISOString();
+  }
+  window.__obIsoToLocal = isoToLocal;
+  window.__obLocalToUtcIso = localToUtcIso;
+
   // 真实 bucket(/api/buckets list 项) → v2 mock 形态
   window.__obRealToMock = function (b) {
     var evt = b.event_time || '';
     var created = b.created || '';
     var hasEvent = !!evt;
-    // 没事件时间的桶 fallback 到 created;再没就给个标记日期
     var fallback = created || '2026-01-01';
     var src = hasEvent ? evt : fallback;
-    var date = src.length >= 10 ? src.slice(0, 10) : '2026-01-01';
-    var time = src.length >= 16 ? src.slice(11, 16) : '00:00';
+    var local = isoToLocal(src);
+    var date = local.date || '2026-01-01';
+    var time = local.time || '00:00';
 
     var tags = (b.tags || []).slice();
     if (b.created_by === 'user') tags.push('亲手写');
@@ -101,13 +130,13 @@
     if (patch.protected != null) body.protected = !!patch.protected;
     if (patch.highlight != null) body.highlight = !!patch.highlight;
     if (patch.internalized != null) body.internalized = !!patch.internalized;
-    // event_time:patch 里的 date/time 组装成 ISO,空 → 后端会清掉 metadata.event_time
+    // event_time:patch 里的 date/time(本地)组装成 UTC ISO,空 → 后端清掉
     if (patch.event_time != null) {
       body.event_time = patch.event_time;
     } else if (patch.date != null || patch.time != null) {
       var d = patch.date || '';
       var t = patch.time || '';
-      body.event_time = d ? (t ? d + 'T' + t + ':00' : d) : '';
+      body.event_time = d ? localToUtcIso(d, t) : '';
     }
     // feel 在 ombre-brain 是 type 字段(feel / dynamic),update 端点未暴露 type 切换 — 暂跳过
     var r = await fetch('/api/bucket/' + encodeURIComponent(id) + '/update', {

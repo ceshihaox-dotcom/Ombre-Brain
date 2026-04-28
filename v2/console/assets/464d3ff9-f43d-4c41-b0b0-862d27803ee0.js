@@ -36,7 +36,16 @@ function bucketToItem(b) {
     importance: b.importance || 5,
     protected: !!(b.protected || b.pinned),
     feel: b.type === 'feel',
-    timeHint: (b.event_time || b.created || '').slice(0, 16).replace('T', ' '),
+    timeHint: (() => {
+      // event_time / created 是 UTC ISO,转本地 "YYYY-MM-DD HH:MM"
+      const src = b.event_time || b.created || '';
+      if (!src) return '';
+      if (window.__obIsoToLocal) {
+        const lt = window.__obIsoToLocal(src);
+        return lt.date + (lt.time ? ' ' + lt.time : '');
+      }
+      return src.slice(0, 16).replace('T', ' ');
+    })(),
     type: b.type || 'dynamic',
     aiReasons: {},   // 后端没存推理理由,留空 — UI 自动隐藏推理卡片
     similar: [],      // 全库相似,首次激活时按需 fetch
@@ -1058,9 +1067,12 @@ function ImportWorkbench() {
                       type="date"
                       value={(active.timeHint || '').slice(0, 10)}
                       onChange={(e) => {
-                        const dateOnly = e.target.value;  // YYYY-MM-DD
+                        const dateOnly = e.target.value;  // YYYY-MM-DD (本地)
                         const oldTime = (active.timeHint || '').slice(11, 16) || '';
-                        const eventTime = dateOnly ? (dateOnly + 'T' + (oldTime || '00:00') + ':00') : '';
+                        // 本地 → UTC ISO 给后端
+                        const eventTime = dateOnly && window.__obLocalToUtcIso
+                          ? window.__obLocalToUtcIso(dateOnly, oldTime || '00:00')
+                          : (dateOnly ? (dateOnly + 'T' + (oldTime || '00:00') + ':00') : '');
                         setQueue(qs => qs.map(q => q.id === activeId ? { ...q, timeHint: dateOnly + (oldTime ? ' ' + oldTime : '') } : q));
                         window.__obUpdateBucket(activeId, { event_time: eventTime || null }).catch(err => alert('保存失败:' + err.message));
                       }}
@@ -1075,10 +1087,12 @@ function ImportWorkbench() {
                       type="time"
                       value={(active.timeHint || '').slice(11, 16)}
                       onChange={(e) => {
-                        const timeOnly = e.target.value;  // HH:MM
+                        const timeOnly = e.target.value;  // HH:MM (本地)
                         const dateOnly = (active.timeHint || '').slice(0, 10);
-                        if (!dateOnly) return;  // 没日期就先别改时间
-                        const eventTime = dateOnly + 'T' + (timeOnly || '00:00') + ':00';
+                        if (!dateOnly) return;
+                        const eventTime = window.__obLocalToUtcIso
+                          ? window.__obLocalToUtcIso(dateOnly, timeOnly || '00:00')
+                          : (dateOnly + 'T' + (timeOnly || '00:00') + ':00');
                         setQueue(qs => qs.map(q => q.id === activeId ? { ...q, timeHint: dateOnly + (timeOnly ? ' ' + timeOnly : '') } : q));
                         window.__obUpdateBucket(activeId, { event_time: eventTime }).catch(err => alert('保存失败:' + err.message));
                       }}
