@@ -579,7 +579,7 @@ class ImportEngine:
                 {"role": "system", "content": IMPORT_EXTRACT_PROMPT},
                 {"role": "user", "content": chunk_content[:12000]},
             ],
-            max_tokens=2048,
+            max_tokens=4096,  # 一次提取最多 5 条,每条含 name+summary+content+tags,留足余量;Gemini thinking 也吃 token
             temperature=0.0,
         )
 
