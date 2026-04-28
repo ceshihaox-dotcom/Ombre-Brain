@@ -275,7 +275,9 @@ class ImportState:
             "status": "idle",  # idle | running | paused | completed | error
             "started_at": "",
             "updated_at": "",
-            "recent_extracted": [],  # 最近 5 条提取的 [{name, summary}],前端进度条实时展示
+            "recent_extracted": [],
+            "last_llm_output": "",       # 上次 LLM 输出原文片段(parse 失败时给前端展示)
+            "last_llm_parsed_ok": True,  # 上次 LLM 输出是否成功解析  # 最近 5 条提取的 [{name, summary}],前端进度条实时展示
         }
 
     def load(self) -> bool:
@@ -315,6 +317,8 @@ class ImportState:
             "started_at": now_iso(),
             "updated_at": now_iso(),
             "recent_extracted": [],
+            "last_llm_output": "",       # 上次 LLM 输出原文片段(parse 失败时给前端展示)
+            "last_llm_parsed_ok": True,  # 上次 LLM 输出是否成功解析
         }
 
     @property
@@ -603,24 +607,65 @@ class ImportEngine:
         )
 
         if not response.choices:
+            logger.warning("Import extraction: LLM returned no choices")
+            self._record_llm_output("(LLM no choices)", parsed=False)
             return []
 
         raw = response.choices[0].message.content or ""
         if not raw.strip():
+            logger.warning("Import extraction: LLM returned empty content")
+            self._record_llm_output("(LLM empty content)", parsed=False)
             return []
 
-        return self._parse_extraction(raw)
+        logger.info(f"Import LLM raw output (first 300): {raw[:300]}")
+        items = self._parse_extraction(raw)
+        if not items:
+            # parse 失败 OR LLM 真返回空数组,都把原文存到 state 给前端看
+            self._record_llm_output(raw, parsed=False)
+        else:
+            # 成功路径:清掉之前的失败痕迹,避免 UI 一直挂着旧错
+            self.state.data["last_llm_output"] = ""
+            self.state.data["last_llm_parsed_ok"] = True
+        return items
+
+    def _record_llm_output(self, raw: str, parsed: bool):
+        """把 LLM 最近一次原始输出存到 state,供前端进度横幅诊断展示"""
+        self.state.data["last_llm_output"] = raw[:600]
+        self.state.data["last_llm_parsed_ok"] = parsed
 
     @staticmethod
     def _parse_extraction(raw: str) -> list[dict]:
-        """Parse and validate LLM extraction result."""
+        """Parse and validate LLM extraction result.
+        多层兜底:直接 parse → 剥 markdown → 找第一个 [ 到最后一个 ] 截取
+        """
+        cleaned = raw.strip()
+        # 1) 剥 markdown 代码块(```json ... ``` / ``` ... ```)
+        if cleaned.startswith("```json"):
+            cleaned = cleaned[7:].strip()
+        elif cleaned.startswith("```"):
+            cleaned = cleaned[3:].strip()
+        if cleaned.endswith("```"):
+            cleaned = cleaned[:-3].strip()
+
+        items = None
+        # 2) 直接 parse
         try:
-            cleaned = raw.strip()
-            if cleaned.startswith("```"):
-                cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0]
             items = json.loads(cleaned)
         except (json.JSONDecodeError, IndexError, ValueError):
-            logger.warning(f"Import extraction JSON parse failed: {raw[:200]}")
+            pass
+
+        # 3) 兜底:找第一个 [ 到最后一个 ] 截取(应对前言 / 后语 / 混合内容)
+        if items is None:
+            try:
+                start = cleaned.find("[")
+                end = cleaned.rfind("]")
+                if start >= 0 and end > start:
+                    items = json.loads(cleaned[start:end + 1])
+            except (json.JSONDecodeError, IndexError, ValueError):
+                pass
+
+        if items is None:
+            logger.warning(f"Import extraction JSON parse failed; raw: {raw[:300]}")
             return []
 
         if not isinstance(items, list):

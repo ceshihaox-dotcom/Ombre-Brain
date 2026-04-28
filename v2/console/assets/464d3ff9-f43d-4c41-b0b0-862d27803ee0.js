@@ -754,6 +754,20 @@ function ImportWorkbench() {
                 ))}
               </div>
             )}
+            {/* LLM 解析失败的诊断:0 提取且有 last_llm_output → 露原文给用户看 */}
+            {recent.length === 0 && s.last_llm_output && s.last_llm_parsed_ok === false && (
+              <div style={{ fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.6, marginTop: 6 }}>
+                <span style={{ color: '#8B4A4A', marginRight: 6 }}>⚠ LLM 输出未解析成功(也可能 LLM 觉得无可提取),原文片段:</span>
+                <pre style={{
+                  marginTop: 4, padding: '6px 8px', maxHeight: 120, overflow: 'auto',
+                  background: 'rgba(0,0,0,0.04)', border: '0.5px solid var(--line-2)', borderRadius: 4,
+                  fontSize: 10.5, fontFamily: 'var(--mono)', color: 'var(--ink-2)',
+                  whiteSpace: 'pre-wrap', wordBreak: 'break-word',
+                }}>
+                  {String(s.last_llm_output).slice(0, 500)}
+                </pre>
+              </div>
+            )}
             {isErr && s.errors && s.errors.length > 0 && (
               <div style={{ fontSize: 11, color: '#8B4A4A', marginTop: 6, fontFamily: 'var(--mono)' }}>
                 {s.errors.slice(-1)[0]}
