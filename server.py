@@ -1786,6 +1786,10 @@ async def api_import_upload(request):
 
         preserve_raw = request.query_params.get("preserve_raw", "").lower() in ("1", "true")
         resume = request.query_params.get("resume", "").lower() in ("1", "true")
+        try:
+            max_chunks = int(request.query_params.get("max_chunks", "0") or "0")
+        except (ValueError, TypeError):
+            max_chunks = 0
 
     except Exception as e:
         return JSONResponse({"error": f"Failed to read upload: {e}"}, status_code=400)
@@ -1793,7 +1797,7 @@ async def api_import_upload(request):
     # Start import in background
     async def _run_import():
         try:
-            await import_engine.start(raw_content, filename, preserve_raw, resume)
+            await import_engine.start(raw_content, filename, preserve_raw, resume, max_chunks=max_chunks)
         except Exception as e:
             logger.error(f"Import failed: {e}")
 
