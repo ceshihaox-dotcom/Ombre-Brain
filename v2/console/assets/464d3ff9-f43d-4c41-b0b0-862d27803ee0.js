@@ -762,12 +762,12 @@ function ImportWorkbench() {
               <div style={{ fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.6, marginTop: 6 }}>
                 <span style={{ color: '#8B4A4A', marginRight: 6 }}>⚠ LLM 输出未解析成功(也可能 LLM 觉得无可提取),原文片段:</span>
                 <pre style={{
-                  marginTop: 4, padding: '6px 8px', maxHeight: 120, overflow: 'auto',
+                  marginTop: 4, padding: '6px 8px', maxHeight: 240, overflow: 'auto',
                   background: 'rgba(0,0,0,0.04)', border: '0.5px solid var(--line-2)', borderRadius: 4,
                   fontSize: 10.5, fontFamily: 'var(--mono)', color: 'var(--ink-2)',
                   whiteSpace: 'pre-wrap', wordBreak: 'break-word',
                 }}>
-                  {String(s.last_llm_output).slice(0, 500)}
+                  {String(s.last_llm_output).slice(0, 3000)}
                 </pre>
               </div>
             )}
