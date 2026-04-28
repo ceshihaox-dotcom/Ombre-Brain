@@ -377,7 +377,9 @@ def count_tokens_approx(text: str) -> int:
 
 def now_iso() -> str:
     """
-    Return current time as ISO format string.
-    返回当前时间的 ISO 格式字符串。
+    Return current UTC time as ISO format string with explicit Z suffix.
+    返回当前 UTC 时间,带 Z 标记。前端按本地时区显示。
+    历史(2026-04-28):之前用 datetime.now() 在 UTC 容器里产 naive ISO,
+    JST 用户前端看时间偏移 9 小时,改成显式标 UTC 让前端能正确转换。
     """
-    return datetime.now().isoformat(timespec="seconds")
+    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
