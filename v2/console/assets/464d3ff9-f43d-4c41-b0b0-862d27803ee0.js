@@ -142,13 +142,15 @@ function ImportWorkbench() {
         }
         if (s.status === 'completed' || s.status === 'error' || s.status === 'idle') {
           stopImportPolling();
-          fetchQueue();  // 收尾再刷一次
-          // 完成后保留进度条 12 秒让用户看到结果,然后自动收
-          if (s.status === 'completed') {
+          fetchQueue();
+          // 完成后:有产出才自动收(12 秒);0 产出 / 解析失败 → 一直挂着等用户手动关
+          const hasOutput = (s.memories_created || 0) + (s.memories_merged || 0) + (s.memories_raw || 0) > 0;
+          if (s.status === 'completed' && hasOutput && s.last_llm_parsed_ok !== false) {
             setTimeout(() => {
               setImportStatus(prev => prev && prev.status === 'completed' ? null : prev);
             }, 12000);
           }
+          // error 永远挂着;0 产出永远挂着;让用户看 last_llm_output 诊断
         }
       } catch (e) {
         console.warn('[import status] poll fail', e);
