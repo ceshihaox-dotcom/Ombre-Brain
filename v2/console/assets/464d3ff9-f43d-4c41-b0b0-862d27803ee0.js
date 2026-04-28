@@ -97,6 +97,18 @@ function ImportWorkbench() {
   // 重新脱水中的 bucket id(避免重复点)
   const [redehydrating, setRedehydrating] = iwS(null);
 
+  // 会话开销累计 — { usd, cny, count, lastLabel, lastUsd }
+  const [sessionCost, setSessionCost] = iwS({ usd: 0, cny: 0, count: 0, lastLabel: '', lastUsd: 0 });
+  const addSessionCost = (cost, label) => {
+    setSessionCost(s => ({
+      usd: +(s.usd + (cost.usd || 0)).toFixed(6),
+      cny: +(s.cny + (cost.cny || 0)).toFixed(4),
+      count: s.count + 1,
+      lastLabel: label,
+      lastUsd: cost.usd || 0,
+    }));
+  };
+
   // 合并预览状态:{ a:{id,name}, b:{id,name}, merged_content, tags, domain, importance, valence, arousal, b_summary, b_event_time }
   const [mergePreview, setMergePreview] = iwS(null);
   const [mergeLoading, setMergeLoading] = iwS(false);  // preview 或 commit 进行中
@@ -283,8 +295,16 @@ function ImportWorkbench() {
           : q.tags,
       } : q));
       const applied = (data.applied || []).join('/');
-      setToast({ msg: `重新脱水完成 · 已更新: ${applied || '无字段'}` });
-      setTimeout(() => setToast(null), 3200);
+      // 开销显示
+      let costStr = '';
+      if (data.cost && data.cost.known) {
+        const c = data.cost;
+        costStr = ` · 约 $${c.usd.toFixed(4)} (¥${c.cny.toFixed(2)})`;
+        // 累计到 sessionCost
+        addSessionCost(c, '重新脱水');
+      }
+      setToast({ msg: `重新脱水完成 · 已更新: ${applied || '无字段'}${costStr}` });
+      setTimeout(() => setToast(null), 4500);
     } catch (e) {
       console.error('[redehydrate] failed', e);
       const msg = e.message || String(e);
@@ -316,6 +336,7 @@ function ImportWorkbench() {
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
       setMergePreview(data);
+      if (data.cost && data.cost.known) addSessionCost(data.cost, '合并预览');
     } catch (e) {
       alert('合并预览失败:\n' + e.message);
       setMergePreview(null);
@@ -1376,6 +1397,39 @@ function ImportWorkbench() {
               LLM 整合两段内容<span className="ob-merge-loader-dots" />
             </div>
           </div>
+        </div>
+      )}
+
+      {/* 会话开销浮动 widget — 累计本次会话所有 LLM 调用花费 */}
+      {sessionCost.count > 0 && (
+        <div
+          style={{
+            position: 'fixed', right: 18, bottom: 18, zIndex: 50,
+            padding: '8px 14px',
+            background: 'var(--paper)',
+            border: '0.5px solid var(--line-2)',
+            borderRadius: 999,
+            boxShadow: '0 8px 24px -8px rgba(0,0,0,0.18)',
+            fontSize: 11,
+            fontFamily: 'var(--mono)',
+            color: 'var(--ink-2)',
+            display: 'flex', alignItems: 'center', gap: 10,
+            cursor: 'default',
+          }}
+          title={`本次会话累计 ${sessionCost.count} 次 LLM 调用\n上次: ${sessionCost.lastLabel} ~$${sessionCost.lastUsd.toFixed(4)}`}
+        >
+          <span style={{ color: 'var(--ink-4)' }}>本次会话</span>
+          <span style={{ color: 'var(--accent)', fontWeight: 600 }}>${sessionCost.usd.toFixed(4)}</span>
+          <span style={{ color: 'var(--ink-3)' }}>≈ ¥{sessionCost.cny.toFixed(2)}</span>
+          <span style={{ color: 'var(--ink-4)' }}>· {sessionCost.count} 次</span>
+          <button
+            onClick={() => setSessionCost({ usd: 0, cny: 0, count: 0, lastLabel: '', lastUsd: 0 })}
+            style={{
+              background: 'transparent', border: 0, padding: '0 4px',
+              cursor: 'pointer', color: 'var(--ink-4)', fontSize: 12,
+            }}
+            title="清零"
+          >✕</button>
         </div>
       )}
     </>

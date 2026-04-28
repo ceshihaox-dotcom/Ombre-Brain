@@ -167,6 +167,62 @@ def load_config(config_path: str = None) -> dict:
     return config
 
 
+# =============================================================
+# LLM 调用开销估算 — 给前端显示"刚那次花了多少钱"用,数字仅供参考
+# 价格 = USD per 1M tokens,(input, output) 元组
+# 模型名按前缀匹配,未知模型返回 None(前端显示"未估算")
+# =============================================================
+LLM_PRICING = {
+    "claude-sonnet-4-6":  (3.00, 15.00),
+    "claude-sonnet-4":    (3.00, 15.00),
+    "claude-sonnet":      (3.00, 15.00),
+    "claude-haiku-4-5":   (1.00,  5.00),
+    "claude-haiku":       (1.00,  5.00),
+    "claude-opus":        (15.00, 75.00),
+    "gemini-2.5-flash":   (0.075,  0.30),
+    "gemini-2.0-flash":   (0.075,  0.30),
+    "gemini-2.5-pro":     (1.25,  10.00),
+    "gemini-1.5-flash":   (0.075,  0.30),
+    "gemini-1.5-pro":     (1.25,  10.00),
+    "deepseek-chat":      (0.14,   0.28),
+    "deepseek-reasoner":  (0.55,   2.19),
+    "qwen-max":           (0.40,   1.60),
+    "qwen-plus":          (0.10,   0.30),
+    "gpt-4.1":            (2.00,   8.00),
+    "gpt-4o-mini":        (0.15,   0.60),
+    "gpt-4o":             (2.50,  10.00),
+}
+
+def estimate_llm_cost(model: str, prompt_tokens: int, completion_tokens: int) -> dict:
+    """返回 {usd, cny, in_tokens, out_tokens, model_matched, known}"""
+    if not model:
+        return {"usd": 0.0, "cny": 0.0, "in_tokens": prompt_tokens or 0, "out_tokens": completion_tokens or 0, "model_matched": "", "known": False}
+    m = model.lower()
+    # 精确匹配优先,失败按最长前缀匹配
+    matched_key = None
+    if m in LLM_PRICING:
+        matched_key = m
+    else:
+        for k in sorted(LLM_PRICING.keys(), key=len, reverse=True):
+            if m.startswith(k) or k in m:
+                matched_key = k
+                break
+    if not matched_key:
+        return {"usd": 0.0, "cny": 0.0, "in_tokens": prompt_tokens or 0, "out_tokens": completion_tokens or 0, "model_matched": "", "known": False}
+    p_in, p_out = LLM_PRICING[matched_key]
+    p_tok = max(0, int(prompt_tokens or 0))
+    c_tok = max(0, int(completion_tokens or 0))
+    usd = (p_tok / 1_000_000) * p_in + (c_tok / 1_000_000) * p_out
+    return {
+        "usd": round(usd, 6),
+        "cny": round(usd * 7.2, 4),  # 估算汇率
+        "in_tokens": p_tok,
+        "out_tokens": c_tok,
+        "model_matched": matched_key,
+        "known": True,
+    }
+
+
 def normalize_event_time(s):
     """把任意 event_time 输入(YYYY-MM-DD / 完整 ISO 时间戳 / datetime 对象)
     标准化成 ISO 格式字符串。无效输入或空字符串返回 None。

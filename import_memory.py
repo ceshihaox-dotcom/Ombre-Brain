@@ -277,7 +277,10 @@ class ImportState:
             "updated_at": "",
             "recent_extracted": [],
             "last_llm_output": "",       # 上次 LLM 输出原文片段(parse 失败时给前端展示)
-            "last_llm_parsed_ok": True,  # 上次 LLM 输出是否成功解析  # 最近 5 条提取的 [{name, summary}],前端进度条实时展示
+            "last_llm_parsed_ok": True,  # 上次 LLM 输出是否成功解析
+            "total_cost_usd": 0.0,       # 累计 LLM 开销(USD)
+            "total_in_tokens": 0,
+            "total_out_tokens": 0,  # 最近 5 条提取的 [{name, summary}],前端进度条实时展示
         }
 
     def load(self) -> bool:
@@ -319,6 +322,9 @@ class ImportState:
             "recent_extracted": [],
             "last_llm_output": "",       # 上次 LLM 输出原文片段(parse 失败时给前端展示)
             "last_llm_parsed_ok": True,  # 上次 LLM 输出是否成功解析
+            "total_cost_usd": 0.0,       # 累计 LLM 开销(USD)
+            "total_in_tokens": 0,
+            "total_out_tokens": 0,
         }
 
     @property
@@ -609,6 +615,16 @@ class ImportEngine:
             max_tokens=16384,  # Sonnet 4.6 上限 64k,留足以防中途截断
             temperature=0.0,
         )
+        # 累计开销到 state(供前端进度条展示)
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            from utils import estimate_llm_cost
+            in_tok = getattr(usage, "prompt_tokens", 0) or 0
+            out_tok = getattr(usage, "completion_tokens", 0) or 0
+            cost = estimate_llm_cost(self.dehydrator.model, in_tok, out_tok)
+            self.state.data["total_cost_usd"] = round(self.state.data.get("total_cost_usd", 0) + cost["usd"], 6)
+            self.state.data["total_in_tokens"] = self.state.data.get("total_in_tokens", 0) + in_tok
+            self.state.data["total_out_tokens"] = self.state.data.get("total_out_tokens", 0) + out_tok
 
         if not response.choices:
             logger.warning("Import extraction: LLM returned no choices")

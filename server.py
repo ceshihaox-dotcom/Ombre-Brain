@@ -1403,6 +1403,11 @@ async def api_bucket_redehydrate(request):
     # 抠出诊断字段
     raw_output = new_meta.pop("_raw_output", "")
     parse_ok = new_meta.pop("_parse_ok", True)
+    in_tok = new_meta.pop("_prompt_tokens", 0)
+    out_tok = new_meta.pop("_completion_tokens", 0)
+    model_used = new_meta.pop("_model_used", dehydrator.model)
+    from utils import estimate_llm_cost
+    cost = estimate_llm_cost(model_used, in_tok, out_tok)
     # parse 失败或 LLM 没产出关键字段 → 不写盘,把原始输出回传让前端能看到 LLM 到底说了什么
     has_meaningful = bool(new_meta.get("name") or new_meta.get("summary") or new_meta.get("tags"))
     if not parse_ok or not has_meaningful:
@@ -1427,6 +1432,7 @@ async def api_bucket_redehydrate(request):
         "new_meta": new_meta,
         "raw_output": raw_output[:500],  # 成功时也带上,前端可选展示
         "metadata": fresh.get("metadata", {}) if fresh else {},
+        "cost": cost,
     })
 
 
@@ -1492,19 +1498,26 @@ async def api_bucket_merge_preview(request):
     except Exception as e:
         return JSONResponse({"error": f"LLM 合并失败: {e}"}, status_code=500)
     meta_merged = _build_merge_meta(a.get("metadata", {}), b.get("metadata", {}))
+    # 估算这次合并的开销
+    from utils import estimate_llm_cost
+    last_usage = getattr(dehydrator.__class__, "_last_merge_usage", None)
+    cost = estimate_llm_cost(
+        last_usage["model"] if last_usage else dehydrator.model,
+        last_usage["prompt_tokens"] if last_usage else 0,
+        last_usage["completion_tokens"] if last_usage else 0,
+    ) if last_usage else None
     return JSONResponse({
         "ok": True,
         "preview": True,
         "a": {"id": a_id, "name": a.get("metadata", {}).get("name", a_id)},
         "b": {"id": b_id, "name": b.get("metadata", {}).get("name", b_id)},
         "merged_content": merged_content,
-        # 原文供前端"对比"面板用 — Claude Design 设计的对比视图会渲染这俩
         "a_content": a_content,
         "b_content": b_content,
         **meta_merged,
-        # 也把 B 现有 summary/event_time 带回让前端展示"会保留"
         "b_summary": b.get("metadata", {}).get("summary", ""),
         "b_event_time": b.get("metadata", {}).get("event_time", ""),
+        "cost": cost,
     })
 
 

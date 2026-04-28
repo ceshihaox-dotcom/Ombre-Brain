@@ -333,6 +333,9 @@ class Dehydrator:
     # Merge: blend new content into existing bucket
     # 合并：将新内容揉入已有桶，保持体积恒定
     # ---------------------------------------------------------
+    # merge() 自带返回 + 暴露最近一次 usage,server 端直接读
+    _last_merge_usage = None
+
     async def merge(self, old_content: str, new_content: str) -> str:
         """
         Merge new content with old memory, preventing infinite bucket growth.
@@ -399,6 +402,16 @@ class Dehydrator:
             max_tokens=self.max_tokens,
             temperature=self.temperature,
         )
+        # 暴露 usage 给上层(merge-preview 端点读)
+        usage = getattr(response, "usage", None)
+        if usage is not None:
+            Dehydrator._last_merge_usage = {
+                "prompt_tokens": getattr(usage, "prompt_tokens", 0),
+                "completion_tokens": getattr(usage, "completion_tokens", 0),
+                "model": self.model,
+            }
+        else:
+            Dehydrator._last_merge_usage = None
         if not response.choices:
             return ""
         return response.choices[0].message.content or ""
@@ -707,7 +720,15 @@ class Dehydrator:
             raw = response.choices[0].message.content or ""
             logger.info(f"redehydrate raw output: {raw[:400]}")  # 关键诊断日志
             parsed, ok = self._parse_redehydrate_v2(raw)
-            return {**parsed, "_raw_output": raw, "_parse_ok": ok}
+            usage = getattr(response, "usage", None)
+            usage_info = {}
+            if usage is not None:
+                usage_info = {
+                    "_prompt_tokens": getattr(usage, "prompt_tokens", 0),
+                    "_completion_tokens": getattr(usage, "completion_tokens", 0),
+                    "_model_used": self.model,
+                }
+            return {**parsed, "_raw_output": raw, "_parse_ok": ok, **usage_info}
         except Exception as e:
             raise RuntimeError(f"重新脱水失败: {e}") from e
 

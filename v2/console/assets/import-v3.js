@@ -235,6 +235,7 @@
       errors = [], started_at,
       recent_extracted = [],
       last_llm_output, last_llm_parsed_ok = true,
+      total_cost_usd = 0,
     } = state;
 
     const [now, setNow] = useState(() => Date.now());
@@ -294,6 +295,7 @@
             <span className="ob-import-prog-summary-tally">
               · <b>{total_chunks}</b> 块 · 合并 <b>{memories_merged}</b> · 原文 <b>{memories_raw || 0}</b>
               {' · '}用时 {_formatDuration(elapsedMs)}
+              {total_cost_usd > 0 && <> · 花费 <b>${total_cost_usd.toFixed(4)}</b> (≈¥{(total_cost_usd * 7.2).toFixed(2)})</>}
             </span>
             <button
               className="ob-import-prog-close"
@@ -349,6 +351,13 @@
               <span className="ob-import-prog-meta-cell">
                 <span className="ob-import-prog-meta-cell-k">用时</span>
                 <span className="ob-import-prog-meta-cell-v">{_formatDuration(elapsedMs)}</span>
+              </span>
+            )}
+            {total_cost_usd > 0 && (
+              <span className="ob-import-prog-meta-cell">
+                <span className="ob-import-prog-meta-cell-k">花费</span>
+                <span className="ob-import-prog-meta-cell-v em">${total_cost_usd.toFixed(4)}</span>
+                <span className="ob-import-prog-meta-cell-aux">≈ ¥{(total_cost_usd * 7.2).toFixed(2)}</span>
               </span>
             )}
           </div>
