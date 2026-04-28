@@ -279,6 +279,20 @@ function AppV2() {
           onNavigate={handleNavigate}
           onOpenItem={(it) => openItemWithBody(it)}
           onUpdate={async (id, patch) => {
+            if (patch.__delete) {
+              // 乐观从列表里抹掉,关闭 modal
+              setData(prev => prev.filter(x => x.id !== id));
+              setOpenItem(null);
+              try {
+                const r = await fetch('/api/bucket/' + encodeURIComponent(id) + '/delete', { method: 'POST' });
+                if (!r.ok) throw new Error(await r.text());
+                await refresh();
+              } catch (e) {
+                alert('删除失败: ' + e.message + '\n(界面已回滚)');
+                await refresh();
+              }
+              return;
+            }
             // 先做乐观更新让 UI 立刻有反馈
             setData(prev => prev.map(x => x.id === id ? { ...x, ...patch } : x));
             setOpenItem(prev => prev && prev.id === id ? { ...prev, ...patch } : prev);
