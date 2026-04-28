@@ -321,20 +321,35 @@ function ImportWorkbench() {
     await fetchMergePreview(mergePreview.a, mergePreview.b);
   };
 
-  const commitMerge = async () => {
+  // editedDraft 是用户在 modal 里改过的草稿(可能 = 原始预览,也可能改了字段)
+  const commitMerge = async (editedDraft) => {
     if (!mergePreview || mergeLoading) return;
     setMergeLoading(true);
     try {
+      // 优先用 editedDraft.body(用户编辑过的内容),没有就退到原始预览的 merged_content
+      const finalContent = (editedDraft && editedDraft.body) || mergePreview.merged_content;
       const r = await fetch(`/api/bucket/${encodeURIComponent(mergePreview.a.id)}/merge-commit?into=${encodeURIComponent(mergePreview.b.id)}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ merged_content: mergePreview.merged_content }),
+        body: JSON.stringify({ merged_content: finalContent }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
       const aId = mergePreview.a.id;
       const bId = mergePreview.b.id;
-      const bName = mergePreview.b.name;
+      const bName = (editedDraft && editedDraft.title) || mergePreview.b.name;
+      // 如果用户在 modal 里改了 title/summary/tags/importance,顺手 update 一下 B
+      if (editedDraft) {
+        const extraPatch = {};
+        if (editedDraft.title && editedDraft.title !== mergePreview.b.name) extraPatch.title = editedDraft.title;
+        if (editedDraft.summary != null) extraPatch.summary = editedDraft.summary;
+        if (editedDraft.tags) extraPatch.tags = editedDraft.tags;
+        if (editedDraft.importance != null) extraPatch.importance = editedDraft.importance;
+        if (Object.keys(extraPatch).length > 0) {
+          try { await window.__obUpdateBucket(bId, extraPatch); }
+          catch (e) { console.warn('[merge] post-commit field update failed', e); }
+        }
+      }
       // 乐观:从 queue 抹掉 A;从 similarCache 各 key 里抹掉 A 也抹掉 B(B 已变,缓存失效)
       setQueue(qs => qs.filter(q => q.id !== aId));
       setSimilarCache(c => {
@@ -1356,116 +1371,43 @@ function ImportWorkbench() {
         onUpdate: handlePreviewUpdate,
       })}
 
-      {/* 合并预览 modal */}
-      {(mergePreview || mergeLoading) && (
-        <div
-          style={{
-            position: 'fixed', inset: 0, zIndex: 60,
-            background: 'rgba(20, 19, 28, 0.55)', backdropFilter: 'blur(2px)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            padding: 20,
-          }}
-          onClick={() => !mergeLoading && setMergePreview(null)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: 'min(720px, 100%)', maxHeight: '88vh', overflow: 'hidden',
-              background: 'var(--paper)', borderRadius: 12,
-              boxShadow: '0 32px 80px -24px rgba(0,0,0,0.4), 0 1px 0 rgba(255,255,255,0.5) inset',
-              border: '0.5px solid var(--line-2)',
-              display: 'flex', flexDirection: 'column',
-            }}
-          >
-            {/* header */}
-            <div style={{ padding: '18px 24px 12px', borderBottom: '0.5px solid var(--line)', flexShrink: 0 }}>
-              <div style={{ fontFamily: 'var(--mono)', fontSize: 11, color: 'var(--ink-3)', marginBottom: 6 }}>
-                合并预览 · A 合到 B,A 会被删除
-              </div>
-              {mergePreview && (
-                <div style={{ fontSize: 14, color: 'var(--ink)', display: 'flex', alignItems: 'center', gap: 10, fontFamily: 'var(--serif)' }}>
-                  <span style={{ color: 'var(--ink-2)' }}>「{mergePreview.a.name}」</span>
-                  <span style={{ color: 'var(--accent)', fontFamily: 'var(--mono)', fontSize: 14 }}>→</span>
-                  <span style={{ color: 'var(--ink)', fontWeight: 500 }}>「{mergePreview.b.name}」</span>
-                </div>
-              )}
-            </div>
-
-            {/* body */}
-            <div style={{ padding: '16px 24px', overflowY: 'auto', flex: 1 }}>
-              {mergeLoading && !mergePreview && (
-                <div style={{ padding: '40px 0', textAlign: 'center', color: 'var(--ink-3)', fontSize: 13 }}>
-                  ⌛ LLM 正在生成合并预览…
-                </div>
-              )}
-              {mergePreview && (
-                <>
-                  <div style={{ fontSize: 11, color: 'var(--ink-3)', fontFamily: 'var(--mono)', marginBottom: 6 }}>合并后内容</div>
-                  <div
-                    style={{
-                      padding: '12px 14px', background: 'var(--paper-2)',
-                      border: '0.5px solid var(--line-2)', borderRadius: 6,
-                      fontSize: 13, lineHeight: 1.7, color: 'var(--ink)',
-                      whiteSpace: 'pre-wrap', wordBreak: 'break-word',
-                      maxHeight: 280, overflowY: 'auto', marginBottom: 14,
-                    }}
-                  >
-                    {mergePreview.merged_content}
-                  </div>
-
-                  {/* 元数据并集结果 */}
-                  <div style={{ fontSize: 11, color: 'var(--ink-3)', fontFamily: 'var(--mono)', marginBottom: 6 }}>元数据(并集)</div>
-                  <div style={{ fontSize: 12, color: 'var(--ink-2)', lineHeight: 1.9, fontFamily: 'var(--mono)' }}>
-                    <div><span style={{ color: 'var(--ink-4)' }}>tags    :</span> {(mergePreview.tags || []).join(' · ') || '(空)'}</div>
-                    <div><span style={{ color: 'var(--ink-4)' }}>domain  :</span> {(mergePreview.domain || []).join(' · ') || '(空)'}</div>
-                    <div><span style={{ color: 'var(--ink-4)' }}>imp     :</span> {mergePreview.importance} <span style={{ color: 'var(--ink-4)' }}>· val:</span> {mergePreview.valence} <span style={{ color: 'var(--ink-4)' }}>· aro:</span> {mergePreview.arousal}</div>
-                    {mergePreview.b_summary && (
-                      <div style={{ marginTop: 8 }}>
-                        <span style={{ color: 'var(--ink-4)' }}>summary :</span> <span style={{ fontStyle: 'italic' }}>{mergePreview.b_summary}</span>
-                        <span style={{ color: 'var(--ink-4)', marginLeft: 6 }}>(保留 B 的)</span>
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* footer */}
-            <div style={{
-              padding: '12px 24px', borderTop: '0.5px solid var(--line)',
-              display: 'flex', justifyContent: 'flex-end', gap: 8, flexShrink: 0,
-              background: 'var(--paper-2)',
-            }}>
-              <button
-                onClick={() => setMergePreview(null)}
-                disabled={mergeLoading}
-                style={{
-                  padding: '7px 14px', fontSize: 12, fontFamily: 'var(--sans)',
-                  background: 'transparent', border: '0.5px solid var(--line-2)',
-                  borderRadius: 6, color: 'var(--ink-2)', cursor: mergeLoading ? 'wait' : 'pointer',
-                }}
-              >取消</button>
-              <button
-                onClick={rerollMerge}
-                disabled={mergeLoading || !mergePreview}
-                style={{
-                  padding: '7px 14px', fontSize: 12, fontFamily: 'var(--sans)',
-                  background: 'transparent', border: '0.5px solid var(--line-2)',
-                  borderRadius: 6, color: 'var(--ink-2)', cursor: mergeLoading ? 'wait' : 'pointer',
-                }}
-                title="LLM 重新生成合并结果"
-              >{mergeLoading && mergePreview ? '⌛ 重做中…' : '↻ 重做'}</button>
-              <button
-                onClick={commitMerge}
-                disabled={mergeLoading || !mergePreview}
-                style={{
-                  padding: '7px 16px', fontSize: 12, fontFamily: 'var(--sans)', fontWeight: 500,
-                  background: 'var(--ink)', border: '0.5px solid var(--ink)',
-                  borderRadius: 6, color: 'var(--paper)', cursor: mergeLoading ? 'wait' : 'pointer',
-                }}
-              >{mergeLoading ? '⌛ 提交中…' : '✓ 接受合并'}</button>
-            </div>
-          </div>
+      {/* 合并预览 → 复用 ConsoleItemModal 的 merge 模式(完整可编辑) */}
+      {mergePreview && window.ConsoleItemModal && React.createElement(window.ConsoleItemModal, {
+        // 把预览结果塑成 mock item 形态喂给 modal,身份用 B 的(因为合并写入 B)
+        item: {
+          id: mergePreview.b.id,
+          title: mergePreview.b.name,
+          summary: mergePreview.b_summary || '',
+          body: mergePreview.merged_content,
+          date: (mergePreview.b_event_time || '').slice(0, 10) || '',
+          time: (mergePreview.b_event_time || '').slice(11, 16) || '',
+          importance: mergePreview.importance || 5,
+          tags: mergePreview.tags || [],
+          protected: false, feel: false, highlight: false, internalized: false,
+          artifacts: [],
+        },
+        allItems: [],
+        mode: 'merge',
+        mergeHeader: { aName: mergePreview.a.name, bName: mergePreview.b.name },
+        rerollLoading: mergeLoading,
+        commitLoading: mergeLoading,
+        onClose: () => { if (!mergeLoading) setMergePreview(null); },
+        onReroll: rerollMerge,
+        // saveEdit 走这条路:接受合并,把 modal 里编辑过的 draft 一起带上
+        onUpdate: (id, draft) => commitMerge(draft),
+      })}
+      {/* loading 时(还没拿到 preview 数据,或 reroll 中)显示一个简易遮罩 */}
+      {!mergePreview && mergeLoading && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 60,
+          background: 'rgba(20,19,28,0.45)', backdropFilter: 'blur(2px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <div style={{
+            padding: '20px 28px', background: 'var(--paper)',
+            border: '0.5px solid var(--line-2)', borderRadius: 10,
+            fontSize: 13, color: 'var(--ink-2)', fontFamily: 'var(--mono)',
+          }}>⌛ LLM 正在生成合并预览…</div>
         </div>
       )}
     </>

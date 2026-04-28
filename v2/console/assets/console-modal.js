@@ -30,19 +30,41 @@ function cmFormatDate(d) {
   return { y, m, day, wk, dt };
 }
 
-function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate }) {
-  const [editing, setEditing] = cmS(false);
-  const [draft, setDraft] = cmS(null);
+function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate, mode, onReroll, rerollLoading, commitLoading, mergeHeader }) {
+  // mode === 'merge' → 强制 editing,footer 显示"取消/↻重做/✓接受合并",隐藏导航/删除
+  const isMerge = mode === 'merge';
+  const [editing, setEditing] = cmS(isMerge);
+  const [draft, setDraft] = cmS(isMerge ? null : null);
 
   cmE(() => {
+    if (isMerge) {
+      // merge 模式:每次 item 变都重置 draft 用新合并结果填回
+      setEditing(true);
+      setDraft({
+        title: item?.title || '',
+        summary: item?.summary || '',
+        body: item?.body || '',
+        date: item?.date || '',
+        time: item?.time || '',
+        importance: item?.importance || 5,
+        tags: [...(item?.tags || [])],
+        protected: !!item?.protected,
+        pinned: !!item?.pinned,
+        feel: !!item?.feel,
+        highlight: !!item?.highlight,
+        internalized: !!item?.internalized,
+      });
+      return;
+    }
     setEditing(false);
     setDraft(null);
-  }, [item?.id]);
+  }, [item?.id, item?.body, isMerge]);
 
   cmE(() => {
     if (!item) return;
     const onKey = (e) => {
       if (e.key === 'Escape') {
+        if (isMerge) { onClose(); return; }  // merge 模式 Esc 直接关闭(取消合并)
         if (editing) { setEditing(false); setDraft(null); return; }
         onClose();
       }
@@ -59,7 +81,7 @@ function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate }) {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [item, onNavigate, onClose, editing, draft]);
+  }, [item, onNavigate, onClose, editing, draft, isMerge]);
 
   if (!item) return null;
 
@@ -135,16 +157,26 @@ function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate }) {
 
       <div className={`ob-modal ${editing ? 'is-editing' : ''}`} onClick={(e) => e.stopPropagation()}>
         <div className="ob-modal-bg" />
-        <button className="ob-modal-close" onClick={editing ? cancelEdit : onClose} title={editing ? '取消编辑' : '关闭 (Esc)'}>✕</button>
+        <button
+          className="ob-modal-close"
+          onClick={isMerge ? onClose : (editing ? cancelEdit : onClose)}
+          title={isMerge ? '取消合并' : (editing ? '取消编辑' : '关闭 (Esc)')}
+        >✕</button>
 
         <header className="ob-modal-hd">
           <div className="ob-modal-eyebrow">
-            <span className="ob-modal-eyebrow-dot" />
-            <span>{editing ? '编辑中' : '记忆'} · {(item.id || '').toUpperCase()}</span>
-            {allItems && allItems.length > 1 && <>
-              <span style={{ opacity: 0.5 }}>/</span>
-              <span>{idx + 1} / {sorted.length}</span>
-            </>}
+            <span className="ob-modal-eyebrow-dot" style={isMerge ? { background: 'var(--accent)' } : undefined} />
+            {isMerge && mergeHeader ? (
+              <span>合并预览 · 「{mergeHeader.aName}」 → 「{mergeHeader.bName}」 · 接受后 A 删除</span>
+            ) : (
+              <>
+                <span>{editing ? '编辑中' : '记忆'} · {(item.id || '').toUpperCase()}</span>
+                {allItems && allItems.length > 1 && <>
+                  <span style={{ opacity: 0.5 }}>/</span>
+                  <span>{idx + 1} / {sorted.length}</span>
+                </>}
+              </>
+            )}
             {!editing && isHi && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--accent)' }}>★ 重要</span></>}
             {!editing && view.feel && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--rose-deep)' }}>❀ feel</span></>}
             {!editing && view.protected && <><span style={{ opacity: 0.5 }}>/</span><span>⛨ 已保护</span></>}
@@ -301,7 +333,13 @@ function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate }) {
 
         <footer className="ob-modal-foot">
           <div className="ob-modal-meta">
-            {editing ? (
+            {isMerge ? (
+              <>
+                <span className="ob-modal-meta-item">⌘+↵ 接受合并</span>
+                <span style={{ color: 'var(--ink-4)' }}>·</span>
+                <span className="ob-modal-meta-item">Esc 取消</span>
+              </>
+            ) : editing ? (
               <>
                 <span className="ob-modal-meta-item">⌘+↵ 保存</span>
                 <span style={{ color: 'var(--ink-4)' }}>·</span>
@@ -320,7 +358,28 @@ function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate }) {
             )}
           </div>
           <div className="ob-modal-actions">
-            {editing ? (
+            {isMerge ? (
+              <>
+                <button
+                  className="ob-modal-btn"
+                  onClick={onClose}
+                  disabled={rerollLoading || commitLoading}
+                >取消</button>
+                {onReroll && (
+                  <button
+                    className="ob-modal-btn"
+                    onClick={onReroll}
+                    disabled={rerollLoading || commitLoading}
+                    title="LLM 重新生成合并结果(注意:已有手动修改会被覆盖)"
+                  >{rerollLoading ? '⌛ 重做中…' : '↻ 重做'}</button>
+                )}
+                <button
+                  className="ob-modal-btn ob-modal-btn-primary"
+                  onClick={saveEdit}
+                  disabled={rerollLoading || commitLoading}
+                >{commitLoading ? '⌛ 提交中…' : '✓ 接受合并'}</button>
+              </>
+            ) : editing ? (
               <>
                 {onUpdate && (
                   <>
