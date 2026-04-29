@@ -1592,6 +1592,244 @@ input, textarea { font: inherit; color: inherit; }
 }
 .setting-row-toggle.on .knob { transform: translateX(16px); }
 
+/* 事件时间触发器(替代 input datetime-local) */
+.dt-trigger {
+  appearance: none;
+  border: 0.5px solid var(--line-2);
+  background: var(--paper);
+  border-radius: 10px;
+  padding: 11px 14px;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--ink);
+  font-family: var(--mono);
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-align: left;
+  cursor: pointer;
+}
+.dt-trigger:active { background: var(--bg-2); }
+.dt-trigger-ic {
+  font-family: var(--serif); font-style: italic;
+  color: var(--accent);
+  font-size: 16px;
+  flex-shrink: 0;
+  font-weight: 500;
+}
+.dt-trigger-value {
+  flex: 1;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dt-trigger-value.empty {
+  color: var(--ink-4);
+  font-style: italic;
+  font-family: var(--serif);
+  font-size: 14px;
+  letter-spacing: 0;
+}
+.dt-trigger-clear {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: var(--bg-2);
+  color: var(--ink-3);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.dt-trigger-clear:active { background: var(--line-2); }
+
+/* DateTimePicker —— 底部弹出 */
+.dt-picker-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(26, 25, 34, 0.42);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 200;  /* 高于 edit-sheet(100) */
+  display: flex;
+  align-items: flex-end;
+  animation: editFadeIn .2s ease;
+}
+.dt-picker {
+  width: 100%;
+  background: var(--bg);
+  border-radius: 22px 22px 0 0;
+  padding: 14px 20px calc(20px + env(safe-area-inset-bottom));
+  animation: editSlideUp .28s cubic-bezier(.2,.8,.2,1);
+  box-shadow: 0 -16px 40px -10px rgba(26,25,34,0.3);
+}
+.dt-picker-grip {
+  width: 38px; height: 4px;
+  background: var(--ink-4);
+  border-radius: 999px;
+  margin: 0 auto 14px;
+  opacity: 0.5;
+}
+.dt-picker-month-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+  padding: 0 2px;
+}
+.dt-picker-nav {
+  appearance: none;
+  width: 32px; height: 32px;
+  border-radius: 50%;
+  border: 0.5px solid var(--line-2);
+  background: var(--paper);
+  color: var(--ink-2);
+  font-family: var(--mono);
+  font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.dt-picker-nav:active { background: var(--bg-2); }
+.dt-picker-month-label {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 19px;
+  color: var(--ink);
+  font-weight: 500;
+  letter-spacing: 0.005em;
+}
+.dt-picker-month-label .y {
+  font-family: var(--mono);
+  font-size: 11px;
+  font-style: normal;
+  color: var(--ink-3);
+  margin-left: 6px;
+  letter-spacing: 0.06em;
+}
+.dt-picker-weekrow {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 5px;
+  font-family: var(--mono);
+  font-size: 9px;
+  color: var(--ink-4);
+  letter-spacing: 0.1em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.dt-picker-grid {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 4px;
+  margin-bottom: 14px;
+}
+.dt-picker-cell {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  aspect-ratio: 1;
+  font-family: var(--mono);
+  font-size: 13.5px;
+  color: var(--ink-2);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer;
+}
+.dt-picker-cell.ph { visibility: hidden; }
+.dt-picker-cell.today {
+  outline: 1px solid var(--line-2);
+  outline-offset: -1px;
+  color: var(--accent);
+}
+.dt-picker-cell.on {
+  background: var(--accent);
+  color: var(--paper);
+  font-weight: 600;
+  outline: none;
+}
+.dt-picker-cell:not(.ph):not(.on):active {
+  background: var(--bg-2);
+}
+.dt-picker-time-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 11px 14px;
+  background: var(--paper);
+  border: 0.5px solid var(--line-2);
+  border-radius: 12px;
+  margin-bottom: 14px;
+}
+.dt-picker-time-row .lbl {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  flex: 1;
+}
+.dt-picker-time-input {
+  appearance: textfield;
+  -moz-appearance: textfield;
+  width: 56px;
+  border: 0.5px solid var(--line-2);
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 7px 8px;
+  font-family: var(--mono);
+  font-size: 16px;
+  color: var(--ink);
+  text-align: center;
+  outline: 0;
+}
+.dt-picker-time-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-3);
+}
+.dt-picker-time-input::-webkit-outer-spin-button,
+.dt-picker-time-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.dt-picker-time-sep {
+  font-family: var(--serif);
+  font-size: 18px;
+  color: var(--ink-3);
+  font-weight: 500;
+}
+.dt-picker-actions {
+  display: flex;
+  gap: 8px;
+}
+.dt-picker-actions button {
+  flex: 1;
+  appearance: none;
+  border: 0;
+  padding: 12px;
+  border-radius: 10px;
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.dt-picker-cancel {
+  background: var(--bg-2);
+  color: var(--ink-3);
+}
+.dt-picker-now {
+  background: var(--accent-3);
+  color: var(--accent);
+  font-weight: 600;
+}
+.dt-picker-done {
+  background: var(--ink);
+  color: var(--paper);
+  font-weight: 600;
+}
+
 /* 危险按钮(EditSheet 删除) */
 .edit-delete-btn {
   width: 100%;

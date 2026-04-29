@@ -679,6 +679,177 @@ function MemFullScreen({ id }) {
 //   onSaved:  成功保存后回调,参数是新 metadata,父组件用来 refresh 自己
 // ─────────────────────────────────────────
 
+// 显示用:把 "YYYY-MM-DDTHH:MM" 拆成"YYYY · MM · DD  HH:MM"
+function formatLocalDateTimeForDisplay(local) {
+  if (!local) return '';
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/.exec(local);
+  if (!m) return local;
+  return `${m[1]} · ${m[2]} · ${m[3]}    ${m[4]}:${m[5]}`;
+}
+
+function DateTimePicker({ value, onChange, onClose }) {
+  // value 是本地 datetime 字符串 "YYYY-MM-DDTHH:MM",可空
+  const initialDt = value ? new Date(value) : new Date();
+  const safeDt = isNaN(initialDt.getTime()) ? new Date() : initialDt;
+
+  const [year, setYear] = useState(safeDt.getFullYear());
+  const [month, setMonth] = useState(safeDt.getMonth() + 1);
+  const [day, setDay] = useState(safeDt.getDate());
+  const [hour, setHour] = useState(safeDt.getHours());
+  const [minute, setMinute] = useState(safeDt.getMinutes());
+
+  const today = new Date();
+  const todayY = today.getFullYear();
+  const todayM = today.getMonth() + 1;
+  const todayD = today.getDate();
+
+  const firstDow = new Date(year, month - 1, 1).getDay();
+  const lastDay = new Date(year, month, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push(null);
+  for (let d = 1; d <= lastDay; d++) cells.push(d);
+
+  const prevMonth = () => {
+    let y = year, m = month - 1;
+    if (m < 1) { m = 12; y -= 1; }
+    setYear(y); setMonth(m);
+    if (day > new Date(y, m, 0).getDate()) setDay(new Date(y, m, 0).getDate());
+  };
+  const nextMonth = () => {
+    let y = year, m = month + 1;
+    if (m > 12) { m = 1; y += 1; }
+    setYear(y); setMonth(m);
+    if (day > new Date(y, m, 0).getDate()) setDay(new Date(y, m, 0).getDate());
+  };
+
+  const setNow = () => {
+    const n = new Date();
+    setYear(n.getFullYear());
+    setMonth(n.getMonth() + 1);
+    setDay(n.getDate());
+    setHour(n.getHours());
+    setMinute(n.getMinutes());
+  };
+
+  const apply = () => {
+    const yy = String(year).padStart(4, '0');
+    const mm = String(month).padStart(2, '0');
+    const dd = String(day).padStart(2, '0');
+    const hh = String(hour).padStart(2, '0');
+    const mn = String(minute).padStart(2, '0');
+    onChange(`${yy}-${mm}-${dd}T${hh}:${mn}`);
+    onClose();
+  };
+
+  return (
+    <div className="dt-picker-overlay" onClick={onClose}>
+      <div className="dt-picker" onClick={e => e.stopPropagation()}>
+        <div className="dt-picker-grip"/>
+
+        <div className="dt-picker-month-row">
+          <button className="dt-picker-nav" onClick={prevMonth} title="上个月">‹</button>
+          <span className="dt-picker-month-label">
+            {MO_EN[month - 1]}
+            <span className="y">{year}</span>
+          </span>
+          <button className="dt-picker-nav" onClick={nextMonth} title="下个月">›</button>
+        </div>
+
+        <div className="dt-picker-weekrow">
+          <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+        </div>
+        <div className="dt-picker-grid">
+          {cells.map((c, i) => {
+            const isToday = c === todayD && month === todayM && year === todayY;
+            const isOn = c === day;
+            const cls = 'dt-picker-cell'
+              + (c === null ? ' ph' : '')
+              + (isToday && !isOn ? ' today' : '')
+              + (isOn ? ' on' : '');
+            return (
+              <button
+                key={i}
+                className={cls}
+                onClick={() => c && setDay(c)}
+                disabled={c === null}
+              >{c || ''}</button>
+            );
+          })}
+        </div>
+
+        <div className="dt-picker-time-row">
+          <span className="lbl">时间</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            className="dt-picker-time-input"
+            value={String(hour).padStart(2, '0')}
+            onChange={e => {
+              const v = parseInt(e.target.value, 10);
+              if (isNaN(v)) setHour(0);
+              else setHour(Math.max(0, Math.min(23, v)));
+            }}
+            min="0" max="23"
+          />
+          <span className="dt-picker-time-sep">:</span>
+          <input
+            type="number"
+            inputMode="numeric"
+            className="dt-picker-time-input"
+            value={String(minute).padStart(2, '0')}
+            onChange={e => {
+              const v = parseInt(e.target.value, 10);
+              if (isNaN(v)) setMinute(0);
+              else setMinute(Math.max(0, Math.min(59, v)));
+            }}
+            min="0" max="59"
+          />
+        </div>
+
+        <div className="dt-picker-actions">
+          <button className="dt-picker-cancel" onClick={onClose}>取消</button>
+          <button className="dt-picker-now" onClick={setNow}>此刻</button>
+          <button className="dt-picker-done" onClick={apply}>完成</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function EventTimeField({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <>
+      <button
+        type="button"
+        className="dt-trigger"
+        onClick={() => setOpen(true)}
+      >
+        <span className="dt-trigger-ic">⌘</span>
+        {value ? (
+          <span className="dt-trigger-value">{formatLocalDateTimeForDisplay(value)}</span>
+        ) : (
+          <span className="dt-trigger-value empty">点击选择时间 · 留空则用创建时间</span>
+        )}
+        {value && (
+          <span
+            className="dt-trigger-clear"
+            onClick={(e) => { e.stopPropagation(); onChange(''); }}
+            title="清空"
+          >×</span>
+        )}
+      </button>
+      {open && (
+        <DateTimePicker
+          value={value}
+          onChange={onChange}
+          onClose={() => setOpen(false)}
+        />
+      )}
+    </>
+  );
+}
+
 function FormFields({
   name, setName, summary, setSummary, content, setContent,
   imp, setImp, pin, setPin, tags, setTags, tagInput, setTagInput,
@@ -737,13 +908,7 @@ function FormFields({
       {setEventTime && (
         <div className="edit-field">
           <div className="edit-field-lbl">事件时间 · 可选</div>
-          <input
-            type="datetime-local"
-            className="edit-input"
-            value={eventTime || ''}
-            onChange={e => setEventTime(e.target.value)}
-            style={{ fontFamily: 'var(--mono)', fontStyle: 'normal', fontSize: 13 }}
-          />
+          <EventTimeField value={eventTime} onChange={setEventTime}/>
         </div>
       )}
 
