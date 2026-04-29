@@ -1713,7 +1713,6 @@ function ReviewScreen() {
           <div className="pos">
             {curIdx >= 0 ? (curIdx + 1) : '—'}<span style={{ opacity: 0.5 }}>/</span>{queue.length}
           </div>
-          <span style={{ writingMode: 'vertical-rl' }}>队列 · QUEUE</span>
         </div>
 
         <div className={'rv-queue-drawer' + (drawer ? '' : ' closed')}>
