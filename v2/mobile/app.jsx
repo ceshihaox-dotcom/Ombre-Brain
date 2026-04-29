@@ -417,14 +417,18 @@ function DayDetailScreen({ dayKey }) {
 function MemFullScreen({ id }) {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     let cancel = false;
+    setData(null);
+    setError(null);
     api('/api/bucket/' + encodeURIComponent(id))
       .then(d => { if (!cancel) setData(d); })
       .catch(e => { if (!cancel) setError(e.message); });
     return () => { cancel = true; };
-  }, [id]);
+  }, [id, refreshKey]);
 
   if (error) return (
     <div className="mem-full">
@@ -520,10 +524,312 @@ function MemFullScreen({ id }) {
       </div>
 
       <div className="mem-full-action">
-        <div className="mem-full-fab" title="编辑(暂未实装)">✎</div>
+        <button className="mem-full-fab" onClick={() => setEditing(true)} title="编辑" style={{ cursor: 'pointer' }}>✎</button>
       </div>
 
+      {editing && (
+        <EditSheet
+          bucketId={data.id}
+          onClose={() => setEditing(false)}
+          onSaved={() => setRefreshKey(k => k + 1)}
+        />
+      )}
+
       <TabBar active="home"/>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────
+// EditSheet · 共用编辑底弹(MemFull / Review 都用)
+//   bucketId: 要编辑的桶 ID;打开时自动 fetch 完整 metadata + content
+//   onClose:  取消 / 关闭
+//   onSaved:  成功保存后回调,参数是新 metadata,父组件用来 refresh 自己
+// ─────────────────────────────────────────
+
+function FormFields({
+  name, setName, summary, setSummary, content, setContent,
+  imp, setImp, hi, setHi, pin, setPin, tags, setTags, tagInput, setTagInput,
+  showSummary = true, showPin = true, contentRequired = false,
+}) {
+  const feel = tags.some(t => /^feel/i.test(String(t)));
+  const toggleFeel = () => {
+    if (feel) setTags(tags.filter(t => !/^feel/i.test(String(t))));
+    else setTags(tags.concat(['feel']));
+  };
+  const addTag = () => {
+    const t = tagInput.trim();
+    if (!t) return;
+    if (tags.indexOf(t) >= 0) { setTagInput(''); return; }
+    setTags(tags.concat([t]));
+    setTagInput('');
+  };
+  const removeTag = (t) => setTags(tags.filter(x => x !== t));
+
+  return (
+    <>
+      <div className="edit-field">
+        <div className="edit-field-lbl">标题{!contentRequired && ' · 可选'}</div>
+        <input
+          className="edit-input"
+          value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder={contentRequired ? '(留空 AI 起一个)' : '(留空则用 ID)'}
+        />
+      </div>
+
+      {showSummary && (
+        <div className="edit-field">
+          <div className="edit-field-lbl">摘要 · 可选</div>
+          <input
+            className="edit-input"
+            value={summary}
+            onChange={e => setSummary(e.target.value)}
+            placeholder="(空则前端 fallback 到正文前段)"
+          />
+        </div>
+      )}
+
+      <div className="edit-field">
+        <div className="edit-field-lbl">正文{contentRequired ? ' · 必填' : ''}</div>
+        <textarea
+          className="edit-textarea"
+          value={content}
+          onChange={e => setContent(e.target.value)}
+          rows={contentRequired ? 8 : 6}
+          placeholder={contentRequired ? '想记什么 …' : ''}
+        />
+      </div>
+
+      <div className="edit-field">
+        <div className="edit-field-lbl">重要度 · importance</div>
+        <div className="edit-imp">
+          <div className="edit-imp-track">
+            {Array.from({ length: 9 }).map((_, i) => (
+              <i key={i} className={i < imp ? 'on' : ''} onClick={() => setImp(i + 1)}/>
+            ))}
+          </div>
+          <span className="edit-imp-num">{imp}</span>
+        </div>
+      </div>
+
+      <div className="edit-field">
+        <div className="edit-field-lbl">动态属性</div>
+        <div className="edit-toggle-row">
+          <button className={'edit-toggle ' + (hi ? 'on' : '')} onClick={() => setHi(!hi)}>
+            <span className="ic">★</span><span>highlight</span>
+          </button>
+          <button className={'edit-toggle feel ' + (feel ? 'on' : '')} onClick={toggleFeel}>
+            <span className="ic">♡</span><span>feel</span>
+          </button>
+          {showPin && (
+            <button className={'edit-toggle pin ' + (pin ? 'on' : '')} onClick={() => setPin(!pin)}>
+              <span className="ic">⚲</span><span>钉决</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="edit-field">
+        <div className="edit-field-lbl">标签</div>
+        <div className="edit-tags-input">
+          {tags.filter(t => !String(t).startsWith('__')).map((t, i) => (
+            <span key={i} className="edit-tag-chip">
+              {t}<span className="x" onClick={() => removeTag(t)}>×</span>
+            </span>
+          ))}
+          <input
+            className="edit-tag-input"
+            value={tagInput}
+            onChange={e => setTagInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
+            placeholder="+ 加标签 ⏎"
+          />
+        </div>
+      </div>
+    </>
+  );
+}
+
+function EditSheet({ bucketId, onClose, onSaved }) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [name, setName] = useState('');
+  const [summary, setSummary] = useState('');
+  const [content, setContent] = useState('');
+  const [imp, setImp] = useState(5);
+  const [hi, setHi] = useState(false);
+  const [pin, setPin] = useState(false);
+  const [tags, setTags] = useState([]);
+  const [tagInput, setTagInput] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    let cancel = false;
+    api('/api/bucket/' + encodeURIComponent(bucketId))
+      .then(d => {
+        if (cancel) return;
+        const m = d.metadata || {};
+        setName(m.name || '');
+        setSummary(m.summary || '');
+        setContent(d.content || '');
+        setImp(m.importance || 5);
+        setHi(!!m.highlight);
+        setPin(!!m.protected);
+        setTags(m.tags || []);
+        setLoading(false);
+      })
+      .catch(e => { if (!cancel) { setError(e.message); setLoading(false); } });
+    return () => { cancel = true; };
+  }, [bucketId]);
+
+  const save = async () => {
+    setSaving(true);
+    setError(null);
+    try {
+      const r = await fetch('/api/bucket/' + encodeURIComponent(bucketId) + '/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim() || bucketId,
+          summary: summary,
+          content: content,
+          importance: imp,
+          tags: tags,
+          highlight: hi,
+          protected: pin,
+        }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${r.status}`);
+      }
+      const data = await r.json();
+      if (onSaved) onSaved(data.metadata || {});
+      onClose();
+    } catch (e) {
+      setError(e.message || String(e));
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="edit-sheet" onClick={onClose}>
+      <div className="edit-sheet-panel" onClick={e => e.stopPropagation()}>
+        <div className="edit-sheet-grip"/>
+        <div className="edit-sheet-hd">
+          <button className="cancel" onClick={onClose} disabled={saving}>取消</button>
+          <span className="ttl">{loading ? '载入中…' : '编辑记忆'}</span>
+          <button className="save" onClick={save} disabled={loading || saving}>
+            {saving ? '保存中' : '保存'}
+          </button>
+        </div>
+
+        {error && <div className="edit-error">⚠ {error}</div>}
+
+        {loading ? (
+          <div className="app-loading" style={{ height: 200 }}>载入中…</div>
+        ) : (
+          <FormFields
+            name={name} setName={setName}
+            summary={summary} setSummary={setSummary}
+            content={content} setContent={setContent}
+            imp={imp} setImp={setImp}
+            hi={hi} setHi={setHi}
+            pin={pin} setPin={setPin}
+            tags={tags} setTags={setTags}
+            tagInput={tagInput} setTagInput={setTagInput}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────
+// NewScreen · 写新条目(全屏表单)
+// ─────────────────────────────────────────
+
+function NewScreen() {
+  const [name, setName] = useState('');
+  const [summary, setSummary] = useState('');
+  const [content, setContent] = useState('');
+  const [imp, setImp] = useState(5);
+  const [hi, setHi] = useState(false);
+  const [pin, setPin] = useState(false);
+  const [tags, setTags] = useState([]);
+  const [tagInput, setTagInput] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState(null);
+
+  const save = async () => {
+    if (!content.trim()) {
+      setError('正文不能空');
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const r = await fetch('/api/bucket/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: name.trim() || null,
+          summary: summary.trim() || undefined,
+          content: content,
+          importance: imp,
+          tags: tags,
+          highlight: hi,
+          protected: pin,
+        }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${r.status}`);
+      }
+      const data = await r.json();
+      // summary 不能直接通过 create 设(create() 不接 summary 字段),
+      // 如果用户写了 summary,补一次 update
+      if (summary.trim()) {
+        try {
+          await fetch('/api/bucket/' + encodeURIComponent(data.id) + '/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ summary: summary.trim() }),
+          });
+        } catch (_) { /* 忽略,用户可以以后再编辑 */ }
+      }
+      navigate('/mem/' + encodeURIComponent(data.id));
+    } catch (e) {
+      setError(e.message || String(e));
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="new-screen">
+      <div className="new-top">
+        <button className="cancel" onClick={() => window.history.back()} disabled={saving}>取消</button>
+        <span className="ttl">写新记忆</span>
+        <button className="save" onClick={save} disabled={saving || !content.trim()}>
+          {saving ? '保存中' : '保存'}
+        </button>
+      </div>
+
+      <div className="new-body">
+        {error && <div className="edit-error">⚠ {error}</div>}
+        <FormFields
+          name={name} setName={setName}
+          summary={summary} setSummary={setSummary}
+          content={content} setContent={setContent}
+          imp={imp} setImp={setImp}
+          hi={hi} setHi={setHi}
+          pin={pin} setPin={setPin}
+          tags={tags} setTags={setTags}
+          tagInput={tagInput} setTagInput={setTagInput}
+          contentRequired={true}
+        />
+      </div>
     </div>
   );
 }
@@ -574,9 +880,10 @@ function buildMonth(year, month, dayMap, todayKey) {
   return { year, month, cells, total, hiCnt, todoCnt, peakDay };
 }
 
-function CalCell({ c, mode }) {
+function CalCell({ c, mode, onClick }) {
   if (c.ph) return <div className="cal-cell placeholder"/>;
   let cls = 'cal-cell';
+  if (c.n > 0) cls += ' has-data';
   if (mode === 'show') {
     cls += ' ' + levelOf(c.n);
     if (c.today) cls += ' today';
@@ -591,14 +898,14 @@ function CalCell({ c, mode }) {
     if (c.today) cls += ' today';
   }
   return (
-    <div className={cls}>
+    <div className={cls} onClick={c.n > 0 && onClick ? () => onClick(c) : undefined}>
       <span className="d">{c.d}</span>
       {c.n > 0 && <span className="n">{c.n}</span>}
     </div>
   );
 }
 
-function CalMonth({ year, month, cells, total, hiCnt, todoCnt, peakDay, mode }) {
+function CalMonth({ year, month, cells, total, hiCnt, todoCnt, peakDay, mode, onCellClick }) {
   return (
     <div className="cal-month">
       <div className="cal-month-hd">
@@ -614,7 +921,14 @@ function CalMonth({ year, month, cells, total, hiCnt, todoCnt, peakDay, mode }) 
         <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
       </div>
       <div className="cal-grid">
-        {cells.map((c, i) => <CalCell key={i} c={c} mode={mode}/>)}
+        {cells.map((c, i) => (
+          <CalCell
+            key={i}
+            c={c}
+            mode={mode}
+            onClick={c.n > 0 ? () => onCellClick(year, month, c.d) : undefined}
+          />
+        ))}
       </div>
     </div>
   );
@@ -773,6 +1087,10 @@ function CalScreen() {
           todoCnt={mo.todoCnt}
           peakDay={mo.peakDay}
           mode={mode}
+          onCellClick={(y, m, d) => {
+            const k = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            navigate('/day/' + k);
+          }}
         />
       ))}
 
@@ -799,6 +1117,8 @@ function ReviewScreen() {
   const [scope, setScope] = useState('all'); // 默认全部,因为今天可能没记忆
   const [drawer, setDrawer] = useState(false);
   const [curId, setCurId] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let cancel = false;
@@ -869,8 +1189,60 @@ function ReviewScreen() {
     </div>
   );
 
-  const noop = () => alert('Phase 1 只读 · 状态切换 / 编辑下次实装');
   const curDt = cur ? bucketDate(cur) : null;
+
+  // 操作完成后,在「旧 queue」基础上挑下一个 cur
+  // 规则:queue[(oldIdx + 1) % queue.length],wrap;若 queue 只有这一个就置空
+  const pickNext = () => {
+    if (queue.length <= 1) return null;
+    const oldIdx = queue.findIndex(b => b.id === curId);
+    if (oldIdx < 0) return queue[0];
+    return queue[(oldIdx + 1) % queue.length];
+  };
+
+  const markStatus = async (action) => {
+    if (!cur || busy) return;
+    setBusy(true);
+    const newTags = (cur.tags || []).filter(t => t !== '__import_refined' && t !== '__import_flagged');
+    if (action === 'refined') newTags.push('__import_refined');
+    if (action === 'flagged') newTags.push('__import_flagged');
+    const next = pickNext();
+    try {
+      const r = await fetch('/api/bucket/' + encodeURIComponent(cur.id) + '/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tags: newTags }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${r.status}`);
+      }
+      setBuckets(prev => prev.map(b => b.id === cur.id ? { ...b, tags: newTags } : b));
+      setCurId(next ? next.id : null);
+    } catch (e) {
+      alert('失败: ' + e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteCur = async () => {
+    if (!cur || busy) return;
+    if (!window.confirm('删除「' + (cur.name || cur.id) + '」?\n移到回收站,可在设置 → 回收站恢复。')) return;
+    setBusy(true);
+    const oldId = cur.id;
+    const next = pickNext();
+    try {
+      const r = await fetch('/api/bucket/' + encodeURIComponent(oldId) + '/delete', { method: 'POST' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      setBuckets(prev => prev.filter(b => b.id !== oldId));
+      setCurId(next ? next.id : null);
+    } catch (e) {
+      alert('失败: ' + e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <div className="review">
@@ -932,17 +1304,58 @@ function ReviewScreen() {
               </b>
             </div>
             <div className="rv-main-text-wrap">
-              <div className="rv-main-text">
-                {cur.summary && <p className="lead">{cur.summary}</p>}
-                {cur.content_preview && cur.content_preview.split(/\n\s*\n/).filter(Boolean).map((p, i) => (
-                  <p key={i}>{p}</p>
-                ))}
-                {!cur.summary && !cur.content_preview && <p style={{ color: 'var(--ink-4)' }}>(无内容预览 · 点详情看全文)</p>}
-              </div>
+              {(() => {
+                const paras = cur.content_preview
+                  ? cur.content_preview.split(/\n\s*\n/).filter(Boolean)
+                  : [];
+                const leadText = cur.summary || (paras.length > 0 ? paras[0] : null);
+                const bodyParas = cur.summary ? paras : paras.slice(1);
+                return (
+                  <div className="rv-main-text">
+                    {leadText && <p className="lead">{leadText}</p>}
+                    {bodyParas.map((p, i) => <p key={i}>{p}</p>)}
+                    {!leadText && bodyParas.length === 0 && (
+                      <p style={{ color: 'var(--ink-4)' }}>(无内容预览)</p>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* 状态按钮条:嵌入主卡底部,跟下面 tabbar 视觉分层 */}
+            <div className="rv-actions-bar">
+              <button
+                className="rv-action-btn read"
+                onClick={() => markStatus('refined')}
+                disabled={busy || statusOf(cur) === 'done'}
+              >
+                <span className="ic">✓</span><span>已阅</span>
+              </button>
+              <button
+                className="rv-action-btn doubt"
+                onClick={() => markStatus('flagged')}
+                disabled={busy || statusOf(cur) === 'doubt'}
+              >
+                <span className="ic">?</span><span>存疑</span>
+              </button>
+              <button
+                className="rv-action-btn del"
+                onClick={deleteCur}
+                disabled={busy}
+              >
+                <span className="ic">✕</span><span>删除</span>
+              </button>
+              <button
+                className="rv-action-btn edit"
+                onClick={() => setEditing(true)}
+                disabled={busy}
+              >
+                <span className="ic">✎</span><span>编辑</span>
+              </button>
             </div>
           </div>
         ) : (
-          <div className="app-loading" style={{ height: 'calc(100% - 156px)' }}>
+          <div className="app-loading" style={{ height: 'calc(100% - 90px)' }}>
             {queue.length === 0 ? '当前 tab 队列空' : '没选中条目'}
           </div>
         )}
@@ -953,21 +1366,6 @@ function ReviewScreen() {
             {curIdx >= 0 ? (curIdx + 1) : '—'}<span style={{ opacity: 0.5 }}>/</span>{queue.length}
           </div>
           <span style={{ writingMode: 'vertical-rl' }}>队列 · QUEUE</span>
-        </div>
-
-        <div className="rv-actions-bar">
-          <button className="rv-action-btn read" onClick={noop} disabled>
-            <span className="ic">✓</span><span>已阅</span>
-          </button>
-          <button className="rv-action-btn doubt" onClick={noop} disabled>
-            <span className="ic">?</span><span>存疑</span>
-          </button>
-          <button className="rv-action-btn del" onClick={noop} disabled>
-            <span className="ic">✕</span><span>删除</span>
-          </button>
-          <button className="rv-action-btn edit" onClick={noop} disabled>
-            <span className="ic">✎</span><span>编辑</span>
-          </button>
         </div>
 
         <div className={'rv-queue-drawer' + (drawer ? '' : ' closed')}>
@@ -1005,6 +1403,18 @@ function ReviewScreen() {
             })}
           </div>
         </div>
+
+        {editing && cur && (
+          <EditSheet
+            bucketId={cur.id}
+            onClose={() => setEditing(false)}
+            onSaved={(newMeta) => {
+              setBuckets(prev => prev.map(b =>
+                b.id === cur.id ? { ...b, ...newMeta } : b
+              ));
+            }}
+          />
+        )}
       </div>
 
       <TabBar active="review"/>
@@ -1229,7 +1639,7 @@ function App() {
       if (rest[0] === 'import') return <ImportScreen/>;
       return <SettingScreen/>;
     case 'new':
-      return <PlaceholderScreen tab="home" ic="＋" title="写新记忆" sub="下次实装 — 写入 + 编辑一起做"/>;
+      return <NewScreen/>;
     default:
       return <PlaceholderScreen tab="home" ic="?" title="未知路由" sub={'#/' + route.join('/')}/>;
   }
