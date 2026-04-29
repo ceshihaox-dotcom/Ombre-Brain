@@ -254,7 +254,10 @@ function HomeScreen() {
       <div className="home-top">
         <div className="home-hd-row">
           <div className="home-hd-l">
-            <h1 className="home-page-title">我的时间线</h1>
+            <h1 className="home-page-title">
+              <span className="home-page-mark"/>
+              Ombre Brain
+            </h1>
             <p className="home-page-sub">按事件时间倒序 · 点天卡看当日全部</p>
           </div>
           <div className="home-page-stat">
