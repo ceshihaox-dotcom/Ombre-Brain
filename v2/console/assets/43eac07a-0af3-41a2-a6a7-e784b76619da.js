@@ -1,14 +1,12 @@
-// console-breath.jsx —— Breath 模拟管线
+// console-breath.jsx —— Breath 模拟管线（接通真后端 /api/breath-debug）
 // 5 阶段：① 输入 → ② 候选 → ③ 四维评分 → ④ 阈值过滤 → ⑤ 重排序
 
-const { useState: cbS, useEffect: cbE, useMemo: cbM } = React;
+const { useState: cbS, useEffect: cbE } = React;
 
-// 配置（与 v2 一致的 token）
-const BREATH_WEIGHTS = {
-  topic: 4, emotion: 2, time: 2.5, importance: 1
-};
+// 初始 token（threshold/topN 给前端 slider 当起点；权重由后端返回真实值覆盖）
 const BREATH_THRESHOLD = 50;
 const BREATH_TOP_N = 4;
+const DEFAULT_WEIGHTS = { topic: 4, emotion: 2, time: 2.5, importance: 1 };
 
 function BreathPage({ items }) {
   const [query, setQuery] = cbS('记忆');
@@ -19,44 +17,42 @@ function BreathPage({ items }) {
   const [topN, setTopN] = cbS(BREATH_TOP_N);
   const [threshold, setThreshold] = cbS(BREATH_THRESHOLD);
 
-  // 候选评分（决定式：基于 query / 情感 / 时间 / 重要度）
-  const scored = cbM(() => {
-    const now = new Date('2026-04-26').getTime();
-    return items.map((it) => {
-      // topic：query 和 title/summary/tags 字符匹配模拟
-      const text = `${it.title || ''} ${it.summary || ''} ${(it.tags || []).join(' ')}`;
-      const topicHits = query ? (text.match(new RegExp(query, 'gi')) || []).length : 0;
-      const topic = Math.min(1, topicHits * 0.35 + (text.length > 0 ? 0.05 : 0));
+  // 后端 /api/breath-debug 返回的真实数据
+  const [results, setResults] = cbS([]);
+  const [weights, setWeights] = cbS(DEFAULT_WEIGHTS);
+  const [totalCandidates, setTotalCandidates] = cbS(0);
+  const [error, setError] = cbS(null);
+  const [hasFetched, setHasFetched] = cbS(false);
 
-      // emotion：feel 项 + valence / arousal 接近度
-      const itemValence = it.feel ? (it.importance >= 7 ? 0.78 : 0.55) : 0.5;
-      const itemArousal = it.feel ? 0.6 : 0.3;
-      const dValence = 1 - Math.abs(valence - itemValence);
-      const dArousal = 1 - Math.abs(arousal - itemArousal);
-      const emotion = (dValence + dArousal) / 2 * (it.feel ? 1 : 0.55);
-
-      // time：最近活跃指数（30 天衰减）
-      const ts = new Date(it.date || '2026-04-01').getTime();
-      const days = Math.max(0, (now - ts) / (1000 * 86400));
-      const time = Math.exp(-days / 14);
-
-      // importance
-      const imp = (it.importance || 5) / 10;
-
-      // 加权
-      const w = BREATH_WEIGHTS;
-      const raw = topic * w.topic + emotion * w.emotion + time * w.time + imp * w.importance;
-      const total = w.topic + w.emotion + w.time + w.importance;
-      const score = (raw / total) * 100;
-
-      return { ...it, _topic: topic, _emotion: emotion, _time: time, _imp: imp, _score: score };
-    }).sort((a, b) => b._score - a._score);
-  }, [items, query, valence, arousal]);
-
-  const passed = scored.filter(s => s._score >= threshold);
+  // 客户端二次过滤(slider 即时反馈,不发新请求)
+  const passed = results.filter(r => r.normalized >= threshold);
   const finalList = passed.slice(0, topN);
 
-  // 阶段动画
+  const fetchBreath = async () => {
+    setError(null);
+    try {
+      const params = new URLSearchParams({
+        q: query,
+        valence: String(valence),
+        arousal: String(arousal),
+      });
+      const r = await fetch(`/api/breath-debug?${params.toString()}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const data = await r.json();
+      if (data.error) throw new Error(data.error);
+      setResults(Array.isArray(data.results) ? data.results : []);
+      setWeights(data.weights || DEFAULT_WEIGHTS);
+      setTotalCandidates(data.total_candidates || 0);
+      setHasFetched(true);
+    } catch (err) {
+      setError(err && err.message ? err.message : String(err));
+      setResults([]);
+      setTotalCandidates(0);
+      setHasFetched(true);
+    }
+  };
+
+  // 阶段动画 + fetch 并行
   const runSimulation = () => {
     setRunning(true);
     setActiveStage(0);
@@ -68,14 +64,16 @@ function BreathPage({ items }) {
       else setTimeout(() => { setRunning(false); }, 200);
     };
     setTimeout(tick, 200);
+    fetchBreath();
   };
 
-  cbE(() => { setActiveStage(5); }, []);  // 默认全亮
+  // 初次挂载自动跑一次,免得空白
+  cbE(() => { runSimulation(); }, []);
 
   const stages = [
     { num: 'i', label: '输入', meta: 'query / valence / arousal' },
-    { num: 'ii', label: '候选', meta: `${items.length} 条` },
-    { num: 'iii', label: '四维评分', meta: `topic×4 + emotion×2 + time×2.5 + imp×1` },
+    { num: 'ii', label: '候选', meta: `${totalCandidates} 条` },
+    { num: 'iii', label: '四维评分', meta: `topic×${weights.topic} + emotion×${weights.emotion} + time×${weights.time} + imp×${weights.importance}` },
     { num: 'iv', label: '阈值过滤', meta: `≥${threshold} · ${passed.length} 通过` },
     { num: 'v', label: '降序排序', meta: `返回 top ${topN}` },
   ];
@@ -85,27 +83,24 @@ function BreathPage({ items }) {
       <ConsolePageHd
         title="Breath 模拟"
         sub={<>记忆唤起的 5 阶段管线可视化 —— 输入 query 与情感坐标,观察候选记忆如何被四维评分、过滤、重排。</>}
-        rightSlot={<div className="ob-page-counter"><b>{items.length}</b> 候选 · <b>{finalList.length}</b> 命中</div>}
+        rightSlot={<div className="ob-page-counter"><b>{totalCandidates}</b> 候选 · <b>{finalList.length}</b> 命中</div>}
       />
 
-      {/* 概念演示提示 — 防止误解为真实行为 */}
-      <div style={{
-        margin: '0 0 14px',
-        padding: '10px 14px',
-        background: 'color-mix(in oklab, #b08040 6%, var(--paper))',
-        border: '0.5px solid color-mix(in oklab, #b08040 35%, var(--line-2))',
-        borderLeft: '2px solid #b08040',
-        borderRadius: 8,
-        display: 'flex', alignItems: 'flex-start', gap: 10,
-        fontSize: 12, lineHeight: 1.6, color: 'var(--ink-2)',
-      }}>
-        <span style={{ color: '#b08040', fontFamily: 'var(--mono)', fontSize: 11, flexShrink: 0, marginTop: 1 }}>⚠ 概念演示</span>
-        <span>
-          此页是 breath 唤起逻辑的<b>可视化教学</b>,使用前端简化模型(4 维加权)。
-          后端真实 breath 走的是 <code style={{ fontFamily: 'var(--mono)', fontSize: 11.5, color: 'var(--ink-3)' }}>BM25 关键词 + embedding 语义</code> 混合检索,
-          调这里的权重和阈值<b style={{ color: '#b08040' }}>不影响真实行为</b>。想看真实唤起结果请用工作台"全库相似"或 breath 工具直接调用。
-        </span>
-      </div>
+      {error && (
+        <div style={{
+          margin: '0 0 14px',
+          padding: '10px 14px',
+          background: 'color-mix(in oklab, #c44 6%, var(--paper))',
+          border: '0.5px solid color-mix(in oklab, #c44 35%, var(--line-2))',
+          borderLeft: '2px solid #c44',
+          borderRadius: 8,
+          display: 'flex', alignItems: 'flex-start', gap: 10,
+          fontSize: 12, lineHeight: 1.6, color: 'var(--ink-2)',
+        }}>
+          <span style={{ color: '#c44', fontFamily: 'var(--mono)', fontSize: 11, flexShrink: 0, marginTop: 1 }}>⚠ 后端失败</span>
+          <span>{error}</span>
+        </div>
+      )}
 
       {/* 管线可视化 */}
       <ConsoleCard>
@@ -167,19 +162,19 @@ function BreathPage({ items }) {
       </ConsoleCard>
 
       {/* 权重 + 阈值配置 */}
-      <ConsoleCard label="权重配置" sub="在线调整四维权重与命中阈值。提交后会立即重算评分。">
+      <ConsoleCard label="权重配置" sub="权重展示后端真实值。阈值与 top N 在客户端二次过滤,不影响后端评分。">
         <div className="oc-weight-bar">
-          <span><b>topic</b> = {BREATH_WEIGHTS.topic}</span>
+          <span><b>topic</b> = {weights.topic}</span>
           <span className="sep">·</span>
-          <span><b>emotion</b> = {BREATH_WEIGHTS.emotion}</span>
+          <span><b>emotion</b> = {weights.emotion}</span>
           <span className="sep">·</span>
-          <span><b>time</b> = {BREATH_WEIGHTS.time}</span>
+          <span><b>time</b> = {weights.time}</span>
           <span className="sep">·</span>
-          <span><b>importance</b> = {BREATH_WEIGHTS.importance}</span>
+          <span><b>importance</b> = {weights.importance}</span>
           <span className="sep">|</span>
           <span>阈值 = <b>{threshold}</b></span>
           <span className="sep">|</span>
-          <span>候选 = <b>{items.length}</b></span>
+          <span>候选 = <b>{totalCandidates}</b></span>
           <span className="sep">→</span>
           <span>通过 <b>{passed.length}</b> 条</span>
         </div>
@@ -200,26 +195,37 @@ function BreathPage({ items }) {
       {/* 候选条形图 */}
       <ConsoleCard
         label="候选评分"
-        sub={`${scored.length} 条 · ${passed.length} 过阈 · top ${topN} 入选`}
+        sub={`${results.length} 条 · ${passed.length} 过阈 · top ${topN} 入选`}
       >
-        <div className="oc-candidates">
-          {scored.slice(0, 18).map((s, i) => {
-            const dropped = s._score < threshold || i >= topN;
-            return (
-              <div key={s.id} className={`oc-cand${dropped ? ' dropped' : ''}`}>
-                <div className="oc-cand-rank">{String(i + 1).padStart(2, '0')}</div>
-                <div className="oc-cand-title" title={s.title}>{s.title || s.id}</div>
-                <div className="oc-cand-bars">
-                  <BreathBar kind="topic" value={s._topic} weight={BREATH_WEIGHTS.topic} />
-                  <BreathBar kind="emotion" value={s._emotion} weight={BREATH_WEIGHTS.emotion} />
-                  <BreathBar kind="time" value={s._time} weight={BREATH_WEIGHTS.time} />
-                  <BreathBar kind="imp" value={s._imp} weight={BREATH_WEIGHTS.importance} />
+        {!hasFetched ? (
+          <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--ink-3)', fontSize: 12 }}>
+            正在拉取后端数据…
+          </div>
+        ) : results.length === 0 ? (
+          <div style={{ padding: '24px 0', textAlign: 'center', color: 'var(--ink-3)', fontSize: 12 }}>
+            {error ? '后端返回错误,见上方提示' : '后端返回 0 条候选(全库可能为空,或 query 没匹配上)'}
+          </div>
+        ) : (
+          <div className="oc-candidates">
+            {results.slice(0, 18).map((s, i) => {
+              const dropped = s.normalized < threshold || i >= topN;
+              const sc = s.scores || {};
+              return (
+                <div key={s.id} className={`oc-cand${dropped ? ' dropped' : ''}`}>
+                  <div className="oc-cand-rank">{String(i + 1).padStart(2, '0')}</div>
+                  <div className="oc-cand-title" title={s.name}>{s.name || s.id}</div>
+                  <div className="oc-cand-bars">
+                    <BreathBar kind="topic" value={sc.topic || 0} weight={weights.topic} />
+                    <BreathBar kind="emotion" value={sc.emotion || 0} weight={weights.emotion} />
+                    <BreathBar kind="time" value={sc.time || 0} weight={weights.time} />
+                    <BreathBar kind="imp" value={sc.importance || 0} weight={weights.importance} />
+                  </div>
+                  <div className="oc-cand-score">{(s.normalized || 0).toFixed(1)}</div>
                 </div>
-                <div className="oc-cand-score">{s._score.toFixed(1)}</div>
-              </div>
-            );
-          })}
-        </div>
+              );
+            })}
+          </div>
+        )}
       </ConsoleCard>
     </main>
   );
