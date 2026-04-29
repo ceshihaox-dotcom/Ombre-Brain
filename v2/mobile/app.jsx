@@ -100,6 +100,21 @@ function bucketSummary(b) {
   return b.summary || b.content_preview || '';
 }
 
+// ISO 字符串 ↔ datetime-local 输入(YYYY-MM-DDTHH:MM,本地时区)
+function toLocalDateTimeStr(iso) {
+  if (!iso) return '';
+  const dt = new Date(iso);
+  if (isNaN(dt.getTime())) return '';
+  const tzMs = dt.getTimezoneOffset() * 60000;
+  return new Date(dt.getTime() - tzMs).toISOString().slice(0, 16);
+}
+function fromLocalDateTimeStr(local) {
+  if (!local) return '';
+  const dt = new Date(local);
+  if (isNaN(dt.getTime())) return '';
+  return dt.toISOString();
+}
+
 // ─────────────────────────────────────────
 // 共用小组件
 // ─────────────────────────────────────────
@@ -667,6 +682,7 @@ function MemFullScreen({ id }) {
 function FormFields({
   name, setName, summary, setSummary, content, setContent,
   imp, setImp, pin, setPin, tags, setTags, tagInput, setTagInput,
+  eventTime, setEventTime,
   showSummary = true, showPin = true, contentRequired = false,
 }) {
   const feel = tags.some(t => /^feel/i.test(String(t)));
@@ -718,6 +734,19 @@ function FormFields({
         />
       </div>
 
+      {setEventTime && (
+        <div className="edit-field">
+          <div className="edit-field-lbl">事件时间 · 可选</div>
+          <input
+            type="datetime-local"
+            className="edit-input"
+            value={eventTime || ''}
+            onChange={e => setEventTime(e.target.value)}
+            style={{ fontFamily: 'var(--mono)', fontStyle: 'normal', fontSize: 13 }}
+          />
+        </div>
+      )}
+
       <div className="edit-field">
         <div className="edit-field-lbl">重要度 · importance</div>
         <div className="edit-imp">
@@ -766,7 +795,7 @@ function FormFields({
   );
 }
 
-function EditSheet({ bucketId, onClose, onSaved }) {
+function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [name, setName] = useState('');
@@ -776,6 +805,7 @@ function EditSheet({ bucketId, onClose, onSaved }) {
   const [pin, setPin] = useState(false);
   const [tags, setTags] = useState([]);
   const [tagInput, setTagInput] = useState('');
+  const [eventTime, setEventTime] = useState('');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -790,6 +820,7 @@ function EditSheet({ bucketId, onClose, onSaved }) {
         setImp(m.importance || 5);
         setPin(!!m.protected);
         setTags(m.tags || []);
+        setEventTime(toLocalDateTimeStr(m.event_time || m.created || ''));
         setLoading(false);
       })
       .catch(e => { if (!cancel) { setError(e.message); setLoading(false); } });
@@ -810,6 +841,7 @@ function EditSheet({ bucketId, onClose, onSaved }) {
           importance: imp,
           tags: tags,
           protected: pin,
+          event_time: fromLocalDateTimeStr(eventTime),
         }),
       });
       if (!r.ok) {
@@ -819,6 +851,25 @@ function EditSheet({ bucketId, onClose, onSaved }) {
       const data = await r.json();
       if (onSaved) onSaved(data.metadata || {});
       onClose();
+    } catch (e) {
+      setError(e.message || String(e));
+      setSaving(false);
+    }
+  };
+
+  const del = async () => {
+    if (!window.confirm('删除「' + (name || bucketId) + '」?\n移到回收站,可在设置 → 回收站恢复。')) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const r = await fetch('/api/bucket/' + encodeURIComponent(bucketId) + '/delete', { method: 'POST' });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${r.status}`);
+      }
+      onClose();
+      if (onDeleted) onDeleted(bucketId);
+      else window.history.back();
     } catch (e) {
       setError(e.message || String(e));
       setSaving(false);
@@ -842,15 +893,21 @@ function EditSheet({ bucketId, onClose, onSaved }) {
         {loading ? (
           <div className="app-loading" style={{ height: 200 }}>载入中…</div>
         ) : (
-          <FormFields
-            name={name} setName={setName}
-            summary={summary} setSummary={setSummary}
-            content={content} setContent={setContent}
-            imp={imp} setImp={setImp}
-            pin={pin} setPin={setPin}
-            tags={tags} setTags={setTags}
-            tagInput={tagInput} setTagInput={setTagInput}
-          />
+          <>
+            <FormFields
+              name={name} setName={setName}
+              summary={summary} setSummary={setSummary}
+              content={content} setContent={setContent}
+              imp={imp} setImp={setImp}
+              pin={pin} setPin={setPin}
+              tags={tags} setTags={setTags}
+              tagInput={tagInput} setTagInput={setTagInput}
+              eventTime={eventTime} setEventTime={setEventTime}
+            />
+            <button className="edit-delete-btn" onClick={del} disabled={loading || saving}>
+              ✕ 删除这条记忆
+            </button>
+          </>
         )}
       </div>
     </div>
@@ -869,6 +926,7 @@ function NewScreen() {
   const [pin, setPin] = useState(false);
   const [tags, setTags] = useState([]);
   const [tagInput, setTagInput] = useState('');
+  const [eventTime, setEventTime] = useState(() => toLocalDateTimeStr(new Date().toISOString()));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState(null);
 
@@ -889,6 +947,7 @@ function NewScreen() {
           importance: imp,
           tags: tags,
           protected: pin,
+          event_time: fromLocalDateTimeStr(eventTime) || undefined,
         }),
       });
       if (!r.ok) {
@@ -935,6 +994,7 @@ function NewScreen() {
           pin={pin} setPin={setPin}
           tags={tags} setTags={setTags}
           tagInput={tagInput} setTagInput={setTagInput}
+          eventTime={eventTime} setEventTime={setEventTime}
           contentRequired={true}
         />
       </div>
@@ -1536,6 +1596,11 @@ function ReviewScreen() {
                 b.id === cur.id ? { ...b, ...newMeta } : b
               ));
             }}
+            onDeleted={(deletedId) => {
+              const next = pickNext();
+              setBuckets(prev => prev.filter(b => b.id !== deletedId));
+              setCurId(next ? next.id : null);
+            }}
           />
         )}
       </div>
@@ -1551,11 +1616,27 @@ function ReviewScreen() {
 
 function SettingScreen() {
   const [trashCount, setTrashCount] = useState(null);
+  const [dark, setDark] = useState(() =>
+    document.documentElement.getAttribute('data-theme') === 'dark'
+  );
+
   useEffect(() => {
     api('/api/trash')
       .then(d => setTrashCount((d && d.count) || 0))
       .catch(() => setTrashCount(0));
   }, []);
+
+  const toggleDark = () => {
+    const next = !dark;
+    setDark(next);
+    if (next) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+      localStorage.setItem('mobile-theme', 'dark');
+    } else {
+      document.documentElement.removeAttribute('data-theme');
+      localStorage.setItem('mobile-theme', 'light');
+    }
+  };
 
   return (
     <div className="setting">
@@ -1567,13 +1648,36 @@ function SettingScreen() {
         <h1 className="setting-title">设置</h1>
       </div>
       <div className="setting-body">
+
+        <div className="setting-section-hd">外观 / API</div>
+        <div className="setting-list">
+          <div className="setting-row" onClick={toggleDark}>
+            <div className="setting-row-ic">{dark ? '☾' : '☉'}</div>
+            <div className="setting-row-mid">
+              <div className="setting-row-title">暗夜模式</div>
+              <div className="setting-row-sub">{dark ? '已开启 · 米白纸张换深底' : '关闭 · 米白纸张'}</div>
+            </div>
+            <span className={'setting-row-toggle' + (dark ? ' on' : '')}>
+              <span className="knob"/>
+            </span>
+          </div>
+          <div className="setting-row" onClick={() => navigate('/setting/api')}>
+            <div className="setting-row-ic">≡</div>
+            <div className="setting-row-mid">
+              <div className="setting-row-title">API 配置</div>
+              <div className="setting-row-sub">切换 LLM profile / 模型</div>
+            </div>
+            <span className="setting-row-arrow">›</span>
+          </div>
+        </div>
+
         <div className="setting-section-hd">数据</div>
         <div className="setting-list">
           <div className="setting-row" onClick={() => navigate('/setting/import')}>
             <div className="setting-row-ic">↥</div>
             <div className="setting-row-mid">
               <div className="setting-row-title">导入</div>
-              <div className="setting-row-sub">粘贴文本 / 选文件</div>
+              <div className="setting-row-sub">粘贴文本 / 上传文件</div>
             </div>
             <span className="setting-row-arrow">›</span>
           </div>
@@ -1588,6 +1692,100 @@ function SettingScreen() {
             )}
             <span className="setting-row-arrow">›</span>
           </div>
+        </div>
+      </div>
+      <TabBar active="setting"/>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────
+// API 配置子页(/setting/api)
+// ─────────────────────────────────────────
+
+function ApiSettingScreen() {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+
+  const load = () => {
+    api('/api/config/api')
+      .then(setData)
+      .catch(e => setError(e.message));
+  };
+
+  useEffect(() => { load(); }, []);
+
+  const switchTo = async (pid) => {
+    setBusyId(pid);
+    try {
+      const r = await fetch('/api/config/api/active', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: pid }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${r.status}`);
+      }
+      load();
+    } catch (e) {
+      alert('切换失败: ' + e.message);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <div className="trash-body">
+      <div className="sub-top">
+        <div className="sub-back-row">
+          <button className="app-back" onClick={() => navigate('/setting')}>‹ 设置</button>
+          <span className="app-eyebrow" style={{ marginLeft: 'auto' }}>
+            <span>API · profile</span>
+          </span>
+        </div>
+        <h1 className="sub-title">API 配置</h1>
+        <div className="sub-meta">
+          {data && data.current_effective && (
+            <>当前生效:<b>{data.current_effective.model || '—'}</b></>
+          )}
+        </div>
+      </div>
+      <div className="trash-list">
+        {error && <div className="app-error">后端错: {error}</div>}
+        {!data && !error && <div className="app-loading">载入中…</div>}
+        {data && (data.profiles || []).length === 0 && (
+          <div style={{ color: 'var(--ink-4)', textAlign: 'center', padding: '40px 16px', fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '0.1em' }}>
+            还没有 API profile · 去桌面端添加
+          </div>
+        )}
+        {data && (data.profiles || []).map(p => {
+          const isActive = p.id === data.active;
+          return (
+            <div key={p.id} className={'api-row' + (isActive ? ' active' : '')}>
+              <div className="api-row-mid">
+                <div className="api-row-name">{p.name}</div>
+                <div className="api-row-meta">
+                  <span><b>{p.model}</b></span>
+                  {p.has_key && <span>· {p.api_key_mask}</span>}
+                  <span style={{ opacity: 0.6 }}>· {p.base_url}</span>
+                </div>
+              </div>
+              {isActive ? (
+                <span className="api-row-active-badge">在用</span>
+              ) : (
+                <button
+                  className="api-row-switch"
+                  onClick={() => switchTo(p.id)}
+                  disabled={busyId === p.id}
+                >{busyId === p.id ? '切换中' : '切到'}</button>
+              )}
+            </div>
+          );
+        })}
+        <div style={{ marginTop: 16, fontFamily: 'var(--mono)', fontSize: 9.5, color: 'var(--ink-4)', letterSpacing: '0.08em', textAlign: 'center', padding: '0 16px', lineHeight: 1.6 }}>
+          新增 / 编辑 / 删除 profile 请在桌面端配置页操作
         </div>
       </div>
       <TabBar active="setting"/>
@@ -1685,7 +1883,9 @@ function TrashScreen() {
 }
 
 function ImportScreen() {
+  const [mode, setMode] = useState('text'); // 'text' or 'file'
   const [text, setText] = useState('');
+  const [file, setFile] = useState(null);
   const [results, setResults] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState(null);
@@ -1702,41 +1902,55 @@ function ImportScreen() {
     return () => { cancel = true; };
   }, [refreshKey]);
 
-  // 如果有正在跑的导入,每 5s 轮询一次状态
+  // 处理中时每 3s 轮询(后端字段是 status === 'running',不是 is_running)
+  const isRunning = status && status.status === 'running';
   useEffect(() => {
-    if (!status || !status.is_running) return;
+    if (!isRunning) return;
     const t = setInterval(() => {
       api('/api/import/status')
         .then(d => {
           setStatus(d || null);
-          if (d && !d.is_running) setRefreshKey(k => k + 1); // 完成 → 刷新批次列表
+          if (d && d.status !== 'running') setRefreshKey(k => k + 1);
         })
         .catch(() => {});
-    }, 5000);
+    }, 3000);
     return () => clearInterval(t);
-  }, [status && status.is_running]);
+  }, [isRunning]);
 
   const submit = async () => {
-    const trimmed = text.trim();
-    if (!trimmed || submitting) return;
+    if (submitting || isRunning) return;
     setSubmitting(true);
     try {
-      const filename = `mobile-${Date.now()}.txt`;
-      const r = await fetch(
-        `/api/import/upload?filename=${encodeURIComponent(filename)}&preserve_raw=1`,
-        {
+      let r;
+      if (mode === 'file') {
+        if (!file) return;
+        const fd = new FormData();
+        fd.append('file', file);
+        r = await fetch(`/api/import/upload?preserve_raw=1`, {
           method: 'POST',
-          headers: { 'Content-Type': 'text/plain' },
-          body: trimmed,
-        }
-      );
+          body: fd,
+        });
+      } else {
+        const trimmed = text.trim();
+        if (!trimmed) return;
+        const fname = `mobile-${Date.now()}.txt`;
+        r = await fetch(
+          `/api/import/upload?filename=${encodeURIComponent(fname)}&preserve_raw=1`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'text/plain' },
+            body: trimmed,
+          }
+        );
+      }
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
         throw new Error(err.error || `HTTP ${r.status}`);
       }
       setText('');
-      alert('已加入导入队列。LLM 处理需要几分钟,完成后会显示在下方批次列表。');
-      setTimeout(() => setRefreshKey(k => k + 1), 1500);
+      setFile(null);
+      // 1s 后刷新 — 让后端先把 status 切到 running
+      setTimeout(() => setRefreshKey(k => k + 1), 1000);
     } catch (e) {
       alert('提交失败: ' + e.message);
     } finally {
@@ -1757,7 +1971,25 @@ function ImportScreen() {
     return Array.from(map.values()).sort((a, b) => b.dt - a.dt).slice(0, 10);
   }, [results]);
 
-  const isRunning = status && status.is_running;
+  // 状态可视化
+  const statusKind = !status ? 'idle'
+    : status.status === 'running' ? 'running'
+    : status.status === 'completed' ? 'done'
+    : status.status === 'error' ? 'error'
+    : 'idle';
+  const statusLabel = !status ? '—'
+    : status.status === 'running' ? '处理中'
+    : status.status === 'completed' ? '已完成'
+    : status.status === 'error' ? '错误'
+    : status.status === 'paused' ? '已暂停'
+    : '待机';
+  const total = (status && status.total_chunks) || 0;
+  const processed = (status && status.processed) || 0;
+  const pct = total > 0 ? Math.min(100, (processed / total) * 100) : 0;
+  const showProgressCard = !!status && status.status && status.status !== 'idle';
+  const recentExtracted = (status && Array.isArray(status.recent_extracted)) ? status.recent_extracted.slice(-5).reverse() : [];
+  const submitDisabled = submitting || isRunning ||
+    (mode === 'text' ? !text.trim() : !file);
 
   return (
     <div className="import-body">
@@ -1771,33 +2003,96 @@ function ImportScreen() {
           >↻ 刷新</button>
         </div>
         <h1 className="sub-title">导入</h1>
-        <div className="sub-meta">粘贴文本 → LLM 拆分 + 摘要 + 入库</div>
+        <div className="sub-meta">粘贴文本 / 上传文件 → LLM 拆分 + 摘要 + 入库</div>
       </div>
 
-      {isRunning && (
-        <div className="import-stub-note" style={{ color: 'var(--accent)', background: 'var(--accent-3)', borderColor: 'rgba(110, 79, 154, 0.3)' }}>
-          ⏳ 正在处理 …
-          {typeof status.processed === 'number' && typeof status.total === 'number' && status.total > 0 && (
-            <span> · {status.processed} / {status.total}</span>
+      {showProgressCard && (
+        <div className={'import-progress-card ' + statusKind}>
+          <div className={'import-progress-status ' + statusKind}>
+            <span className="pip"/>
+            <b>{statusLabel}</b>
+            {status.source_file && <span style={{ color: 'var(--ink-4)' }}>· {status.source_file}</span>}
+          </div>
+          {total > 0 && (
+            <>
+              <div className="import-progress-bar">
+                <div className="import-progress-bar-fill" style={{ width: pct + '%' }}/>
+              </div>
+              <div className="import-progress-stats">
+                <span>进度 <b>{processed}</b> / {total}</span>
+                {typeof status.memories_created === 'number' && status.memories_created > 0 && (
+                  <span>新建 <b>{status.memories_created}</b></span>
+                )}
+                {typeof status.memories_merged === 'number' && status.memories_merged > 0 && (
+                  <span>合并 <b>{status.memories_merged}</b></span>
+                )}
+                {typeof status.total_cost_usd === 'number' && status.total_cost_usd > 0 && (
+                  <span>开销 <b>${status.total_cost_usd.toFixed(3)}</b></span>
+                )}
+              </div>
+            </>
+          )}
+          {recentExtracted.length > 0 && (
+            <div className="import-progress-recent">
+              <div className="import-progress-recent-hd">最近提取</div>
+              {recentExtracted.map((it, i) => (
+                <div key={i} className="import-progress-recent-item">
+                  {it.name || it.summary || '(无标题)'}
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
 
-      <div className="import-form">
-        <textarea
-          className="import-textarea"
-          placeholder="粘贴想入库的文本 …"
-          value={text}
-          onChange={e => setText(e.target.value)}
+      <div className="import-mode-tabs">
+        <button
+          className={'import-mode-tab' + (mode === 'text' ? ' on' : '')}
+          onClick={() => setMode('text')}
           disabled={submitting || isRunning}
-        />
+        >粘贴文本</button>
+        <button
+          className={'import-mode-tab' + (mode === 'file' ? ' on' : '')}
+          onClick={() => setMode('file')}
+          disabled={submitting || isRunning}
+        >上传文件</button>
+      </div>
+
+      <div className="import-form">
+        {mode === 'text' ? (
+          <textarea
+            className="import-textarea"
+            placeholder="粘贴想入库的文本(聊天记录 / 笔记 / 日记 …)"
+            value={text}
+            onChange={e => setText(e.target.value)}
+            disabled={submitting || isRunning}
+          />
+        ) : (
+          <label className={'import-file-zone' + (file ? ' has-file' : '')}>
+            <span className="ic">{file ? '✓' : '↥'}</span>
+            {file ? (
+              <>
+                <span className="fname">{file.name}</span>
+                <span>{(file.size / 1024).toFixed(1)} KB · 点这里换文件</span>
+              </>
+            ) : (
+              <span>点这里选文件 · txt / json / md</span>
+            )}
+            <input
+              type="file"
+              accept=".txt,.json,.md,.markdown,text/*,application/json"
+              onChange={e => setFile(e.target.files && e.target.files[0])}
+              disabled={submitting || isRunning}
+            />
+          </label>
+        )}
         <div className="import-submit-row">
           <button
             className="import-submit"
             onClick={submit}
-            disabled={!text.trim() || submitting || isRunning}
+            disabled={submitDisabled}
           >
-            {submitting ? '提交中 …' : isRunning ? '后台正在处理' : '→ 提交'}
+            {submitting ? '提交中 …' : isRunning ? '后台正在处理' : '→ 开始导入'}
           </button>
         </div>
       </div>
@@ -1846,6 +2141,12 @@ function PlaceholderScreen({ tab, ic, title, sub }) {
 // ─────────────────────────────────────────
 
 function App() {
+  // 暗夜模式:挂载时按 localStorage 应用 data-theme
+  useEffect(() => {
+    const saved = localStorage.getItem('mobile-theme');
+    if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+  }, []);
+
   const route = useRoute();
   const [head, ...rest] = route;
 
@@ -1866,6 +2167,7 @@ function App() {
     case 'setting':
       if (rest[0] === 'trash') return <TrashScreen/>;
       if (rest[0] === 'import') return <ImportScreen/>;
+      if (rest[0] === 'api') return <ApiSettingScreen/>;
       return <SettingScreen/>;
     case 'new':
       return <NewScreen/>;
