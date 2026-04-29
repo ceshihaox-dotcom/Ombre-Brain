@@ -1469,6 +1469,7 @@ function SettingScreen() {
 function TrashScreen() {
   const [items, setItems] = useState(null);
   const [error, setError] = useState(null);
+  const [busyId, setBusyId] = useState(null);
 
   useEffect(() => {
     api('/api/trash')
@@ -1476,7 +1477,32 @@ function TrashScreen() {
       .catch(e => setError(e.message));
   }, []);
 
-  const noop = () => alert('Phase 1 只读 · 恢复 / 永删下次实装');
+  const restore = async (id) => {
+    setBusyId(id);
+    try {
+      const r = await fetch('/api/bucket/' + encodeURIComponent(id) + '/restore', { method: 'POST' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      setItems(prev => prev.filter(it => it.id !== id));
+    } catch (e) {
+      alert('恢复失败: ' + e.message);
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const purge = async (id, name) => {
+    if (!window.confirm('永久删除「' + (name || id) + '」?\n这条记忆不会再回来。')) return;
+    setBusyId(id);
+    try {
+      const r = await fetch('/api/bucket/' + encodeURIComponent(id) + '/purge', { method: 'POST' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      setItems(prev => prev.filter(it => it.id !== id));
+    } catch (e) {
+      alert('永删失败: ' + e.message);
+    } finally {
+      setBusyId(null);
+    }
+  };
 
   return (
     <div className="trash-body">
@@ -1510,8 +1536,16 @@ function TrashScreen() {
               {it.summary || it.content_preview || '(无摘要)'}
             </div>
             <div className="trash-item-acts">
-              <button className="trash-act-btn restore" onClick={noop} disabled>↺ 恢复</button>
-              <button className="trash-act-btn purge" onClick={noop} disabled>✕ 永久删除</button>
+              <button
+                className="trash-act-btn restore"
+                onClick={() => restore(it.id)}
+                disabled={busyId === it.id}
+              >↺ 恢复</button>
+              <button
+                className="trash-act-btn purge"
+                onClick={() => purge(it.id, it.name)}
+                disabled={busyId === it.id}
+              >✕ 永久删除</button>
             </div>
           </div>
         ))}
@@ -1524,12 +1558,62 @@ function TrashScreen() {
 function ImportScreen() {
   const [text, setText] = useState('');
   const [results, setResults] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [status, setStatus] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
+    let cancel = false;
     api('/api/import/results?limit=20')
-      .then(d => setResults((d && d.buckets) || []))
-      .catch(() => setResults([]));
-  }, []);
+      .then(d => { if (!cancel) setResults((d && d.buckets) || []); })
+      .catch(() => { if (!cancel) setResults([]); });
+    api('/api/import/status')
+      .then(d => { if (!cancel) setStatus(d || null); })
+      .catch(() => {});
+    return () => { cancel = true; };
+  }, [refreshKey]);
+
+  // 如果有正在跑的导入,每 5s 轮询一次状态
+  useEffect(() => {
+    if (!status || !status.is_running) return;
+    const t = setInterval(() => {
+      api('/api/import/status')
+        .then(d => {
+          setStatus(d || null);
+          if (d && !d.is_running) setRefreshKey(k => k + 1); // 完成 → 刷新批次列表
+        })
+        .catch(() => {});
+    }, 5000);
+    return () => clearInterval(t);
+  }, [status && status.is_running]);
+
+  const submit = async () => {
+    const trimmed = text.trim();
+    if (!trimmed || submitting) return;
+    setSubmitting(true);
+    try {
+      const filename = `mobile-${Date.now()}.txt`;
+      const r = await fetch(
+        `/api/import/upload?filename=${encodeURIComponent(filename)}&preserve_raw=1`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'text/plain' },
+          body: trimmed,
+        }
+      );
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${r.status}`);
+      }
+      setText('');
+      alert('已加入导入队列。LLM 处理需要几分钟,完成后会显示在下方批次列表。');
+      setTimeout(() => setRefreshKey(k => k + 1), 1500);
+    } catch (e) {
+      alert('提交失败: ' + e.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const batches = useMemo(() => {
     if (!results) return [];
@@ -1544,29 +1628,51 @@ function ImportScreen() {
     return Array.from(map.values()).sort((a, b) => b.dt - a.dt).slice(0, 10);
   }, [results]);
 
+  const isRunning = status && status.is_running;
+
   return (
     <div className="import-body">
       <div className="sub-top">
         <div className="sub-back-row">
           <button className="app-back" onClick={() => navigate('/setting')}>‹ 设置</button>
+          <button
+            className="app-back"
+            style={{ marginLeft: 'auto', fontSize: 11, fontFamily: 'var(--mono)', letterSpacing: '0.06em' }}
+            onClick={() => setRefreshKey(k => k + 1)}
+          >↻ 刷新</button>
         </div>
         <h1 className="sub-title">导入</h1>
-        <div className="sub-meta">粘贴文本 / 选文件 → 自动入库</div>
+        <div className="sub-meta">粘贴文本 → LLM 拆分 + 摘要 + 入库</div>
       </div>
-      <div className="import-stub-note">
-        ⚠ stub · Phase 1 只展示界面,提交按钮未接通后端,后续 chunk 实装
-      </div>
+
+      {isRunning && (
+        <div className="import-stub-note" style={{ color: 'var(--accent)', background: 'var(--accent-3)', borderColor: 'rgba(110, 79, 154, 0.3)' }}>
+          ⏳ 正在处理 …
+          {typeof status.processed === 'number' && typeof status.total === 'number' && status.total > 0 && (
+            <span> · {status.processed} / {status.total}</span>
+          )}
+        </div>
+      )}
+
       <div className="import-form">
         <textarea
           className="import-textarea"
           placeholder="粘贴想入库的文本 …"
           value={text}
           onChange={e => setText(e.target.value)}
+          disabled={submitting || isRunning}
         />
         <div className="import-submit-row">
-          <button className="import-submit" disabled={!text.trim()}>→ 提交(stub)</button>
+          <button
+            className="import-submit"
+            onClick={submit}
+            disabled={!text.trim() || submitting || isRunning}
+          >
+            {submitting ? '提交中 …' : isRunning ? '后台正在处理' : '→ 提交'}
+          </button>
         </div>
       </div>
+
       <div className="import-batches">
         <div className="import-batch-hd">最近导入 / 写入</div>
         {!results && <div className="app-loading" style={{ height: 'auto', padding: '20px 0' }}>载入中…</div>}
