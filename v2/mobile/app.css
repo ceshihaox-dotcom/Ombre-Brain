@@ -1069,21 +1069,16 @@ input, textarea { font: inherit; color: inherit; }
   position: absolute;
   right: 0; top: 50%;
   transform: translateY(-50%);
-  width: 28px; height: 110px;
+  width: 28px; height: 78px;
   background: var(--ink);
   border-radius: 14px 0 0 14px;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 4px;
+  gap: 7px;
   cursor: pointer;
   z-index: 18;
   box-shadow: -4px 6px 18px -6px rgba(26,25,34,0.3);
-  font-family: var(--mono);
-  font-size: 8.5px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: rgba(255,255,255,0.7);
-  writing-mode: vertical-rl;
-  padding: 12px 0;
+  color: rgba(255,255,255,0.85);
+  padding: 10px 0;
 }
 .rv-queue-handle .grip {
   writing-mode: horizontal-tb;
