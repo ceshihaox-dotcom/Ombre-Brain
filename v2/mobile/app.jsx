@@ -124,7 +124,7 @@ function TabBar({ active }) {
     { id: 'home',    href: '/',         ic: '◐', label: '记忆' },
     { id: 'review',  href: '/review',   ic: '✓', label: '审阅' },
     { id: 'cal',     href: '/cal',      ic: '▦', label: '日历' },
-    { id: 'setting', href: '/setting',  ic: '⚙', label: '设置' },
+    { id: 'setting', href: '/setting',  ic: '⊙', label: '设置' },
   ];
   return (
     <div className="tabbar">
@@ -1153,6 +1153,18 @@ function ReviewScreen() {
     return buckets.find(b => b.id === curId) || null;
   }, [buckets, curId]);
 
+  // 切 tab/scope 时,如果 cur 不在新 queue 里,自动切到新 queue 第一项
+  // 故意只依赖 tab/scope,不让标记/删除等 buckets 变更打扰
+  useEffect(() => {
+    if (!buckets) return;
+    if (queue.length === 0) {
+      setCurId(null);
+    } else if (!curId || !queue.find(b => b.id === curId)) {
+      setCurId(queue[0].id);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tab, scope]);
+
   const curIdx = queue.findIndex(b => b.id === curId);
 
   if (error) return (
@@ -1291,22 +1303,15 @@ function ReviewScreen() {
               </b>
             </div>
             <div className="rv-main-text-wrap">
-              {(() => {
-                const paras = cur.content_preview
-                  ? cur.content_preview.split(/\n\s*\n/).filter(Boolean)
-                  : [];
-                const leadText = cur.summary || (paras.length > 0 ? paras[0] : null);
-                const bodyParas = cur.summary ? paras : paras.slice(1);
-                return (
-                  <div className="rv-main-text">
-                    {leadText && <p className="lead">{leadText}</p>}
-                    {bodyParas.map((p, i) => <p key={i}>{p}</p>)}
-                    {!leadText && bodyParas.length === 0 && (
-                      <p style={{ color: 'var(--ink-4)' }}>(无内容预览)</p>
-                    )}
-                  </div>
-                );
-              })()}
+              <div className="rv-main-text">
+                {cur.summary && <p className="lead">{cur.summary}</p>}
+                {(cur.content_preview || '').split(/\n\s*\n/).filter(Boolean).map((p, i) => (
+                  <p key={i}>{p}</p>
+                ))}
+                {!cur.summary && !cur.content_preview && (
+                  <p style={{ color: 'var(--ink-4)' }}>(无内容预览)</p>
+                )}
+              </div>
             </div>
 
             {/* 状态按钮条:嵌入主卡底部,跟下面 tabbar 视觉分层 */}
@@ -1344,7 +1349,7 @@ function ReviewScreen() {
             </div>
           </div>
         ) : (
-          <div className="app-loading" style={{ height: 'calc(100% - 90px)' }}>
+          <div className="app-loading" style={{ height: 'calc(100% - 90px - env(safe-area-inset-bottom))' }}>
             {queue.length === 0 ? '当前 tab 队列空' : '没选中条目'}
           </div>
         )}
