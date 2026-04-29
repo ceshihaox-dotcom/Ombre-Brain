@@ -3,7 +3,7 @@
  *           日历 / 审阅 / 设置 / 创建 暂用占位屏,下次 chunk 填
  */
 
-const { useState, useEffect, useMemo, useCallback } = React;
+const { useState, useEffect, useMemo, useCallback, useRef } = React;
 
 // ─────────────────────────────────────────
 // API
@@ -889,7 +889,7 @@ function FormFields({
             className="edit-input"
             value={summary}
             onChange={e => setSummary(e.target.value)}
-            placeholder="(空则前端 fallback 到正文前段)"
+            placeholder="(留空就行 · 没摘要时直接展示正文)"
           />
         </div>
       )}
@@ -2055,6 +2055,7 @@ function ImportScreen() {
   const [submitting, setSubmitting] = useState(false);
   const [status, setStatus] = useState(null);
   const [refreshKey, setRefreshKey] = useState(0);
+  const fileInputRef = useRef(null);
 
   useEffect(() => {
     let cancel = false;
@@ -2233,23 +2234,33 @@ function ImportScreen() {
             disabled={submitting || isRunning}
           />
         ) : (
-          <label className={'import-file-zone' + (file ? ' has-file' : '')}>
-            <span className="ic">{file ? '✓' : '↥'}</span>
-            {file ? (
-              <>
-                <span className="fname">{file.name}</span>
-                <span>{(file.size / 1024).toFixed(1)} KB · 点这里换文件</span>
-              </>
-            ) : (
-              <span>点这里选文件 · txt / json / md</span>
-            )}
+          <>
+            <div
+              className={'import-file-zone' + (file ? ' has-file' : '')}
+              onClick={() => {
+                if (submitting || isRunning) return;
+                if (fileInputRef.current) fileInputRef.current.click();
+              }}
+            >
+              <span className="ic">{file ? '✓' : '↥'}</span>
+              {file ? (
+                <>
+                  <span className="fname">{file.name}</span>
+                  <span>{(file.size / 1024).toFixed(1)} KB · 点这里换文件</span>
+                </>
+              ) : (
+                <span>点这里选文件 · txt / json / md</span>
+              )}
+            </div>
             <input
+              ref={fileInputRef}
               type="file"
               accept=".txt,.json,.md,.markdown,text/*,application/json"
               onChange={e => setFile(e.target.files && e.target.files[0])}
               disabled={submitting || isRunning}
+              style={{ display: 'none' }}
             />
-          </label>
+          </>
         )}
         <div className="import-submit-row">
           <button
