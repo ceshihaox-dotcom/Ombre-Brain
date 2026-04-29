@@ -1930,8 +1930,13 @@ input, textarea { font: inherit; color: inherit; }
 }
 
 .import-file-zone {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
   margin: 0 0 10px;
-  padding: 22px 16px;
+  padding: 28px 16px;
   border: 1px dashed var(--line-2);
   border-radius: 12px;
   background: var(--paper);
@@ -1941,6 +1946,8 @@ input, textarea { font: inherit; color: inherit; }
   color: var(--ink-3);
   letter-spacing: 0.06em;
   cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
 }
 .import-file-zone.has-file {
   border-style: solid;
@@ -1949,22 +1956,27 @@ input, textarea { font: inherit; color: inherit; }
   color: var(--accent);
 }
 .import-file-zone .ic {
-  display: block;
   font-family: var(--serif); font-style: italic;
   font-size: 32px;
-  margin-bottom: 6px;
+  line-height: 1;
+  margin-bottom: 4px;
   color: var(--ink-3);
 }
 .import-file-zone.has-file .ic { color: var(--accent); }
 .import-file-zone .fname {
-  display: block;
   font-family: var(--serif); font-style: italic;
   font-size: 14px;
   color: var(--ink);
-  margin-bottom: 4px;
+  margin-bottom: 2px;
   word-break: break-all;
+  max-width: 100%;
 }
-.import-file-zone input[type="file"] { display: none; }
+.import-file-zone input[type="file"] {
+  position: absolute;
+  width: 1px; height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
 
 /* 进度卡 */
 .import-progress-card {
