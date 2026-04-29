@@ -529,7 +529,664 @@ function MemFullScreen({ id }) {
 }
 
 // ─────────────────────────────────────────
-// 占位屏(下次 chunk 实装)
+// 屏 4 · 日历(v1 双模式 — 用户 2026-04-29 明确按 v1 来)
+// ─────────────────────────────────────────
+
+const MO_EN_FULL = ['January','February','March','April','May','June','July','August','September','October','November','December'];
+
+function levelOf(n) {
+  if (!n) return '';
+  if (n <= 4) return 'l1';
+  if (n <= 8) return 'l2';
+  if (n <= 13) return 'l3';
+  return 'l4';
+}
+
+function isImportTodo(b) {
+  // AI 写入 + 没有 __import_refined / __import_flagged tag = 待审
+  if (b.created_by !== 'ai') return false;
+  const tags = b.tags || [];
+  if (tags.indexOf('__import_refined') >= 0) return false;
+  if (tags.indexOf('__import_flagged') >= 0) return false;
+  return true;
+}
+
+function buildMonth(year, month, dayMap, todayKey) {
+  const firstDow = new Date(year, month - 1, 1).getDay();
+  const lastDay = new Date(year, month, 0).getDate();
+  const cells = [];
+  for (let i = 0; i < firstDow; i++) cells.push({ ph: true });
+  let total = 0, hiCnt = 0, todoCnt = 0, peakDay = 0;
+  for (let d = 1; d <= lastDay; d++) {
+    const k = `${year}-${month}-${d}`;
+    const items = dayMap.get(k) || [];
+    let hasHi = false, hasTodo = false;
+    for (const b of items) {
+      if (b.highlight) hasHi = true;
+      if (isImportTodo(b)) hasTodo = true;
+    }
+    if (items.length > peakDay) peakDay = items.length;
+    total += items.length;
+    if (hasHi) hiCnt += 1;
+    if (hasTodo) todoCnt += 1;
+    cells.push({ d, n: items.length, hi: hasHi, todo: hasTodo, today: k === todayKey });
+  }
+  return { year, month, cells, total, hiCnt, todoCnt, peakDay };
+}
+
+function CalCell({ c, mode }) {
+  if (c.ph) return <div className="cal-cell placeholder"/>;
+  let cls = 'cal-cell';
+  if (mode === 'show') {
+    cls += ' ' + levelOf(c.n);
+    if (c.today) cls += ' today';
+  } else {
+    if (c.hi) cls += ' hi';
+    else if (c.todo) cls += ' unread';
+    else if (c.n > 0) {
+      cls += ' read';
+      if (c.n > 8) cls += ' dense';
+      if (c.n > 13) cls += ' dense2';
+    }
+    if (c.today) cls += ' today';
+  }
+  return (
+    <div className={cls}>
+      <span className="d">{c.d}</span>
+      {c.n > 0 && <span className="n">{c.n}</span>}
+    </div>
+  );
+}
+
+function CalMonth({ year, month, cells, total, hiCnt, todoCnt, peakDay, mode }) {
+  return (
+    <div className="cal-month">
+      <div className="cal-month-hd">
+        <span className="cal-month-name">{MO_EN_FULL[month - 1]}</span>
+        <span className="cal-month-year">{year}</span>
+        <span className="cal-month-stats">
+          {mode === 'show'
+            ? `${total} 条 · 峰 ${peakDay}`
+            : `${total} 条 · ${hiCnt} hi · ${todoCnt} 待`}
+        </span>
+      </div>
+      <div className="cal-weekrow">
+        <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+      </div>
+      <div className="cal-grid">
+        {cells.map((c, i) => <CalCell key={i} c={c} mode={mode}/>)}
+      </div>
+    </div>
+  );
+}
+
+function CalScreen() {
+  const [buckets, setBuckets] = useState(null);
+  const [error, setError] = useState(null);
+  const [mode, setMode] = useState('show');
+
+  useEffect(() => {
+    let cancel = false;
+    api('/api/buckets')
+      .then(d => { if (!cancel) setBuckets(Array.isArray(d) ? d : []); })
+      .catch(e => { if (!cancel) setError(e.message); });
+    return () => { cancel = true; };
+  }, []);
+
+  const data = useMemo(() => {
+    if (!buckets) return null;
+    const now = new Date();
+    const todayKey = `${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}`;
+
+    const dayMap = new Map();
+    for (const b of buckets) {
+      const dt = bucketDate(b);
+      if (!dt) continue;
+      const k = `${dt.getFullYear()}-${dt.getMonth()+1}-${dt.getDate()}`;
+      if (!dayMap.has(k)) dayMap.set(k, []);
+      dayMap.get(k).push(b);
+    }
+
+    // 当月 + 前一个月 + 再前一个月 共 3 个月,够手机滚动看
+    const months = [];
+    for (let i = 0; i < 3; i++) {
+      let y = now.getFullYear();
+      let m = now.getMonth() + 1 - i;
+      while (m < 1) { m += 12; y -= 1; }
+      months.push(buildMonth(y, m, dayMap, todayKey));
+    }
+
+    let totalCnt = 0, peakAll = 0, pendingDays = 0, hiTotal = 0;
+    for (const [, items] of dayMap) {
+      const cnt = items.length;
+      totalCnt += cnt;
+      if (cnt > peakAll) peakAll = cnt;
+      let dayHasTodo = false, dayHasHi = false;
+      for (const b of items) {
+        if (b.highlight) dayHasHi = true;
+        if (isImportTodo(b)) dayHasTodo = true;
+      }
+      if (dayHasTodo) pendingDays += 1;
+      if (dayHasHi) hiTotal += 1;
+    }
+    const dayAvg = dayMap.size > 0 ? (totalCnt / dayMap.size).toFixed(1) : '0';
+
+    return {
+      months,
+      stats: {
+        days: dayMap.size,
+        total: totalCnt,
+        peak: peakAll,
+        avg: dayAvg,
+        pendingDays,
+        hi: hiTotal,
+      },
+    };
+  }, [buckets]);
+
+  if (error) return (
+    <div className="cal">
+      <div className="app-error">后端错: {error}</div>
+      <TabBar active="cal"/>
+    </div>
+  );
+  if (!buckets || !data) return (
+    <div className="cal">
+      <div className="app-loading">载入中…</div>
+      <TabBar active="cal"/>
+    </div>
+  );
+
+  const yearLabel = String(new Date().getFullYear());
+
+  return (
+    <div className={'cal mode-' + mode}>
+      <div className="cal-head">
+        <div className="app-eyebrow">
+          <span className="app-eyebrow-dot"/>
+          <span>{mode === 'show' ? '日历 · index' : '日历 · review map'}</span>
+        </div>
+        <div className="cal-title-row">
+          <h1 className="cal-title">
+            {yearLabel} · {mode === 'show' ? '记忆密度' : '审阅地图'}
+          </h1>
+          <div className="cal-mode">
+            <button
+              className={'cal-mode-btn' + (mode === 'show' ? ' on' : '')}
+              onClick={() => setMode('show')}
+            >展示</button>
+            <button
+              className={'cal-mode-btn' + (mode === 'review' ? ' on' : '')}
+              onClick={() => setMode('review')}
+            >审阅</button>
+          </div>
+        </div>
+        <div className="cal-stats">
+          <span><b>{data.stats.days}</b> 天</span>
+          <span><b>{data.stats.total}</b> 条</span>
+          {mode === 'review' ? (
+            <span><b>{data.stats.pendingDays}</b> 待审天 · <b>{data.stats.hi}</b> highlight</span>
+          ) : (
+            <span><b>{data.stats.peak}</b> 单日峰值 · <b>{data.stats.avg}</b> 日均</span>
+          )}
+        </div>
+      </div>
+
+      <div className="cal-legend">
+        {mode === 'show' ? (
+          <>
+            <div className="cal-legend-item"><span className="cal-swatch empty"/>无</div>
+            <div className="cal-legend-item"><span className="cal-swatch d1"/>1-4</div>
+            <div className="cal-legend-item"><span className="cal-swatch d2"/>5-8</div>
+            <div className="cal-legend-item"><span className="cal-swatch d3"/>9-13</div>
+            <div className="cal-legend-item"><span className="cal-swatch d4"/>14+</div>
+          </>
+        ) : (
+          <>
+            <div className="cal-legend-item"><span className="cal-swatch read"/>已审</div>
+            <div className="cal-legend-item"><span className="cal-swatch unread"/>有遗漏</div>
+            <div className="cal-legend-item"><span className="cal-swatch hi"/>highlight</div>
+            <div className="cal-legend-item"><span className="cal-swatch empty"/>无记忆</div>
+          </>
+        )}
+      </div>
+
+      {mode === 'review' && data.stats.pendingDays > 0 && (
+        <div className="cal-pending" onClick={() => navigate('/review')}>
+          <div className="cal-pending-num">{data.stats.pendingDays}</div>
+          <div className="cal-pending-body">
+            <div className="cal-pending-title">{data.stats.pendingDays} 天有遗漏</div>
+            <div className="cal-pending-sub">点开"审阅"tab 处理</div>
+          </div>
+          <div className="cal-pending-arrow">→</div>
+        </div>
+      )}
+
+      {data.months.map(mo => (
+        <CalMonth
+          key={mo.year + '-' + mo.month}
+          year={mo.year}
+          month={mo.month}
+          cells={mo.cells}
+          total={mo.total}
+          hiCnt={mo.hiCnt}
+          todoCnt={mo.todoCnt}
+          peakDay={mo.peakDay}
+          mode={mode}
+        />
+      ))}
+
+      <TabBar active="cal"/>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────
+// 屏 5 · 审阅台(只读 Phase 1 - 状态切换 / 编辑下次实装)
+// ─────────────────────────────────────────
+
+function statusOf(b) {
+  const tags = b.tags || [];
+  if (tags.indexOf('__import_refined') >= 0) return 'done';
+  if (tags.indexOf('__import_flagged') >= 0) return 'doubt';
+  return 'todo';
+}
+
+function ReviewScreen() {
+  const [buckets, setBuckets] = useState(null);
+  const [error, setError] = useState(null);
+  const [tab, setTab] = useState('todo');
+  const [scope, setScope] = useState('all'); // 默认全部,因为今天可能没记忆
+  const [drawer, setDrawer] = useState(false);
+  const [curId, setCurId] = useState(null);
+
+  useEffect(() => {
+    let cancel = false;
+    api('/api/buckets')
+      .then(d => {
+        if (cancel) return;
+        const list = Array.isArray(d) ? d : [];
+        // 只审阅 AI 写入的(用户自己写的不需要走审阅流);按时间倒序
+        const aiOnly = list.filter(b => b.created_by === 'ai');
+        aiOnly.sort((a, b) => {
+          const ta = new Date(a.event_time || a.created || 0).getTime();
+          const tb = new Date(b.event_time || b.created || 0).getTime();
+          return tb - ta;
+        });
+        setBuckets(aiOnly);
+        if (aiOnly.length > 0) {
+          const firstTodo = aiOnly.find(b => statusOf(b) === 'todo') || aiOnly[0];
+          setCurId(firstTodo.id);
+        }
+      })
+      .catch(e => { if (!cancel) setError(e.message); });
+    return () => { cancel = true; };
+  }, []);
+
+  const filteredAll = useMemo(() => {
+    if (!buckets) return [];
+    if (scope === 'today') {
+      const now = new Date();
+      const todayKey = `${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}`;
+      return buckets.filter(b => {
+        const dt = bucketDate(b);
+        if (!dt) return false;
+        return `${dt.getFullYear()}-${dt.getMonth()+1}-${dt.getDate()}` === todayKey;
+      });
+    }
+    return buckets;
+  }, [buckets, scope]);
+
+  const queue = useMemo(() => {
+    if (tab === 'all') return filteredAll;
+    return filteredAll.filter(b => statusOf(b) === tab);
+  }, [filteredAll, tab]);
+
+  const counts = useMemo(() => ({
+    all: filteredAll.length,
+    todo: filteredAll.filter(b => statusOf(b) === 'todo').length,
+    doubt: filteredAll.filter(b => statusOf(b) === 'doubt').length,
+    done: filteredAll.filter(b => statusOf(b) === 'done').length,
+  }), [filteredAll]);
+
+  const cur = useMemo(() => {
+    if (!buckets || !curId) return null;
+    return buckets.find(b => b.id === curId) || null;
+  }, [buckets, curId]);
+
+  const curIdx = queue.findIndex(b => b.id === curId);
+
+  if (error) return (
+    <div className="review">
+      <div className="app-error">后端错: {error}</div>
+      <TabBar active="review"/>
+    </div>
+  );
+  if (!buckets) return (
+    <div className="review">
+      <div className="app-loading">载入中…</div>
+      <TabBar active="review"/>
+    </div>
+  );
+
+  const noop = () => alert('Phase 1 只读 · 状态切换 / 编辑下次实装');
+  const curDt = cur ? bucketDate(cur) : null;
+
+  return (
+    <div className="review">
+      <div className="review-top">
+        <div className="review-eyebrow-row">
+          <span className="app-eyebrow">
+            <span className="app-eyebrow-dot"/>
+            <span>审阅 · review</span>
+          </span>
+          <div className="review-scope">
+            <button className={'review-scope-btn' + (scope === 'today' ? ' on' : '')} onClick={() => setScope('today')}>今天</button>
+            <button className={'review-scope-btn' + (scope === 'all' ? ' on' : '')} onClick={() => setScope('all')}>全部</button>
+          </div>
+        </div>
+        <div className="review-tabs">
+          <button className={'review-tab todo' + (tab === 'todo' ? ' on' : '')} onClick={() => setTab('todo')}>
+            <span className="pip"/><span>待办</span><span className="n">{counts.todo}</span>
+          </button>
+          <button className={'review-tab doubt' + (tab === 'doubt' ? ' on' : '')} onClick={() => setTab('doubt')}>
+            <span className="pip"/><span>存疑</span><span className="n">{counts.doubt}</span>
+          </button>
+          <button className={'review-tab done' + (tab === 'done' ? ' on' : '')} onClick={() => setTab('done')}>
+            <span className="pip"/><span>已精修</span><span className="n">{counts.done}</span>
+          </button>
+          <button className={'review-tab' + (tab === 'all' ? ' on' : '')} onClick={() => setTab('all')}>
+            <span>全部</span><span className="n">{counts.all}</span>
+          </button>
+        </div>
+      </div>
+
+      <div className="review-body">
+        {cur ? (
+          <div className="rv-main">
+            <div className="rv-main-meta">
+              {curDt && <span className="rv-main-meta-time">{fmtDay(curDt).num} {fmtDay(curDt).mo} · {fmtTime(curDt)}</span>}
+              <span>·</span>
+              <span>{statusOf(cur) === 'done' ? '已精修' : statusOf(cur) === 'doubt' ? '存疑' : '待办'}</span>
+              <span className="rv-main-meta-pos"><b>{curIdx >= 0 ? curIdx + 1 : '—'}</b>/{queue.length}</span>
+            </div>
+            <div className="rv-main-tags">
+              {cur.highlight && <span className="rv-main-tag hi">★ highlight</span>}
+              {(cur.tags || []).filter(t => !String(t).startsWith('__')).map((t, i) => (
+                <span key={i} className={'rv-main-tag' + (/feel/i.test(String(t)) ? ' feel' : '')}>{t}</span>
+              ))}
+            </div>
+            <h2 className="rv-main-title">{cur.name || cur.id}</h2>
+            <div className="rv-main-imp-row">
+              <span>重要度</span>
+              <span className="rv-main-imp-bar">
+                {Array.from({ length: 9 }).map((_, i) => (
+                  <i key={i} style={{
+                    height: ((i + 1) * 0.7 + 3.5) + 'px',
+                    background: i < (cur.importance || 5) ? 'var(--accent)' : 'var(--bg-2)',
+                  }}/>
+                ))}
+              </span>
+              <b style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', color: 'var(--accent)', fontWeight: 600, fontSize: '13px' }}>
+                {cur.importance || 5} / 9
+              </b>
+            </div>
+            <div className="rv-main-text-wrap">
+              <div className="rv-main-text">
+                {cur.summary && <p className="lead">{cur.summary}</p>}
+                {cur.content_preview && cur.content_preview.split(/\n\s*\n/).filter(Boolean).map((p, i) => (
+                  <p key={i}>{p}</p>
+                ))}
+                {!cur.summary && !cur.content_preview && <p style={{ color: 'var(--ink-4)' }}>(无内容预览 · 点详情看全文)</p>}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="app-loading" style={{ height: 'calc(100% - 156px)' }}>
+            {queue.length === 0 ? '当前 tab 队列空' : '没选中条目'}
+          </div>
+        )}
+
+        <div className="rv-queue-handle" onClick={() => setDrawer(true)}>
+          <div className="grip"><i/><i/><i/></div>
+          <div className="pos">
+            {curIdx >= 0 ? (curIdx + 1) : '—'}<span style={{ opacity: 0.5 }}>/</span>{queue.length}
+          </div>
+          <span style={{ writingMode: 'vertical-rl' }}>队列 · QUEUE</span>
+        </div>
+
+        <div className="rv-actions-bar">
+          <button className="rv-action-btn read" onClick={noop} disabled>
+            <span className="ic">✓</span><span>已阅</span>
+          </button>
+          <button className="rv-action-btn doubt" onClick={noop} disabled>
+            <span className="ic">?</span><span>存疑</span>
+          </button>
+          <button className="rv-action-btn del" onClick={noop} disabled>
+            <span className="ic">✕</span><span>删除</span>
+          </button>
+          <button className="rv-action-btn edit" onClick={noop} disabled>
+            <span className="ic">✎</span><span>编辑</span>
+          </button>
+        </div>
+
+        <div className={'rv-queue-drawer' + (drawer ? '' : ' closed')}>
+          <div className="rv-queue-drawer-hd">
+            <div className="rv-queue-drawer-hd-row">
+              <span className="ttl">队列 · {queue.length}</span>
+              <button className="x" onClick={() => setDrawer(false)}>×</button>
+            </div>
+          </div>
+          <div className="rv-queue-list">
+            {queue.length === 0 && (
+              <div style={{ color: 'var(--ink-4)', textAlign: 'center', padding: '40px 0', fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '0.1em' }}>
+                队列空
+              </div>
+            )}
+            {queue.map(b => {
+              const st = statusOf(b);
+              const dt = bucketDate(b);
+              return (
+                <div
+                  key={b.id}
+                  className={'rv-queue-item' + (b.id === curId ? ' cur' : '')}
+                  onClick={() => { setCurId(b.id); setDrawer(false); }}
+                >
+                  <span className={'rv-queue-item-st ' + st}/>
+                  <div className="rv-queue-item-mid">
+                    <div className="rv-queue-item-meta">
+                      {dt ? `${fmtDay(dt).num} ${fmtDay(dt).mo} · ${fmtTime(dt)}` : '—'}
+                      {b.highlight && <span style={{ color: 'var(--accent)', marginLeft: 6 }}>★</span>}
+                    </div>
+                    <div className="rv-queue-item-title">{b.name || b.id}</div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <TabBar active="review"/>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────
+// 屏 6 · 设置(主页 + 子页 trash + import stub)
+// ─────────────────────────────────────────
+
+function SettingScreen() {
+  const [trashCount, setTrashCount] = useState(null);
+  useEffect(() => {
+    api('/api/trash')
+      .then(d => setTrashCount((d && d.count) || 0))
+      .catch(() => setTrashCount(0));
+  }, []);
+
+  return (
+    <div className="setting">
+      <div className="setting-top">
+        <div className="app-eyebrow">
+          <span className="app-eyebrow-dot"/>
+          <span>设置 · setting</span>
+        </div>
+        <h1 className="setting-title">设置</h1>
+      </div>
+      <div className="setting-body">
+        <div className="setting-section-hd">数据</div>
+        <div className="setting-list">
+          <div className="setting-row" onClick={() => navigate('/setting/import')}>
+            <div className="setting-row-ic">↥</div>
+            <div className="setting-row-mid">
+              <div className="setting-row-title">导入</div>
+              <div className="setting-row-sub">粘贴文本 / 选文件</div>
+            </div>
+            <span className="setting-row-arrow">›</span>
+          </div>
+          <div className="setting-row" onClick={() => navigate('/setting/trash')}>
+            <div className="setting-row-ic">⌫</div>
+            <div className="setting-row-mid">
+              <div className="setting-row-title">回收站</div>
+              <div className="setting-row-sub">软删除恢复 / 永久删除</div>
+            </div>
+            {trashCount !== null && trashCount > 0 && (
+              <span className="setting-row-badge">{trashCount}</span>
+            )}
+            <span className="setting-row-arrow">›</span>
+          </div>
+        </div>
+      </div>
+      <TabBar active="setting"/>
+    </div>
+  );
+}
+
+function TrashScreen() {
+  const [items, setItems] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    api('/api/trash')
+      .then(d => setItems((d && d.trash) || []))
+      .catch(e => setError(e.message));
+  }, []);
+
+  const noop = () => alert('Phase 1 只读 · 恢复 / 永删下次实装');
+
+  return (
+    <div className="trash-body">
+      <div className="sub-top">
+        <div className="sub-back-row">
+          <button className="app-back" onClick={() => navigate('/setting')}>‹ 设置</button>
+          <span className="app-eyebrow" style={{ marginLeft: 'auto' }}>
+            <span>软删除可恢复</span>
+          </span>
+        </div>
+        <h1 className="sub-title">回收站</h1>
+        <div className="sub-meta"><b>{items ? items.length : '…'}</b> 条</div>
+      </div>
+      <div className="trash-list">
+        {error && <div className="app-error">后端错: {error}</div>}
+        {!items && !error && <div className="app-loading">载入中…</div>}
+        {items && items.length === 0 && (
+          <div style={{ color: 'var(--ink-4)', textAlign: 'center', padding: '40px 16px', fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '0.1em' }}>
+            回收站空
+          </div>
+        )}
+        {items && items.map(it => (
+          <div key={it.id} className="trash-item">
+            <div className="trash-item-hd">
+              <span className="trash-item-title">{it.name || it.id}</span>
+              <span className="trash-item-when">
+                {it.trashed_at ? new Date(it.trashed_at).toLocaleDateString() : '—'}
+              </span>
+            </div>
+            <div className="trash-item-snip">
+              {it.summary || it.content_preview || '(无摘要)'}
+            </div>
+            <div className="trash-item-acts">
+              <button className="trash-act-btn restore" onClick={noop} disabled>↺ 恢复</button>
+              <button className="trash-act-btn purge" onClick={noop} disabled>✕ 永久删除</button>
+            </div>
+          </div>
+        ))}
+      </div>
+      <TabBar active="setting"/>
+    </div>
+  );
+}
+
+function ImportScreen() {
+  const [text, setText] = useState('');
+  const [results, setResults] = useState(null);
+
+  useEffect(() => {
+    api('/api/import/results?limit=20')
+      .then(d => setResults((d && d.buckets) || []))
+      .catch(() => setResults([]));
+  }, []);
+
+  const batches = useMemo(() => {
+    if (!results) return [];
+    const map = new Map();
+    for (const b of results) {
+      const dt = bucketDate(b);
+      if (!dt) continue;
+      const k = dayKeyOf(dt);
+      if (!map.has(k)) map.set(k, { dt, items: [] });
+      map.get(k).items.push(b);
+    }
+    return Array.from(map.values()).sort((a, b) => b.dt - a.dt).slice(0, 10);
+  }, [results]);
+
+  return (
+    <div className="import-body">
+      <div className="sub-top">
+        <div className="sub-back-row">
+          <button className="app-back" onClick={() => navigate('/setting')}>‹ 设置</button>
+        </div>
+        <h1 className="sub-title">导入</h1>
+        <div className="sub-meta">粘贴文本 / 选文件 → 自动入库</div>
+      </div>
+      <div className="import-stub-note">
+        ⚠ stub · Phase 1 只展示界面,提交按钮未接通后端,后续 chunk 实装
+      </div>
+      <div className="import-form">
+        <textarea
+          className="import-textarea"
+          placeholder="粘贴想入库的文本 …"
+          value={text}
+          onChange={e => setText(e.target.value)}
+        />
+        <div className="import-submit-row">
+          <button className="import-submit" disabled={!text.trim()}>→ 提交(stub)</button>
+        </div>
+      </div>
+      <div className="import-batches">
+        <div className="import-batch-hd">最近导入 / 写入</div>
+        {!results && <div className="app-loading" style={{ height: 'auto', padding: '20px 0' }}>载入中…</div>}
+        {results && batches.length === 0 && (
+          <div style={{ color: 'var(--ink-4)', textAlign: 'center', padding: '20px 0', fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '0.1em' }}>
+            没有最近批次
+          </div>
+        )}
+        {batches.map(b => (
+          <div key={dayKeyOf(b.dt)} className="import-batch-item">
+            <span className="import-batch-when">
+              {fmtDay(b.dt).mo} {fmtDay(b.dt).num}
+            </span>
+            <span className="import-batch-cnt"><b>{b.items.length}</b> 条</span>
+          </div>
+        ))}
+      </div>
+      <TabBar active="setting"/>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────
+// 占位屏(给 /new 等还没实装的路由用)
 // ─────────────────────────────────────────
 
 function PlaceholderScreen({ tab, ic, title, sub }) {
@@ -564,15 +1221,15 @@ function App() {
     case 'mem':
       return <MemFullScreen id={rest[0] || ''}/>;
     case 'review':
-      return <PlaceholderScreen tab="review" ic="✓" title="审阅台" sub="下个 chunk 实装"/>;
+      return <ReviewScreen/>;
     case 'cal':
-      return <PlaceholderScreen tab="cal" ic="▦" title="日历" sub="下个 chunk · 双模式"/>;
+      return <CalScreen/>;
     case 'setting':
-      if (rest[0] === 'trash') return <PlaceholderScreen tab="setting" ic="⌫" title="回收站" sub="下个 chunk 实装"/>;
-      if (rest[0] === 'import') return <PlaceholderScreen tab="setting" ic="↥" title="导入" sub="下个 chunk · stub"/>;
-      return <PlaceholderScreen tab="setting" ic="⚙" title="设置" sub="下个 chunk 实装"/>;
+      if (rest[0] === 'trash') return <TrashScreen/>;
+      if (rest[0] === 'import') return <ImportScreen/>;
+      return <SettingScreen/>;
     case 'new':
-      return <PlaceholderScreen tab="home" ic="＋" title="写新记忆" sub="下个 chunk 实装"/>;
+      return <PlaceholderScreen tab="home" ic="＋" title="写新记忆" sub="下次实装 — 写入 + 编辑一起做"/>;
     default:
       return <PlaceholderScreen tab="home" ic="?" title="未知路由" sub={'#/' + route.join('/')}/>;
   }
