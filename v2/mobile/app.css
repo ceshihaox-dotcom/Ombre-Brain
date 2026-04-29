@@ -175,26 +175,49 @@ input, textarea { font: inherit; color: inherit; }
   border-bottom: 0.5px solid var(--line);
   background: var(--bg);
 }
-.home-brand {
-  display: flex; align-items: center; gap: 9px;
-  margin-bottom: 12px;
+/* 首页页头(对齐桌面 .ob-page-title 风格) */
+.home-hd-row {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
 }
-.home-brand-mark {
-  width: 18px; height: 18px; border-radius: 50%;
-  background: conic-gradient(from 220deg, var(--ink), var(--ink) 50%, transparent 50%, transparent);
-  box-shadow: inset 0 0 0 1.5px var(--ink);
-}
-.home-brand-name {
-  font-family: var(--serif); font-style: italic;
-  font-size: 18px; font-weight: 500;
+.home-hd-l { flex: 1; min-width: 0; }
+.home-page-title {
+  font-family: var(--serif);
+  font-size: 28px; font-weight: 500;
+  font-style: italic;
   letter-spacing: 0.005em;
+  line-height: 1.1;
+  margin: 0 0 5px;
+  color: var(--ink);
 }
-.home-brand-stat {
-  margin-left: auto;
-  font-family: var(--mono); font-size: 9.5px;
-  color: var(--ink-3); letter-spacing: 0.06em;
+.home-page-title::before {
+  content: "◐ ";
+  font-size: 0.6em;
+  color: var(--accent);
+  margin-right: 5px;
+  vertical-align: 0.18em;
+  font-style: normal;
 }
-.home-brand-stat b { color: var(--ink); font-weight: 600; }
+.home-page-sub {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--ink-3);
+  line-height: 1.5;
+  letter-spacing: 0.005em;
+  text-wrap: pretty;
+}
+.home-page-stat {
+  flex-shrink: 0;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  color: var(--ink-3);
+  letter-spacing: 0.06em;
+  text-align: right;
+  line-height: 1.55;
+  padding-top: 6px;
+}
+.home-page-stat b { color: var(--ink); font-weight: 600; font-size: 11px; }
 
 .home-search {
   background: var(--paper);
@@ -211,7 +234,8 @@ input, textarea { font: inherit; color: inherit; }
 .home-search-text {
   flex: 1;
   font-family: var(--serif); font-style: italic;
-  font-size: 15px; color: var(--ink-4);
+  font-size: 15px;
+  color: var(--ink);
   letter-spacing: 0.005em;
   background: transparent;
   border: 0;
@@ -219,6 +243,18 @@ input, textarea { font: inherit; color: inherit; }
   width: 100%;
 }
 .home-search-text::placeholder { color: var(--ink-4); }
+.home-search-clear {
+  appearance: none; border: 0;
+  background: var(--bg-2);
+  color: var(--ink-3);
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; line-height: 1;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.home-search-clear:active { background: var(--line-2); }
 .home-search-mood {
   width: 26px; height: 26px;
   border-radius: 50%;
@@ -420,6 +456,30 @@ input, textarea { font: inherit; color: inherit; }
   color: var(--accent);
   letter-spacing: 0.06em;
 }
+
+/* 搜索 / chip 筛选结果的 meta 行 */
+.filter-result-meta {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  letter-spacing: 0.06em;
+  margin: 4px 4px 12px;
+  display: flex; align-items: center; gap: 6px;
+  flex-wrap: wrap;
+}
+.filter-result-meta b { color: var(--ink); font-weight: 600; font-size: 11px; }
+.filter-result-meta .clear-all {
+  margin-left: auto;
+  appearance: none; border: 0;
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+.filter-result-meta .clear-all:active { color: var(--ink); }
 
 .home-mood-row {
   display: flex; align-items: center; gap: 10px;

@@ -149,6 +149,8 @@ function TabBar({ active }) {
 function HomeScreen() {
   const [buckets, setBuckets] = useState(null);
   const [error, setError] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filters, setFilters] = useState(() => new Set());
 
   useEffect(() => {
     let cancel = false;
@@ -158,7 +160,43 @@ function HomeScreen() {
     return () => { cancel = true; };
   }, []);
 
-  // 按日期分组(本地时区)
+  const toggleFilter = (key) => {
+    setFilters(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  // 应用 chip 筛选 + 搜索 → flat 结果集
+  const filteredBuckets = useMemo(() => {
+    if (!buckets) return [];
+    let result = buckets;
+    if (filters.has('hi'))      result = result.filter(b => b.highlight);
+    if (filters.has('feel'))    result = result.filter(b => isFeel(b));
+    if (filters.has('recent7')) {
+      const cutoff = Date.now() - 7 * 86400000;
+      result = result.filter(b => {
+        const dt = bucketDate(b);
+        return dt && dt.getTime() >= cutoff;
+      });
+    }
+    if (filters.has('imp7')) result = result.filter(b => (b.importance || 5) >= 7);
+    if (filters.has('ai'))   result = result.filter(b => b.created_by === 'ai');
+
+    const q = searchQuery.trim().toLowerCase();
+    if (q) {
+      result = result.filter(b => {
+        const visTags = (b.tags || []).filter(t => !String(t).startsWith('__')).join(' ');
+        const hay = ((b.name || '') + ' ' + (b.summary || '') + ' ' + (b.content_preview || '') + ' ' + visTags).toLowerCase();
+        return hay.indexOf(q) >= 0;
+      });
+    }
+    return result;
+  }, [buckets, filters, searchQuery]);
+
+  // 默认模式:按本地日期分组
   const days = useMemo(() => {
     if (!buckets) return [];
     const grouped = new Map();
@@ -170,7 +208,6 @@ function HomeScreen() {
       grouped.get(k).items.push({ b, dt });
     }
     const arr = Array.from(grouped.entries()).map(([k, { dt, items }]) => {
-      // 当天内按时间倒序
       items.sort((a, b) => b.dt - a.dt);
       const peakImp = items.reduce((m, it) => Math.max(m, it.b.importance || 5), 0);
       const dots = new Set();
@@ -181,20 +218,23 @@ function HomeScreen() {
         if (b.created_by === 'ai') dots.add('ai');
         if (b.created_by === 'user') dots.add('note');
       }
-      return {
-        key: k,
-        dt,
-        dayFmt: fmtDay(dt),
-        cnt: items.length,
-        peakImp,
-        hi: hasHi,
-        dots: Array.from(dots),
-        items,
-      };
+      return { key: k, dt, dayFmt: fmtDay(dt), cnt: items.length, peakImp, hi: hasHi, dots: Array.from(dots), items };
     });
     arr.sort((a, b) => b.dt - a.dt);
     return arr;
   }, [buckets]);
+
+  const isFiltering = !!searchQuery.trim() || filters.size > 0;
+  const flatResults = useMemo(() => {
+    if (!isFiltering) return null;
+    return [...filteredBuckets].sort((a, b) => {
+      const ta = bucketDate(a), tb = bucketDate(b);
+      if (!ta && !tb) return 0;
+      if (!ta) return 1;
+      if (!tb) return -1;
+      return tb - ta;
+    });
+  }, [isFiltering, filteredBuckets]);
 
   if (error) return (
     <div className="home">
@@ -212,82 +252,168 @@ function HomeScreen() {
   return (
     <div className="home">
       <div className="home-top">
-        <div className="home-brand">
-          <div className="home-brand-mark"/>
-          <span className="home-brand-name">Ombre</span>
-          <div className="home-brand-stat">
-            <b>{buckets.length}</b> mem · <b>{days.length}</b> 天
+        <div className="home-hd-row">
+          <div className="home-hd-l">
+            <h1 className="home-page-title">我的时间线</h1>
+            <p className="home-page-sub">按事件时间倒序 · 点天卡看当日全部</p>
+          </div>
+          <div className="home-page-stat">
+            <b>{buckets.length}</b> 条<br/>
+            <b>{days.length}</b> 天
           </div>
         </div>
-        <div className="home-search" onClick={() => { /* TODO: 搜索 */ }}>
+
+        <div className="home-search">
           <span className="home-search-icon">⌕</span>
-          <span className="home-search-text">搜索记忆 / 标签 / 内容…</span>
-          <div className="home-search-mood" title="情感唤起"/>
+          <input
+            className="home-search-text"
+            type="text"
+            placeholder="搜索记忆 / 标签 / 内容…"
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+          />
+          {searchQuery && (
+            <button className="home-search-clear" onClick={() => setSearchQuery('')} title="清空">×</button>
+          )}
+          <div className="home-search-mood" title="情感唤起 (待接通)"/>
         </div>
+
         <div className="home-chips">
-          <span className="home-chip on">全部</span>
-          <span className="home-chip hi">★ highlight</span>
-          <span className="home-chip feel">feel</span>
-          <span className="home-chip">近 7 天</span>
-          <span className="home-chip">imp ≥ 7</span>
-          <span className="home-chip">AI 写入</span>
+          <span
+            className={'home-chip' + (filters.size === 0 ? ' on' : '')}
+            onClick={() => setFilters(new Set())}
+          >全部</span>
+          <span
+            className={'home-chip hi' + (filters.has('hi') ? ' on' : '')}
+            onClick={() => toggleFilter('hi')}
+          >★ highlight</span>
+          <span
+            className={'home-chip feel' + (filters.has('feel') ? ' on' : '')}
+            onClick={() => toggleFilter('feel')}
+          >feel</span>
+          <span
+            className={'home-chip' + (filters.has('recent7') ? ' on' : '')}
+            onClick={() => toggleFilter('recent7')}
+          >近 7 天</span>
+          <span
+            className={'home-chip' + (filters.has('imp7') ? ' on' : '')}
+            onClick={() => toggleFilter('imp7')}
+          >imp ≥ 7</span>
+          <span
+            className={'home-chip' + (filters.has('ai') ? ' on' : '')}
+            onClick={() => toggleFilter('ai')}
+          >AI 写入</span>
         </div>
       </div>
 
       <div className="home-body">
-        <div className="home-mood-row">
-          <div className="home-mood-pad"/>
-          <div className="home-mood-text">
-            <b>情感唤起</b> · 按住罗盘选一个情绪坐标,看 AI 怎么挑相关记忆
-          </div>
-          <span className="home-mood-arrow">›</span>
-        </div>
-
-        {days.length === 0 && (
-          <div style={{ textAlign: 'center', color: 'var(--ink-4)', padding: '40px 0', fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '0.1em' }}>
-            没有记忆 — 先去后端导入或手动加几条
-          </div>
-        )}
-
-        {days.map(d => (
-          <div
-            key={d.key}
-            className={'day-card' + (d.hi ? ' hi' : '')}
-            onClick={() => navigate('/day/' + d.key)}
-          >
-            <div className="day-card-hd">
-              <div className="day-card-date">
-                <div className="day-card-num">{d.dayFmt.num}</div>
-                <div className="day-card-mo">{d.dayFmt.mo}</div>
-                <div className="day-card-wk">{d.dayFmt.wk}</div>
+        {isFiltering ? (
+          <>
+            <div className="filter-result-meta">
+              共 <b>{flatResults.length}</b> 条
+              {searchQuery.trim() && <span> · 关键词「{searchQuery.trim()}」</span>}
+              {filters.size > 0 && <span> · {filters.size} 个筛选</span>}
+              <button className="clear-all" onClick={() => { setSearchQuery(''); setFilters(new Set()); }}>清空 ↺</button>
+            </div>
+            {flatResults.length === 0 && (
+              <div style={{ color: 'var(--ink-4)', textAlign: 'center', padding: '40px 0', fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '0.1em' }}>
+                没有匹配的记忆
               </div>
-              <div className="day-card-mid">
-                <div className="day-card-stat-row">
-                  <span className="day-card-cnt"><b>{d.cnt}</b> 条</span>
-                  <ImpBar n={d.peakImp}/>
-                  <span style={{ color: 'var(--ink-4)' }}>峰 {d.peakImp}</span>
-                  <span className="day-card-dots">
-                    {d.dots.map((dt, i) => <span key={i} className={'day-card-dot ' + dt}/>)}
+            )}
+            {flatResults.slice(0, 100).map(b => {
+              const dt = bucketDate(b);
+              return (
+                <div
+                  key={b.id}
+                  className={'dd-item' + (b.highlight ? ' hi' : '')}
+                  onClick={() => navigate('/mem/' + encodeURIComponent(b.id))}
+                >
+                  <span className="dd-item-time">{dt ? `${fmtDay(dt).num} ${fmtDay(dt).mo}` : '—'}</span>
+                  <div className="dd-item-mid">
+                    <div className="dd-item-title-row">
+                      <span className="dd-item-title">{b.name || b.id}</span>
+                      <span className="dd-item-tags">
+                        {isFeel(b) && <span className="dd-pip feel"/>}
+                        {b.highlight && <span className="dd-pip hi"/>}
+                        {b.created_by === 'ai' && <span className="dd-pip ai"/>}
+                      </span>
+                    </div>
+                    <div className="dd-item-snip">{bucketSummary(b)}</div>
+                  </div>
+                  <span className="dd-item-imp">
+                    {Array.from({ length: 10 }).map((_, k) => (
+                      <i key={k} style={{
+                        height: ((k + 1) * 1.2 + 3) + 'px',
+                        background: k < (b.importance || 5) ? 'var(--accent)' : 'var(--bg-2)',
+                      }}/>
+                    ))}
                   </span>
                 </div>
-                <div className="day-card-preview">
-                  {d.items.slice(0, 2).map(({ b, dt }, i) => (
-                    <div key={i} className="day-card-preview-row">
-                      <span className="day-card-preview-time">{fmtTime(dt)}</span>
-                      <span className="day-card-preview-title">{bucketTitle(b)}</span>
-                      {isFeel(b) && <span className="day-card-preview-pip feel"/>}
-                      {b.highlight && <span className="day-card-preview-pip hi"/>}
+              );
+            })}
+            {flatResults.length > 100 && (
+              <div style={{ color: 'var(--ink-4)', textAlign: 'center', padding: '20px 0', fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '0.08em' }}>
+                · 余 {flatResults.length - 100} 条未显示 — 缩小筛选范围 ·
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div className="home-mood-row">
+              <div className="home-mood-pad"/>
+              <div className="home-mood-text">
+                <b>情感唤起</b> · 按住罗盘选一个情绪坐标,看 AI 怎么挑相关记忆
+              </div>
+              <span className="home-mood-arrow">›</span>
+            </div>
+
+            {days.length === 0 && (
+              <div style={{ textAlign: 'center', color: 'var(--ink-4)', padding: '40px 0', fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '0.1em' }}>
+                没有记忆 — 先去后端导入或手动加几条
+              </div>
+            )}
+
+            {days.map(d => (
+              <div
+                key={d.key}
+                className={'day-card' + (d.hi ? ' hi' : '')}
+                onClick={() => navigate('/day/' + d.key)}
+              >
+                <div className="day-card-hd">
+                  <div className="day-card-date">
+                    <div className="day-card-num">{d.dayFmt.num}</div>
+                    <div className="day-card-mo">{d.dayFmt.mo}</div>
+                    <div className="day-card-wk">{d.dayFmt.wk}</div>
+                  </div>
+                  <div className="day-card-mid">
+                    <div className="day-card-stat-row">
+                      <span className="day-card-cnt"><b>{d.cnt}</b> 条</span>
+                      <ImpBar n={d.peakImp}/>
+                      <span style={{ color: 'var(--ink-4)' }}>峰 {d.peakImp}</span>
+                      <span className="day-card-dots">
+                        {d.dots.map((dt, i) => <span key={i} className={'day-card-dot ' + dt}/>)}
+                      </span>
                     </div>
-                  ))}
-                  {d.cnt > 2 && (
-                    <div className="day-card-more">+ 还有 {d.cnt - 2} 条 →</div>
-                  )}
+                    <div className="day-card-preview">
+                      {d.items.slice(0, 2).map(({ b, dt }, i) => (
+                        <div key={i} className="day-card-preview-row">
+                          <span className="day-card-preview-time">{fmtTime(dt)}</span>
+                          <span className="day-card-preview-title">{bucketTitle(b)}</span>
+                          {isFeel(b) && <span className="day-card-preview-pip feel"/>}
+                          {b.highlight && <span className="day-card-preview-pip hi"/>}
+                        </div>
+                      ))}
+                      {d.cnt > 2 && (
+                        <div className="day-card-more">+ 还有 {d.cnt - 2} 条 →</div>
+                      )}
+                    </div>
+                  </div>
+                  <span className="day-card-arrow">›</span>
                 </div>
               </div>
-              <span className="day-card-arrow">›</span>
-            </div>
-          </div>
-        ))}
+            ))}
+          </>
+        )}
       </div>
 
       <button className="home-fab" onClick={() => navigate('/new')} title="写新记忆">+</button>
