@@ -104,7 +104,7 @@ function bucketSummary(b) {
 // 共用小组件
 // ─────────────────────────────────────────
 
-function ImpBar({ n, max = 9, height = 9, w = 2.5, gap = 1.5 }) {
+function ImpBar({ n, max = 10, height = 9, w = 2.5, gap = 1.5 }) {
   return (
     <span className="day-card-impbar" style={{ height: height + 'px', gap: gap + 'px' }}>
       {Array.from({ length: max }).map((_, i) => (
@@ -394,9 +394,9 @@ function DayDetailScreen({ dayKey }) {
               <div className="dd-item-snip">{bucketSummary(b)}</div>
             </div>
             <span className="dd-item-imp">
-              {Array.from({ length: 9 }).map((_, k) => (
+              {Array.from({ length: 10 }).map((_, k) => (
                 <i key={k} style={{
-                  height: ((k + 1) * 1.4 + 3) + 'px',
+                  height: ((k + 1) * 1.2 + 3) + 'px',
                   background: k < (b.importance || 5) ? 'var(--accent)' : 'var(--bg-2)',
                 }}/>
               ))}
@@ -485,9 +485,9 @@ function MemFullScreen({ id }) {
         <div className="mem-full-imp-row">
           <span>重要度</span>
           <span className="mem-full-imp-bar">
-            {Array.from({ length: 9 }).map((_, i) => (
+            {Array.from({ length: 10 }).map((_, i) => (
               <i key={i} style={{
-                height: ((i + 1) * 0.9 + 3) + 'px',
+                height: ((i + 1) * 0.85 + 3) + 'px',
                 background: i < importance ? 'var(--accent)' : 'var(--bg-2)',
               }}/>
             ))}
@@ -495,32 +495,20 @@ function MemFullScreen({ id }) {
           <b style={{
             fontFamily: 'var(--serif)', fontStyle: 'italic',
             color: 'var(--accent)', fontWeight: 600, fontSize: '15px'
-          }}>{importance} / 9</b>
+          }}>{importance} / 10</b>
         </div>
 
-        {m.summary && (
-          <>
-            <div className="mem-full-section-hd">摘要 · summary</div>
-            <div className="mem-full-text">
-              <p className="lead">{m.summary}</p>
-            </div>
-          </>
-        )}
+        <div className="mem-full-text">
+          {m.summary && <p className="lead">{m.summary}</p>}
+          {paragraphs.map((p, i) => <p key={i}>{p}</p>)}
+          {!m.summary && paragraphs.length === 0 && (
+            <p style={{ color: 'var(--ink-4)', fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '0.1em' }}>
+              (暂无内容)
+            </p>
+          )}
+        </div>
 
-        {paragraphs.length > 0 && (
-          <>
-            <div className="mem-full-section-hd">原文 · content</div>
-            <div className="mem-full-text">
-              {paragraphs.map((p, i) => <p key={i}>{p}</p>)}
-            </div>
-          </>
-        )}
-
-        {paragraphs.length === 0 && !m.summary && (
-          <div style={{ color: 'var(--ink-4)', fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '0.1em', padding: '20px 0' }}>
-            (这条记忆暂无正文)
-          </div>
-        )}
+        {/* 关联记忆等以后接通时再加 mem-full-section-hd */}
       </div>
 
       <div className="mem-full-action">
@@ -549,7 +537,7 @@ function MemFullScreen({ id }) {
 
 function FormFields({
   name, setName, summary, setSummary, content, setContent,
-  imp, setImp, hi, setHi, pin, setPin, tags, setTags, tagInput, setTagInput,
+  imp, setImp, pin, setPin, tags, setTags, tagInput, setTagInput,
   showSummary = true, showPin = true, contentRequired = false,
 }) {
   const feel = tags.some(t => /^feel/i.test(String(t)));
@@ -605,7 +593,7 @@ function FormFields({
         <div className="edit-field-lbl">重要度 · importance</div>
         <div className="edit-imp">
           <div className="edit-imp-track">
-            {Array.from({ length: 9 }).map((_, i) => (
+            {Array.from({ length: 10 }).map((_, i) => (
               <i key={i} className={i < imp ? 'on' : ''} onClick={() => setImp(i + 1)}/>
             ))}
           </div>
@@ -616,9 +604,6 @@ function FormFields({
       <div className="edit-field">
         <div className="edit-field-lbl">动态属性</div>
         <div className="edit-toggle-row">
-          <button className={'edit-toggle ' + (hi ? 'on' : '')} onClick={() => setHi(!hi)}>
-            <span className="ic">★</span><span>highlight</span>
-          </button>
           <button className={'edit-toggle feel ' + (feel ? 'on' : '')} onClick={toggleFeel}>
             <span className="ic">♡</span><span>feel</span>
           </button>
@@ -643,7 +628,8 @@ function FormFields({
             value={tagInput}
             onChange={e => setTagInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
-            placeholder="+ 加标签 ⏎"
+            onBlur={() => addTag()}
+            placeholder="+ 加标签(回车 / 失焦自动加)"
           />
         </div>
       </div>
@@ -658,7 +644,6 @@ function EditSheet({ bucketId, onClose, onSaved }) {
   const [summary, setSummary] = useState('');
   const [content, setContent] = useState('');
   const [imp, setImp] = useState(5);
-  const [hi, setHi] = useState(false);
   const [pin, setPin] = useState(false);
   const [tags, setTags] = useState([]);
   const [tagInput, setTagInput] = useState('');
@@ -674,7 +659,6 @@ function EditSheet({ bucketId, onClose, onSaved }) {
         setSummary(m.summary || '');
         setContent(d.content || '');
         setImp(m.importance || 5);
-        setHi(!!m.highlight);
         setPin(!!m.protected);
         setTags(m.tags || []);
         setLoading(false);
@@ -696,7 +680,6 @@ function EditSheet({ bucketId, onClose, onSaved }) {
           content: content,
           importance: imp,
           tags: tags,
-          highlight: hi,
           protected: pin,
         }),
       });
@@ -735,7 +718,6 @@ function EditSheet({ bucketId, onClose, onSaved }) {
             summary={summary} setSummary={setSummary}
             content={content} setContent={setContent}
             imp={imp} setImp={setImp}
-            hi={hi} setHi={setHi}
             pin={pin} setPin={setPin}
             tags={tags} setTags={setTags}
             tagInput={tagInput} setTagInput={setTagInput}
@@ -755,7 +737,6 @@ function NewScreen() {
   const [summary, setSummary] = useState('');
   const [content, setContent] = useState('');
   const [imp, setImp] = useState(5);
-  const [hi, setHi] = useState(false);
   const [pin, setPin] = useState(false);
   const [tags, setTags] = useState([]);
   const [tagInput, setTagInput] = useState('');
@@ -775,11 +756,9 @@ function NewScreen() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: name.trim() || null,
-          summary: summary.trim() || undefined,
           content: content,
           importance: imp,
           tags: tags,
-          highlight: hi,
           protected: pin,
         }),
       });
@@ -799,7 +778,8 @@ function NewScreen() {
           });
         } catch (_) { /* 忽略,用户可以以后再编辑 */ }
       }
-      navigate('/mem/' + encodeURIComponent(data.id));
+      // 用 replace 而不是 navigate,这样后退键直接回上层(如首页),不会回到 /new
+      window.location.replace('#/mem/' + encodeURIComponent(data.id));
     } catch (e) {
       setError(e.message || String(e));
       setSaving(false);
@@ -823,7 +803,6 @@ function NewScreen() {
           summary={summary} setSummary={setSummary}
           content={content} setContent={setContent}
           imp={imp} setImp={setImp}
-          hi={hi} setHi={setHi}
           pin={pin} setPin={setPin}
           tags={tags} setTags={setTags}
           tagInput={tagInput} setTagInput={setTagInput}
@@ -1203,9 +1182,16 @@ function ReviewScreen() {
   const markStatus = async (action) => {
     if (!cur || busy) return;
     setBusy(true);
+    // 已是目标状态再点 = 取消(回到待办)
+    const currentStatus = statusOf(cur);
+    const targetStatus = action === 'refined' ? 'done' : 'doubt';
+    const isUntoggle = currentStatus === targetStatus;
+
     const newTags = (cur.tags || []).filter(t => t !== '__import_refined' && t !== '__import_flagged');
-    if (action === 'refined') newTags.push('__import_refined');
-    if (action === 'flagged') newTags.push('__import_flagged');
+    if (!isUntoggle) {
+      if (action === 'refined') newTags.push('__import_refined');
+      if (action === 'flagged') newTags.push('__import_flagged');
+    }
     const next = pickNext();
     try {
       const r = await fetch('/api/bucket/' + encodeURIComponent(cur.id) + '/update', {
@@ -1218,7 +1204,8 @@ function ReviewScreen() {
         throw new Error(err.error || `HTTP ${r.status}`);
       }
       setBuckets(prev => prev.map(b => b.id === cur.id ? { ...b, tags: newTags } : b));
-      setCurId(next ? next.id : null);
+      // 标记时切下一个,取消时留在原条目让用户看到状态变化
+      if (!isUntoggle && next) setCurId(next.id);
     } catch (e) {
       alert('失败: ' + e.message);
     } finally {
@@ -1292,15 +1279,15 @@ function ReviewScreen() {
             <div className="rv-main-imp-row">
               <span>重要度</span>
               <span className="rv-main-imp-bar">
-                {Array.from({ length: 9 }).map((_, i) => (
+                {Array.from({ length: 10 }).map((_, i) => (
                   <i key={i} style={{
-                    height: ((i + 1) * 0.7 + 3.5) + 'px',
+                    height: ((i + 1) * 0.65 + 3.5) + 'px',
                     background: i < (cur.importance || 5) ? 'var(--accent)' : 'var(--bg-2)',
                   }}/>
                 ))}
               </span>
               <b style={{ fontFamily: 'var(--serif)', fontStyle: 'italic', color: 'var(--accent)', fontWeight: 600, fontSize: '13px' }}>
-                {cur.importance || 5} / 9
+                {cur.importance || 5} / 10
               </b>
             </div>
             <div className="rv-main-text-wrap">
@@ -1325,16 +1312,18 @@ function ReviewScreen() {
             {/* 状态按钮条:嵌入主卡底部,跟下面 tabbar 视觉分层 */}
             <div className="rv-actions-bar">
               <button
-                className="rv-action-btn read"
+                className={'rv-action-btn read' + (statusOf(cur) === 'done' ? ' on' : '')}
                 onClick={() => markStatus('refined')}
-                disabled={busy || statusOf(cur) === 'done'}
+                disabled={busy}
+                title={statusOf(cur) === 'done' ? '再点一次取消已阅' : '标记已阅'}
               >
                 <span className="ic">✓</span><span>已阅</span>
               </button>
               <button
-                className="rv-action-btn doubt"
+                className={'rv-action-btn doubt' + (statusOf(cur) === 'doubt' ? ' on' : '')}
                 onClick={() => markStatus('flagged')}
-                disabled={busy || statusOf(cur) === 'doubt'}
+                disabled={busy}
+                title={statusOf(cur) === 'doubt' ? '再点一次取消存疑' : '标记存疑'}
               >
                 <span className="ic">?</span><span>存疑</span>
               </button>

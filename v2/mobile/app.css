@@ -1125,6 +1125,12 @@ input, textarea { font: inherit; color: inherit; }
 .rv-action-btn:disabled { opacity: 0.45; }
 .rv-action-btn:not(:disabled):active { background: var(--bg-2); }
 
+/* 激活态:当前条目已是该状态(再点会取消) */
+.rv-action-btn.read.on  { background: color-mix(in oklab, var(--green) 14%, var(--paper-2)); font-weight: 600; }
+.rv-action-btn.doubt.on { background: color-mix(in oklab, var(--red) 14%, var(--paper-2)); font-weight: 600; }
+.rv-action-btn.read.on .ic,
+.rv-action-btn.doubt.on .ic { font-weight: 600; }
+
 /* ========= 屏 5 · 日历(v1 双模式) ========= */
 
 .cal {
