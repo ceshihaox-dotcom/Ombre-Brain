@@ -474,6 +474,17 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
     else if (action === 'unnoise') {
       ids.forEach(id => onUpdateItem(id, { noise: false }));
     }
+    else if (action === 'set-imp') {
+      const raw = window.prompt(`把 ${ids.length} 条的重要度统一设为多少? (1-10)`, '5');
+      if (raw == null) { clearSelected(); return; }
+      const n = parseInt(raw, 10);
+      if (!Number.isFinite(n) || n < 1 || n > 10) {
+        alert('需要 1-10 的整数, 已取消');
+        clearSelected();
+        return;
+      }
+      ids.forEach(id => onUpdateItem(id, { importance: n }));
+    }
     else if (action === 'delete') {
       if (confirm(`真的要删除 ${ids.length} 条记忆吗？`)) {
         ids.forEach(id => onUpdateItem(id, { __delete: true }));
@@ -613,6 +624,7 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
           <button className="ob-cells-bulk-btn" onClick={() => bulkAction('internal')}>◐ 标内化</button>
           <button className="ob-cells-bulk-btn" onClick={() => bulkAction('noise')} title="加速衰减 + importance 锁 1, 几天内归档">⌀ 标噪声</button>
           <button className="ob-cells-bulk-btn" onClick={() => bulkAction('unnoise')}>↺ 取消噪声</button>
+          <button className="ob-cells-bulk-btn" onClick={() => bulkAction('set-imp')} title="批量设重要度 (1-10)">⇅ 设重要度</button>
           <button className="ob-cells-bulk-btn danger" onClick={() => bulkAction('delete')}>✕ 删除</button>
           <div className="ob-cells-bulk-spacer" />
           <button className="ob-cells-bulk-btn" onClick={selectAll}>全选当前</button>
