@@ -3705,6 +3705,14 @@ body {
   flex-shrink: 0;
 }
 .ob-detail-imp b { color: var(--accent); font-weight: 600; }
+.ob-detail-score {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--ink-4);
+  margin-left: auto;
+  flex-shrink: 0;
+}
 .ob-detail-sum {
   color: var(--ink-2);
   font-size: 13.5px;
@@ -5498,7 +5506,8 @@ body {
 /* 行 */
 .ob-cell {
   display: grid;
-  grid-template-columns: 24px 22px minmax(220px, 1.2fr) minmax(0, 2fr) 56px;
+  /* 6 列: pick / mark / main(title+meta) / score / sum / imp */
+  grid-template-columns: 24px 22px minmax(220px, 1.2fr) 60px minmax(0, 2fr) 56px;
   gap: 14px;
   align-items: start;
   padding: 12px 14px;
@@ -5645,20 +5654,21 @@ body {
 }
 .ob-cell-meta-dot { opacity: 0.5; }
 
-/* 权重 score 数字标记: 列表态在内容前, 卡片态在 importance 前 */
+/* 权重 score 数字标记: 列表态独占 grid 列, 卡片态在 importance 前 */
 .ob-cell-score {
-  font-family: var(--mono);
-  font-size: 10.5px;
-  letter-spacing: 0.05em;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 13px;
   color: var(--ink-4);
   white-space: nowrap;
-  margin-right: 8px;
+  align-self: center;
+  text-align: right;
 }
 .ob-card-cell-score {
-  font-family: var(--mono);
-  font-size: 11px;
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 13px;
   color: var(--ink-4);
-  letter-spacing: 0.05em;
   margin-left: auto;
   margin-right: 8px;
 }

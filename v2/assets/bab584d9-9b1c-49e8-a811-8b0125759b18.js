@@ -57,7 +57,7 @@ function AppV2() {
   const [loading, setLoading] = uSA(true);
   const [loadError, setLoadError] = uSA(null);
   const [query, setQuery] = uSA('');
-  const [filters, setFilters] = uSA({ importantOnly: false, feelOnly: false, protectedOnly: false });
+  const [filters, setFilters] = uSA({ importantOnly: false, feelOnly: false, protectedOnly: false, noiseOnly: false });
   const [openDay, setOpenDay] = uSA(null);
   const [openItem, setOpenItem] = uSA(null);
   const [writeOpen, setWriteOpen] = uSA(false);
@@ -278,8 +278,8 @@ function AppV2() {
             />
           </div>
           <FilterChipV2
-            active={!filters.importantOnly && !filters.feelOnly && !filters.protectedOnly}
-            onClick={() => setFilters({ importantOnly: false, feelOnly: false, protectedOnly: false })}
+            active={!filters.importantOnly && !filters.feelOnly && !filters.protectedOnly && !filters.noiseOnly}
+            onClick={() => setFilters({ importantOnly: false, feelOnly: false, protectedOnly: false, noiseOnly: false })}
           >全部</FilterChipV2>
           <FilterChipV2 tone="gold" active={filters.importantOnly}
             onClick={() => setFilters(f => ({ ...f, importantOnly: !f.importantOnly }))}
@@ -290,6 +290,9 @@ function AppV2() {
           <FilterChipV2 tone="amber" active={filters.protectedOnly}
             onClick={() => setFilters(f => ({ ...f, protectedOnly: !f.protectedOnly }))}
           >⛨ 已保护</FilterChipV2>
+          <FilterChipV2 active={filters.noiseOnly}
+            onClick={() => setFilters(f => ({ ...f, noiseOnly: !f.noiseOnly }))}
+          >⌀ 噪声</FilterChipV2>
         </div>
 
         <TimelineV2

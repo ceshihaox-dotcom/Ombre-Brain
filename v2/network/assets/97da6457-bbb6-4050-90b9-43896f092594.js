@@ -181,7 +181,7 @@ function RightDrawer({ item, items, links, onClose, onSelect, onUpdate, onFocus,
               <div className="cs-right-meta-cell">
                 <span className="lbl">权重 score</span>
                 <span className="val" style={{ fontFamily: 'var(--mono)' }}>
-                  {item.score >= 100 ? item.score.toFixed(0) : item.score.toFixed(2)}
+                  {item.score.toFixed(2)}
                 </span>
               </div>
             )}

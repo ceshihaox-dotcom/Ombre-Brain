@@ -227,7 +227,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
                 color: 'var(--ink-4)',
                 letterSpacing: '0.06em',
               }} title="decay 权重(>5 活, <0.3 自动归档)">
-                score · {item.score >= 100 ? item.score.toFixed(0) : item.score.toFixed(2)}
+                score · {item.score.toFixed(2)}
               </span>
             )}
           </div>
