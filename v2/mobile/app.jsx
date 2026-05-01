@@ -166,7 +166,21 @@ function HomeScreen() {
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState(() => new Set());
-  const [moodOpen, setMoodOpen] = useState(false);
+  // 跳全貌→back 回 home 的恢复: lazy useState 在 mount 时读一次 + 立即清 sessionStorage
+  // 30 分钟内有效;过期就当没存
+  const [moodInit] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem(MOOD_RESUME_KEY);
+      if (!raw) return { resume: null, open: false };
+      const saved = JSON.parse(raw);
+      sessionStorage.removeItem(MOOD_RESUME_KEY);
+      const fresh = saved && (Date.now() - (saved.ts || 0)) < MOOD_RESUME_TTL_MS;
+      return fresh ? { resume: saved, open: true } : { resume: null, open: false };
+    } catch (_) {
+      return { resume: null, open: false };
+    }
+  });
+  const [moodOpen, setMoodOpen] = useState(moodInit.open);
 
   useEffect(() => {
     let cancel = false;
@@ -443,7 +457,7 @@ function HomeScreen() {
       <button className="home-fab" onClick={() => navigate('/new')} title="写新记忆">+</button>
       <TabBar active="home"/>
 
-      {moodOpen && <MoodEvokeOverlay onClose={() => setMoodOpen(false)}/>}
+      {moodOpen && <MoodEvokeOverlay onClose={() => setMoodOpen(false)} resume={moodInit.resume}/>}
     </div>
   );
 }
@@ -455,14 +469,16 @@ function HomeScreen() {
 // ─────────────────────────────────────────
 // 灵敏度档位 → radius (距离上限, 含象限加权)
 const MOOD_RADIUS = { strict: 0.20, normal: 0.35, loose: 0.60 };
+const MOOD_RESUME_KEY = 'ombre-mood-resume-v1';
+const MOOD_RESUME_TTL_MS = 30 * 60 * 1000;     // 30 分钟内回来才恢复
 
-function MoodEvokeOverlay({ onClose }) {
-  // 默认中性偏低, 让用户自己挪
-  const [v, setV] = useState(0.5);
-  const [a, setA] = useState(0.4);
-  const [sens, setSens] = useState('normal');   // strict / normal / loose
+function MoodEvokeOverlay({ onClose, resume }) {
+  // resume = 上次跳全貌前保存的状态; 没有就用默认
+  const [v, setV] = useState(() => (resume?.v ?? 0.5));
+  const [a, setA] = useState(() => (resume?.a ?? 0.4));
+  const [sens, setSens] = useState(() => (resume?.sens ?? 'normal'));
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState(null);   // { narrative, sources, mood_label, relaxed }
+  const [result, setResult] = useState(() => (resume?.result ?? null));
   const [error, setError] = useState(null);
   // 源记忆全文预览浮层: { id, name, content, loading?, error? }
   // 同一条再点关闭(toggle), 不同条切换显示
@@ -669,8 +685,17 @@ function MoodEvokeOverlay({ onClose }) {
             </div>
             <button
               className="mood-preview-jump"
-              onClick={() => { onClose(); navigate('/mem/' + encodeURIComponent(preview.id)); }}
-              title="去单条全貌界面(支持编辑等)"
+              onClick={() => {
+                // 跳全貌前持久化当前唤起状态; Home 重挂载会读出来自动重开
+                try {
+                  sessionStorage.setItem(MOOD_RESUME_KEY, JSON.stringify({
+                    v, a, sens, result, ts: Date.now(),
+                  }));
+                } catch (_) { /* sessionStorage 不可用就忽略, 退化为非保活 */ }
+                onClose();
+                navigate('/mem/' + encodeURIComponent(preview.id));
+              }}
+              title="去单条全貌界面 · 返回时自动回到这次唤起"
             >去全貌界面 ›</button>
           </div>
         </div>
