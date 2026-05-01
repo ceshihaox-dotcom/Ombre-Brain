@@ -2644,6 +2644,15 @@ function App() {
     if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
   }, []);
 
+  // 开屏始终落到记忆首页:tab 类路由(review/cal/setting)重置到 home,
+  // 深链(/mem/:id, /day/:k 等)保留. PWA 冷启动会带上次 hash, 不重置就停那儿
+  useEffect(() => {
+    const head = (window.location.hash || '').replace(/^#\/?/, '').split('/')[0];
+    if (['review', 'cal', 'setting'].includes(head)) {
+      window.location.hash = '#/';
+    }
+  }, []);
+
   const route = useRoute();
   const [head, ...rest] = route;
 
