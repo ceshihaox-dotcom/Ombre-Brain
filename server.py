@@ -2176,6 +2176,111 @@ async def api_network(request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@mcp.custom_route("/api/backup", methods=["POST", "GET"])
+async def api_backup(request):
+    """夜间自动备份: 把 buckets/ 推到私有 git repo.
+    需要 env 变量:
+      OMBRE_BACKUP_REPO  = https://github.com/<user>/<repo>.git
+      OMBRE_BACKUP_TOKEN = github fine-grained PAT
+      OMBRE_BACKUP_USER  = github 用户名
+    UptimeRobot 每天 ping 一次此 endpoint 即可."""
+    from starlette.responses import JSONResponse
+    import subprocess, tempfile, shutil
+    from datetime import datetime as _dt
+
+    repo_url = os.environ.get("OMBRE_BACKUP_REPO", "").strip()
+    token    = os.environ.get("OMBRE_BACKUP_TOKEN", "").strip()
+    user     = os.environ.get("OMBRE_BACKUP_USER", "").strip()
+    if not (repo_url and token and user):
+        return JSONResponse({"error": "OMBRE_BACKUP_REPO/TOKEN/USER 至少一个未设"}, status_code=500)
+
+    buckets_dir = config.get("buckets_dir", "./buckets")
+    if not os.path.exists(buckets_dir):
+        return JSONResponse({"error": f"buckets_dir 不存在: {buckets_dir}"}, status_code=500)
+
+    # 构造带 token 的 git URL (token 不写日志)
+    if "https://" not in repo_url:
+        return JSONResponse({"error": "REPO 必须是 https:// URL"}, status_code=500)
+    auth_url = repo_url.replace("https://", f"https://x-access-token:{token}@", 1)
+
+    tmp = tempfile.mkdtemp(prefix="ombre-backup-")
+    try:
+        # 1. 浅克隆备份仓库 (主分支为空也能 clone)
+        clone = subprocess.run(
+            ["git", "clone", "--depth=1", auth_url, tmp],
+            capture_output=True, text=True, timeout=120,
+        )
+        if clone.returncode != 0:
+            # 仓库空时 clone 会失败, 改用 init + remote add
+            err = clone.stderr.replace(token, "***") if token in clone.stderr else clone.stderr
+            if "warning: You appear to have cloned an empty repository" not in err:
+                # 真错了 / 仓库不存在 / token 无权
+                if "remote: Repository not found" in err or "Authentication failed" in err:
+                    return JSONResponse({
+                        "error": "git clone 失败 — 仓库不存在或 token 无权限",
+                        "stderr_tail": err[-300:],
+                    }, status_code=500)
+                # 仓库可能完全空, 试试 init
+                shutil.rmtree(tmp)
+                tmp = tempfile.mkdtemp(prefix="ombre-backup-")
+                subprocess.run(["git", "init"], cwd=tmp, capture_output=True)
+                subprocess.run(["git", "remote", "add", "origin", auth_url], cwd=tmp, capture_output=True)
+                subprocess.run(["git", "checkout", "-b", "main"], cwd=tmp, capture_output=True)
+
+        # 2. 拷 buckets 内容到 backup 仓
+        backup_subdir = os.path.join(tmp, "buckets")
+        if os.path.exists(backup_subdir):
+            shutil.rmtree(backup_subdir)
+        shutil.copytree(buckets_dir, backup_subdir)
+
+        # 3. 也把 runtime_config.json 备份(配置很重要)
+        runtime_cfg = os.path.join(buckets_dir, "runtime_config.json")
+        if os.path.exists(runtime_cfg):
+            shutil.copy2(runtime_cfg, os.path.join(tmp, "runtime_config.json"))
+
+        # 4. 配置 git author
+        subprocess.run(["git", "config", "user.email", f"{user}@ombre-backup"], cwd=tmp, capture_output=True)
+        subprocess.run(["git", "config", "user.name", user], cwd=tmp, capture_output=True)
+
+        # 5. add + commit
+        subprocess.run(["git", "add", "-A"], cwd=tmp, capture_output=True)
+        diff = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=tmp)
+        if diff.returncode == 0:
+            return JSONResponse({"ok": True, "message": "无变化, 跳过 commit"})
+
+        ts = _dt.now().strftime("%Y-%m-%d %H:%M")
+        bucket_count = len([f for f in os.listdir(backup_subdir) if f.endswith(".md")])
+        commit_msg = f"auto-backup {ts} ({bucket_count} buckets)"
+        commit = subprocess.run(
+            ["git", "commit", "-m", commit_msg],
+            cwd=tmp, capture_output=True, text=True,
+        )
+        if commit.returncode != 0:
+            err = commit.stderr.replace(token, "***") if token in commit.stderr else commit.stderr
+            return JSONResponse({"error": "git commit 失败", "stderr_tail": err[-300:]}, status_code=500)
+
+        # 6. push
+        push = subprocess.run(
+            ["git", "push", "-u", "origin", "HEAD:main"],
+            cwd=tmp, capture_output=True, text=True, timeout=120,
+        )
+        if push.returncode != 0:
+            err = push.stderr.replace(token, "***") if token in push.stderr else push.stderr
+            return JSONResponse({"error": "git push 失败", "stderr_tail": err[-300:]}, status_code=500)
+
+        return JSONResponse({
+            "ok": True,
+            "timestamp": ts,
+            "bucket_count": bucket_count,
+            "commit_message": commit_msg,
+        })
+    finally:
+        try:
+            shutil.rmtree(tmp)
+        except Exception:
+            pass
+
+
 @mcp.custom_route("/api/auto-surface", methods=["POST"])
 async def api_auto_surface(request):
     """前端自动浮现注入 endpoint.
