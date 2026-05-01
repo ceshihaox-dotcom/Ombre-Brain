@@ -136,13 +136,14 @@ function CellRow({
         </div>
       </div>
 
+      {/* 权重 score 独立列, 跟原版 dashboard 一样的纯数字格式 */}
+      {typeof item.score === 'number' && (
+        <span className="ob-cell-score" title="decay 权重 (>5 活 / <0.3 自动归档)">
+          {item.score.toFixed(2)}
+        </span>
+      )}
+
       <div className="ob-cell-sum">
-        {/* 权重 score 数字标记 (内容前, 不拆 grid 列) */}
-        {typeof item.score === 'number' && (
-          <span className="ob-cell-score" title="decay 权重(>5 活, <0.3 自动归档)">
-            权 {item.score >= 100 ? item.score.toFixed(0) : item.score.toFixed(1)}
-          </span>
-        )}
         {(item.body || item.preview || '').slice(0, 80) || '（暂无内容）'}
       </div>
 
@@ -191,7 +192,7 @@ function CardCell({ item, todayDate, selected, isFlash, onOpen, onToggleSelect, 
         <span>{item.date}</span>
         {typeof item.score === 'number' && (
           <span className="ob-card-cell-score" title="decay 权重">
-            权 {item.score >= 100 ? item.score.toFixed(0) : item.score.toFixed(1)}
+            {item.score.toFixed(2)}
           </span>
         )}
         <span className={`ob-card-cell-imp ${isHi ? 'hi' : ''}`}>{item.importance.toFixed(1)}</span>
@@ -545,8 +546,8 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
             { value: 'imp-asc', label: '重要度 ↑' },
             { value: 'time-desc', label: '时间 · 新→旧' },
             { value: 'time-asc', label: '时间 · 旧→新' },
-            { value: 'score-desc', label: '权重 score ↓' },
-            { value: 'score-asc',  label: '权重 score ↑' },
+            { value: 'score-desc', label: '权重 ↓' },
+            { value: 'score-asc',  label: '权重 ↑' },
           ]}
         />
       </div>

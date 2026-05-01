@@ -46,6 +46,9 @@ function DayDetail({ date, items, onClose, onOpenItem, accent }) {
                 <div className="ob-detail-card">
                   <header className="ob-detail-hd">
                     <h3>{it.title}</h3>
+                    {typeof it.score === 'number' && (
+                      <span className="ob-detail-score" title="decay 权重">{it.score.toFixed(2)}</span>
+                    )}
                     <div className="ob-detail-imp">importance · <b>{it.importance}</b></div>
                   </header>
                   {it.summary && <p className="ob-detail-sum">{it.summary}</p>}

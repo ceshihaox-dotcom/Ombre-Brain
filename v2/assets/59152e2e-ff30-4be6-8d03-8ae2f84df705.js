@@ -129,6 +129,7 @@ function DateModuleV2({ date, items, onOpenItem, onOpenDay, density, query, isTo
   const f = formatDateV2(date);
   const hi = items.filter(i => i.importance >= 8 || i.highlight).length;
   const feels = items.filter(i => i.feel).length;
+  const noises = items.filter(i => i.noise).length;
   const maxImp = Math.max(...items.map(i => i.importance));
   const nodeSize = Math.max(8, Math.min(20, 7 + items.length * 1.1));
   const heatLevel = maxImp >= 9 ? 'l9' : maxImp >= 8 ? 'l8' : maxImp >= 6 ? 'l6' : maxImp >= 4 ? 'l4' : 'l2';
@@ -215,6 +216,7 @@ function DateModuleV2({ date, items, onOpenItem, onOpenDay, density, query, isTo
             <span className="ob-card-count">{items.length} 条记忆</span>
             {hi > 0 && <span className="ob-card-hi-badge">含重要 · {hi}</span>}
             {feels > 0 && <span className="ob-card-feel-badge">feel · {feels}</span>}
+            {noises > 0 && <span className="ob-card-noise-badge">噪声 · {noises}</span>}
           </div>
           <span className="ob-card-open">展开当日 →</span>
         </div>
@@ -276,6 +278,7 @@ function TimelineV2({ items, query, filters, density, onOpenItem, onOpenDay, tod
       if (filters.protectedOnly && !it.protected) return false;
       if (filters.importantOnly && !(it.importance >= 8 || it.highlight)) return false;
       if (filters.feelOnly && !it.feel) return false;
+      if (filters.noiseOnly && !it.noise) return false;
       return true;
     });
   }, [items, query, filters]);

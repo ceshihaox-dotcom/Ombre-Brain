@@ -3409,7 +3409,7 @@ body {
   font-size: 11px;
   letter-spacing: 0.05em;
 }
-.ob-card-hi-badge, .ob-card-feel-badge {
+.ob-card-hi-badge, .ob-card-feel-badge, .ob-card-noise-badge {
   font-size: 10px; padding: 2px 8px;
   border-radius: 999px;
   border: 0.5px solid currentColor;
@@ -3419,6 +3419,7 @@ body {
 }
 .ob-card-hi-badge { color: var(--accent); background: var(--accent-3); }
 .ob-card-feel-badge { color: var(--rose-deep); background: rgba(210, 145, 179, 0.10); }
+.ob-card-noise-badge { color: var(--ink-4); background: rgba(120, 120, 130, 0.06); }
 .ob-card-open {
   font-size: 11px;
   color: var(--ink-3);
@@ -3705,6 +3706,15 @@ body {
   flex-shrink: 0;
 }
 .ob-detail-imp b { color: var(--accent); font-weight: 600; }
+/* 当天页 importance 前的简易权重: 跟旁边 importance 同一档低调灰 */
+.ob-detail-score {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 13px;
+  color: var(--ink-4);
+  margin-left: auto;
+  flex-shrink: 0;
+}
 .ob-detail-sum {
   color: var(--ink-2);
   font-size: 13.5px;

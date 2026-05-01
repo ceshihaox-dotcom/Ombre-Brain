@@ -1050,7 +1050,7 @@ function ImportWorkbench() {
                       color: 'var(--ink-2)',
                       letterSpacing: '0.04em',
                     }}>
-                      {active.score >= 100 ? active.score.toFixed(0) : active.score.toFixed(2)}
+                      {active.score.toFixed(2)}
                       <span style={{ marginLeft: 10, fontSize: 10, color: 'var(--ink-4)' }}>
                         {active.score >= 100 ? '· 永久 / 钉决' :
                          active.score >= 5 ? '· 活跃' :
