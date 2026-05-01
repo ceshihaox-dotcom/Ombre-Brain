@@ -59,7 +59,7 @@
       date: date,
       time: time,
       title: b.name || b.id,
-      summary: b.summary || b.content_preview || '',
+      summary: b.summary || '',           // 用户没填就空,前端按"无摘要不显示"渲染
       preview: b.content_preview || '',  // 始终是 content 自动截断,给"显示原文"的视图当兜底用
       body: '',  // 列表 endpoint 不返回 content;打开详情时再 lazy-load
       importance: b.importance || 5,

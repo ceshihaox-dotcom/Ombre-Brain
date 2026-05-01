@@ -1659,6 +1659,7 @@ async def api_bucket_merge_preview(request):
         **meta_merged,
         "b_summary": b.get("metadata", {}).get("summary", ""),
         "b_event_time": b.get("metadata", {}).get("event_time", ""),
+        "b_created": b.get("metadata", {}).get("created", ""),
         "cost": cost,
     })
 

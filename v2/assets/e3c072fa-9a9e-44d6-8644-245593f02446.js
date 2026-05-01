@@ -5,6 +5,7 @@ const { useState: muS, useEffect: muE, useRef: muR } = React;
 function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }) {
   const [editing, setEditing] = muS(false);
   const [draft, setDraft] = muS(null);
+  const [redehydrating, setRedehydrating] = muS(false);
 
   // 切换条目时退出编辑 + 重置 draft
   muE(() => {
@@ -64,6 +65,31 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
   const cancelEdit = () => {
     setEditing(false);
     setDraft(null);
+  };
+
+  // 重新脱水: LLM 重新生成 name/summary/tags/valence/arousal (正文/重要度保留)
+  // 后端已写盘, 这里更新 draft + 通过 onUpdate 同步父级状态
+  const redehydrate = async () => {
+    if (!item || redehydrating) return;
+    if (!window.confirm(`重新脱水会让 LLM 重新生成「${item.title || '这条'}」的标题、一句话摘要、标签和情感参数。\n正文不变, 重要度也保留。继续?`)) return;
+    setRedehydrating(true);
+    try {
+      const r = await fetch(`/api/bucket/${encodeURIComponent(item.id)}/redehydrate`, { method: 'POST' });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
+      const m = d.metadata || {};
+      const newSummary = m.summary || '';
+      const newTitle = m.name || item.title;
+      // 同步表单(若在编辑) + 通知父级刷新列表
+      if (draft) {
+        setDraft(dr => ({ ...dr, title: newTitle, summary: newSummary, tags: m.tags || dr.tags }));
+      }
+      if (onUpdate) onUpdate(item.id, { title: newTitle, summary: newSummary, tags: m.tags || item.tags, __synced: true });
+    } catch (e) {
+      alert('重新脱水失败: ' + e.message);
+    } finally {
+      setRedehydrating(false);
+    }
   };
 
   const confirmDelete = () => {
@@ -199,7 +225,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
               className="ob-modal-edit-summary"
               value={draft.summary}
               onChange={(e) => setDraft(d => ({ ...d, summary: e.target.value }))}
-              placeholder="一句话摘要…"
+              placeholder="一句话摘要(留空则不显示)"
               rows={2}
             />
           ) : (
@@ -324,6 +350,12 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
                     <span className="ob-modal-actions-sep" aria-hidden="true" />
                   </>
                 )}
+                <button
+                  className="ob-modal-btn"
+                  onClick={redehydrate}
+                  disabled={redehydrating}
+                  title="LLM 重新生成标题/摘要/标签/情感(正文和重要度保留)"
+                >{redehydrating ? '⌛ 提炼中…' : '↻ 重新脱水'}</button>
                 <button className="ob-modal-btn" onClick={cancelEdit}>取消</button>
                 <button className="ob-modal-btn ob-modal-btn-primary" onClick={saveEdit}>保存</button>
               </>
