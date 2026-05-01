@@ -59,6 +59,7 @@
       preview: b.content_preview || '',  // 始终是 content 自动截断,给"显示原文"的视图当兜底用
       body: '',  // 列表 endpoint 不返回 content;打开详情时再 lazy-load
       importance: b.importance || 5,
+      score: typeof b.score === 'number' ? b.score : 0,   // decay 分数
       tags: tags,
       protected: !!(b.protected || b.pinned),
       feel: b.type === 'feel',

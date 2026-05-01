@@ -34,6 +34,7 @@ function bucketToItem(b) {
     rawSource: b.raw_source || '',
     tags: b.tags || [],
     importance: b.importance || 5,
+    score: typeof b.score === 'number' ? b.score : 0,
     protected: !!(b.protected || b.pinned),
     feel: b.type === 'feel',
     timeHint: (() => {
@@ -1037,6 +1038,28 @@ function ImportWorkbench() {
                     <span className="imp-imp-num">{active.importance}</span>
                   </div>
                 </div>
+                {/* 权重 score: 完整显示, 跟 importance 一行下面;
+                    类型/事件时间被推到这后面 */}
+                {typeof active.score === 'number' && (
+                  <div className="imp-attr-row">
+                    <div className="imp-attr-key">权重 score</div>
+                    <div style={{
+                      flex: 1,
+                      fontFamily: 'var(--mono)',
+                      fontSize: 13,
+                      color: 'var(--ink-2)',
+                      letterSpacing: '0.04em',
+                    }}>
+                      {active.score >= 100 ? active.score.toFixed(0) : active.score.toFixed(2)}
+                      <span style={{ marginLeft: 10, fontSize: 10, color: 'var(--ink-4)' }}>
+                        {active.score >= 100 ? '· 永久 / 钉决' :
+                         active.score >= 5 ? '· 活跃' :
+                         active.score >= 1 ? '· 一般' :
+                         active.score >= 0.3 ? '· 临近归档' : '· 即将归档'}
+                      </span>
+                    </div>
+                  </div>
+                )}
                 <div className="imp-attr-row">
                   <div className="imp-attr-key">类型</div>
                   <div style={{ display: 'flex', gap: 6 }}>

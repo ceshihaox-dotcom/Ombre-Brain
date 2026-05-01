@@ -216,6 +216,18 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
                 <b style={{ color: 'var(--ink)', fontWeight: 600 }}>{view.importance}</b>
               </span>
             )}
+            {/* 权重 score: 低调挂在 importance 后面, 帮助判断这条还多"活" */}
+            {typeof item.score === 'number' && (
+              <span style={{
+                marginLeft: 10,
+                fontFamily: 'var(--mono)',
+                fontSize: 10,
+                color: 'var(--ink-4)',
+                letterSpacing: '0.06em',
+              }} title="decay 权重(>5 活, <0.3 自动归档)">
+                score · {item.score >= 100 ? item.score.toFixed(0) : item.score.toFixed(2)}
+              </span>
+            )}
           </div>
         </header>
 

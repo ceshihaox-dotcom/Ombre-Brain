@@ -2477,6 +2477,7 @@ async def api_import_results(request):
                 "raw_source": meta.get("raw_source", ""),  # preserve_raw=1 时存的原文
                 "valence": meta.get("valence", 0.5),
                 "arousal": meta.get("arousal", 0.3),
+                "score": decay_engine.calculate_score(meta),  # 工作台权重显示用
             })
         return JSONResponse({"buckets": results, "total": len(all_buckets)})
     except Exception as e:
