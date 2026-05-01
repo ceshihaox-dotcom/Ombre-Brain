@@ -16,6 +16,7 @@
 # ============================================================
 
 import os
+import re
 import json
 import hashlib
 import logging
@@ -34,8 +35,42 @@ logger = logging.getLogger("ombre_brain.import")
 # 格式解析器 — 将任意格式标准化为对话轮次
 # ============================================================
 
+def _normalize_exporter_time(t: str) -> str:
+    """把 Claude Exporter 浏览器插件的时间 '2026/4/5 21:48:30' 转成
+    ISO 'YYYY-MM-DDTHH:MM:SS', 失败返回原字符串(让下游 fallback 用 created)."""
+    if not t:
+        return ""
+    try:
+        date_part, time_part = str(t).split(" ", 1)
+        y, mo, d = date_part.split("/")
+        return f"{y}-{int(mo):02d}-{int(d):02d}T{time_part}"
+    except (ValueError, AttributeError):
+        return str(t)
+
+
+def _strip_thought_process(text: str) -> str:
+    """去掉 Claude Exporter Response 开头的 'Thought process: ...' 段.
+    真实正文用 3+ 换行分隔, fallback 双换行."""
+    if not text or not text.startswith("Thought process"):
+        return text
+    parts = re.split(r'\n{3,}', text, maxsplit=1)
+    if len(parts) == 2:
+        return parts[1].strip()
+    parts = re.split(r'\n\s*\n', text, maxsplit=1)
+    if len(parts) == 2:
+        return parts[1].strip()
+    return text
+
+
 def _parse_claude_json(data: dict | list) -> list[dict]:
-    """Parse Claude.ai export JSON → [{role, content, timestamp}, ...]"""
+    """Parse Claude export JSON → [{role, content, timestamp}, ...]
+
+    支持两种格式:
+    1. Anthropic 官方 export: {chat_messages: [{text/content, sender/role, created_at}]}
+    2. Claude Exporter 浏览器插件 (https://www.ai-chat-exporter.net):
+       {messages: [{say, role: 'Prompt'|'Response', time: 'YYYY/M/D HH:MM:SS'}]}
+       自动 strip 每条 Response 的 'Thought process: ...' 独白前缀.
+    """
     turns = []
     conversations = data if isinstance(data, list) else [data]
     for conv in conversations:
@@ -43,16 +78,28 @@ def _parse_claude_json(data: dict | list) -> list[dict]:
         for msg in messages:
             if not isinstance(msg, dict):
                 continue
-            content = msg.get("text", msg.get("content", ""))
-            if isinstance(content, list):
-                content = " ".join(
-                    p.get("text", "") for p in content if isinstance(p, dict)
-                )
+
+            # 浏览器插件格式探测: 有 'say' 字段 = Exporter 格式
+            if "say" in msg:
+                content = msg.get("say", "") or ""
+                role_raw = msg.get("role", "")
+                role = "user" if role_raw == "Prompt" else "assistant"
+                ts = _normalize_exporter_time(msg.get("time", ""))
+                if role == "assistant":
+                    content = _strip_thought_process(content)
+            else:
+                # 标准 Anthropic 格式
+                content = msg.get("text", msg.get("content", ""))
+                if isinstance(content, list):
+                    content = " ".join(
+                        p.get("text", "") for p in content if isinstance(p, dict)
+                    )
+                role = msg.get("sender", msg.get("role", "user"))
+                ts = msg.get("created_at", msg.get("timestamp", ""))
+
             if not content or not content.strip():
                 continue
-            role = msg.get("sender", msg.get("role", "user"))
-            ts = msg.get("created_at", msg.get("timestamp", ""))
-            turns.append({"role": role, "content": content.strip(), "timestamp": ts})
+            turns.append({"role": role, "content": content.strip(), "timestamp": str(ts)})
     return turns
 
 
