@@ -1470,6 +1470,12 @@ async def api_mood_evoke(request):
     if not (0.0 <= v <= 1.0 and 0.0 <= a <= 1.0):
         return JSONResponse({"error": "valence/arousal 须在 0~1 范围内"}, status_code=400)
     top_n = max(1, min(int(body.get("top_n", 5)), 10))
+    # radius: 距离上限(欧氏 + 象限加权后), 默认 0.35 ≈ 正常档
+    try:
+        radius = float(body.get("radius", 0.35))
+    except (TypeError, ValueError):
+        radius = 0.35
+    radius = max(0.05, min(radius, 1.5))
 
     if not dehydrator.api_available or dehydrator.client is None:
         return JSONResponse({"error": "LLM 未配置, 无法生成叙事"}, status_code=503)
@@ -1478,22 +1484,49 @@ async def api_mood_evoke(request):
     if not all_buckets:
         return JSONResponse({"error": "记忆库为空"}, status_code=404)
 
-    def _dist(meta):
+    # 象限以 (0.5, 0.5) 为中心切. 0.5 附近视为中性, 不算同/对象限
+    import math
+    def _qsign(x):
+        if x > 0.55: return 1
+        if x < 0.45: return -1
+        return 0
+    user_qv, user_qa = _qsign(v), _qsign(a)
+
+    def _weighted_dist(meta):
         bv = float(meta.get("valence", 0.5))
         ba = float(meta.get("arousal", 0.3))
-        return (bv - v) ** 2 + (ba - a) ** 2
+        d = math.sqrt((bv - v) ** 2 + (ba - a) ** 2)
+        # 象限加权:同象限 *0.7, 对角 *1.5, 邻近(只一个轴翻) *1.0
+        if user_qv == 0 or user_qa == 0:
+            mult = 1.0  # 用户选了中性轴上, 不参与象限调整
+        else:
+            bqv, bqa = _qsign(bv), _qsign(ba)
+            if bqv == user_qv and bqa == user_qa:
+                mult = 0.7
+            elif bqv == -user_qv and bqa == -user_qa:
+                mult = 1.5
+            else:
+                mult = 1.0
+        return d * mult
 
     scored = []
     for b in all_buckets:
         meta = b.get("metadata", {})
-        # 距离主排; importance 高的并列时优先(取负值升序 = 大的在前)
-        scored.append((_dist(meta), -float(meta.get("importance", 5)), b))
-    scored.sort(key=lambda x: (x[0], x[1]))
-    picks = [b for _, _, b in scored[:top_n]]
+        scored.append((_weighted_dist(meta), b))
+    scored.sort(key=lambda x: x[0])
+
+    # radius 过滤 → top_n 截取. 完全没人入选时报告而不是凑数
+    in_radius = [(d, b) for d, b in scored if d <= radius]
+    relaxed = False
+    if len(in_radius) == 0:
+        # 一条都不达标时退一步:取最近 2 条让 LLM 至少能写点东西, 但前端会显示"已放宽"
+        in_radius = scored[:2]
+        relaxed = True
+    picks_with_d = in_radius[:top_n]
 
     lines = []
     sources = []
-    for b in picks:
+    for d, b in picks_with_d:
         meta = b.get("metadata", {})
         name = meta.get("name", b["id"])
         body_txt = strip_wikilinks(b.get("content", ""))[:600]
@@ -1505,6 +1538,7 @@ async def api_mood_evoke(request):
             "valence": float(meta.get("valence", 0.5)),
             "arousal": float(meta.get("arousal", 0.3)),
             "event_time": meta.get("event_time", ""),
+            "distance": round(d, 3),
         })
 
     mood_label = _label_mood(v, a)
@@ -1536,9 +1570,11 @@ async def api_mood_evoke(request):
         "ok": True,
         "valence": v,
         "arousal": a,
+        "radius": radius,
         "mood_label": mood_label,
         "narrative": narrative,
         "sources": sources,
+        "relaxed": relaxed,    # True = radius 内一条都没,已退到最近 2 条
     })
 
 

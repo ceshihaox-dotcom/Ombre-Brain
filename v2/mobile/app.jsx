@@ -453,12 +453,16 @@ function HomeScreen() {
 // 2D pad: 横轴 valence(左消极→右积极) / 纵轴 arousal(下平静→上激动)
 // 选定坐标 → POST /api/mood-evoke → 返回叙事 + 引用源
 // ─────────────────────────────────────────
+// 灵敏度档位 → radius (距离上限, 含象限加权)
+const MOOD_RADIUS = { strict: 0.20, normal: 0.35, loose: 0.60 };
+
 function MoodEvokeOverlay({ onClose }) {
   // 默认中性偏低, 让用户自己挪
   const [v, setV] = useState(0.5);
   const [a, setA] = useState(0.4);
+  const [sens, setSens] = useState('normal');   // strict / normal / loose
   const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState(null);   // { narrative, sources, mood_label }
+  const [result, setResult] = useState(null);   // { narrative, sources, mood_label, relaxed }
   const [error, setError] = useState(null);
   // 源记忆全文预览浮层: { id, name, content, loading?, error? }
   // 同一条再点关闭(toggle), 不同条切换显示
@@ -528,7 +532,7 @@ function MoodEvokeOverlay({ onClose }) {
       const r = await fetch('/api/mood-evoke', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ valence: v, arousal: a, top_n: 5 }),
+        body: JSON.stringify({ valence: v, arousal: a, top_n: 5, radius: MOOD_RADIUS[sens] }),
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
@@ -581,6 +585,22 @@ function MoodEvokeOverlay({ onClose }) {
           <span className="mood-meta-coord">v {v.toFixed(2)} · a {a.toFixed(2)}</span>
         </div>
 
+        {/* 灵敏度: 控制后端 radius, 严=近圈才收, 宽=放大圈 */}
+        <div className="mood-sens-row">
+          <span className="mood-sens-lbl">灵敏度</span>
+          {[
+            { k: 'strict', label: '严' },
+            { k: 'normal', label: '正常' },
+            { k: 'loose',  label: '宽' },
+          ].map(opt => (
+            <button
+              key={opt.k}
+              className={'mood-sens-chip' + (sens === opt.k ? ' on' : '')}
+              onClick={() => setSens(opt.k)}
+            >{opt.label}</button>
+          ))}
+        </div>
+
         <button className="mood-submit" onClick={submit} disabled={busy}>
           {busy ? '正在唤起 …' : '让 AI 用这个心情串记忆'}
         </button>
@@ -590,7 +610,14 @@ function MoodEvokeOverlay({ onClose }) {
         {result && (
           <div className="mood-result">
             <div className="mood-result-narr">{result.narrative}</div>
-            <div className="mood-result-srcs-hd">引自 {result.sources.length} 条记忆</div>
+            {result.relaxed && (
+              <div className="mood-result-relaxed">
+                ⚠ 当前灵敏度下没有匹配项, 已放宽到最近 {result.sources.length} 条
+              </div>
+            )}
+            <div className="mood-result-srcs-hd">
+              引自 {result.sources.length} 条记忆 · 距离越小越像
+            </div>
             <div className="mood-result-srcs">
               {result.sources.map((s) => {
                 const isOpen = preview && preview.id === s.id;
@@ -602,7 +629,12 @@ function MoodEvokeOverlay({ onClose }) {
                   >
                     <div className="mood-result-src-ttl">{s.name}</div>
                     <div className="mood-result-src-sum">{s.summary}</div>
-                    <div className="mood-result-src-coord">v {s.valence.toFixed(2)} · a {s.arousal.toFixed(2)}</div>
+                    <div className="mood-result-src-coord">
+                      v {s.valence.toFixed(2)} · a {s.arousal.toFixed(2)}
+                      {typeof s.distance === 'number' && (
+                        <span className="mood-result-src-dist"> · dist {s.distance.toFixed(2)}</span>
+                      )}
+                    </div>
                   </div>
                 );
               })}

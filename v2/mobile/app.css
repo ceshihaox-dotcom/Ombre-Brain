@@ -2716,6 +2716,39 @@ input, textarea { font: inherit; color: inherit; }
   letter-spacing: 0.08em;
   color: var(--ink-4);
 }
+
+/* 灵敏度三档 */
+.mood-sens-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 0 4px;
+  margin-bottom: 14px;
+}
+.mood-sens-lbl {
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  color: var(--ink-4);
+  text-transform: uppercase;
+}
+.mood-sens-chip {
+  appearance: none;
+  border: 0.5px solid var(--line-2);
+  background: var(--paper);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.mood-sens-chip.on {
+  background: var(--accent-3);
+  border-color: rgba(110,79,154,0.4);
+  color: var(--accent);
+  font-weight: 600;
+}
+.mood-sens-chip:not(.on):active { background: var(--bg-2); }
 .mood-submit {
   width: 100%;
   height: 46px;
@@ -2803,6 +2836,17 @@ input, textarea { font: inherit; color: inherit; }
   font-size: 9px;
   letter-spacing: 0.1em;
   color: var(--ink-4);
+}
+.mood-result-src-dist { color: var(--accent); opacity: 0.85; }
+.mood-result-relaxed {
+  margin-bottom: 14px;
+  padding: 8px 12px;
+  background: var(--amber-soft);
+  border-radius: 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--amber);
 }
 
 /* 源记忆全文预览(浮在 mood-sheet 之上) */
