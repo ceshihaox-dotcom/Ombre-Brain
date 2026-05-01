@@ -7060,10 +7060,17 @@ body {
   overflow: hidden;
   transition: max-height .35s ease;
 }
-/* 展开后允许内部滚动, 长原文不再被 overflow:hidden 截断 */
+/* 展开后内部滚动 + 隐藏滚动条; 高度收紧到 320px 不再撑长信纸 */
 .imp-raw.open .imp-raw-body {
-  max-height: 600px;
+  max-height: 320px;
   overflow-y: auto;
+  scrollbar-width: none;          /* Firefox */
+  -ms-overflow-style: none;       /* old Edge / IE */
+}
+.imp-raw.open .imp-raw-body::-webkit-scrollbar {
+  display: none;                  /* WebKit */
+  width: 0;
+  height: 0;
 }
 .imp-raw-content {
   padding: 0 18px 16px;
