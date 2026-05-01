@@ -1093,7 +1093,7 @@ async def api_decay_config_get(request):
         {"key": "protected_score",       "label": "protected 上限",     "min": 50,   "max": 200,  "step": 1,    "hint": "钉决/永久桶的 score(原硬编 999)"},
         {"key": "highlight_boost_pct",   "label": "highlight 加成 %",   "min": 0,    "max": 50,   "step": 1,    "hint": "标重要的桶 score 上浮 X%"},
         {"key": "surface_threshold",     "label": "浮现阈值",            "min": 1,    "max": 80,   "step": 1,    "hint": "score 高于此值标记为活跃(UI 提示)"},
-        {"key": "archive_threshold",     "label": "归档阈值",            "min": 0.1,  "max": 2.0,  "step": 0.05, "hint": "score 低于此值自动归档"},
+        {"key": "archive_threshold",     "label": "归档阈值",            "min": 0.01, "max": 2.0,  "step": 0.01, "hint": "score 低于此值自动归档"},
         {"key": "decay_lambda",          "label": "衰减速率 λ",          "min": 0.01, "max": 0.30, "step": 0.01, "hint": "时间衰减斜率(大=衰得快)"},
         {"key": "arousal_boost",         "label": "arousal 加成",        "min": 0.0,  "max": 2.0,  "step": 0.1,  "hint": "高 arousal 提升 emotion_weight 系数"},
         {"key": "emotion_base",          "label": "情感基线",            "min": 0.5,  "max": 2.0,  "step": 0.1,  "hint": "情感权重最低值(arousal=0 时)"},
