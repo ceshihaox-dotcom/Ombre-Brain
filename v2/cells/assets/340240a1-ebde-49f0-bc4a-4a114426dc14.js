@@ -81,6 +81,7 @@ function CellRow({
     isKeyboard && 'is-keyboard',
     isFlash && 'is-flash',
     item.internalized && 'is-internalized',
+    item.noise && 'is-noise',
   ].filter(Boolean).join(' ');
 
   return (
@@ -164,6 +165,7 @@ function CardCell({ item, todayDate, selected, isFlash, onOpen, onToggleSelect, 
     selected && 'is-selected',
     isFlash && 'is-flash',
     item.internalized && 'is-internalized',
+    item.noise && 'is-noise',
   ].filter(Boolean).join(' ');
 
   const impPct = (item.importance / 10) * 100;
@@ -464,6 +466,14 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
     else if (action === 'unpin') ids.forEach(id => onUpdateItem(id, { protected: false, pinned: false }));
     else if (action === 'internal') ids.forEach(id => onUpdateItem(id, { internalized: true }));
     else if (action === 'feel') ids.forEach(id => onUpdateItem(id, { feel: true }));
+    else if (action === 'noise') {
+      if (confirm(`把 ${ids.length} 条标为噪声?\n会加速衰减(×0.05)+ 重要度锁 1, 几天内自动归档(可在回收站恢复)。`)) {
+        ids.forEach(id => onUpdateItem(id, { noise: true }));
+      }
+    }
+    else if (action === 'unnoise') {
+      ids.forEach(id => onUpdateItem(id, { noise: false }));
+    }
     else if (action === 'delete') {
       if (confirm(`真的要删除 ${ids.length} 条记忆吗？`)) {
         ids.forEach(id => onUpdateItem(id, { __delete: true }));
@@ -601,6 +611,8 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
           <button className="ob-cells-bulk-btn" onClick={() => bulkAction('unpin')}>◯ 取消钉决</button>
           <button className="ob-cells-bulk-btn" onClick={() => bulkAction('feel')}>❀ 标 feel</button>
           <button className="ob-cells-bulk-btn" onClick={() => bulkAction('internal')}>◐ 标内化</button>
+          <button className="ob-cells-bulk-btn" onClick={() => bulkAction('noise')} title="加速衰减 + importance 锁 1, 几天内归档">⌀ 标噪声</button>
+          <button className="ob-cells-bulk-btn" onClick={() => bulkAction('unnoise')}>↺ 取消噪声</button>
           <button className="ob-cells-bulk-btn danger" onClick={() => bulkAction('delete')}>✕ 删除</button>
           <div className="ob-cells-bulk-spacer" />
           <button className="ob-cells-bulk-btn" onClick={selectAll}>全选当前</button>

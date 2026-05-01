@@ -5519,6 +5519,11 @@ body {
 .ob-cell:hover {
   background: var(--bg-2);
 }
+/* 噪声条目降一档透明度暗示"将归档" */
+.ob-cell.is-noise { opacity: 0.55; }
+.ob-cell.is-noise:hover { opacity: 0.8; }
+.ob-card-cell.is-noise { opacity: 0.55; }
+.ob-card-cell.is-noise:hover { opacity: 0.8; }
 .ob-cell.is-selected {
   background: rgba(110,79,154,0.08);
 }

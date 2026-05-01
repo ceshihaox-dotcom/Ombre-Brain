@@ -10,7 +10,7 @@ function DarkToggle({ dark, onChange }) {
       onClick={() => onChange(!dark)}
       title={dark ? '切到日间' : '切到暗夜'}
     >
-      <span className="ob-dark-icon">{dark ? '☾' : '☀'}</span>
+      <span className="ob-dark-icon">{dark ? '☀' : '☾'}</span>
     </button>
   );
 }
