@@ -242,7 +242,15 @@ def chunk_turns(turns: list[dict], target_tokens: int = 10000) -> list[dict]:
 
     for turn in turns:
         role_label = "用户" if turn["role"] in ("user", "human") else "AI"
-        line = f"[{role_label}] {turn['content']}"
+        # 嵌入时间戳前缀, 让 digest LLM 能给每条 item 推断准确的 event_time
+        # 时间戳格式: [YYYY-MM-DD HH:MM]; 没时间戳的轮次跳过前缀
+        ts_raw = turn.get("timestamp", "") or ""
+        ts_prefix = ""
+        if ts_raw:
+            # 标准化: ISO 'YYYY-MM-DDTHH:MM:SS' 或类似 → 'YYYY-MM-DD HH:MM'
+            iso = str(ts_raw).replace("/", "-").replace("T", " ")
+            ts_prefix = f"[{iso[:16]}] " if len(iso) >= 10 else ""
+        line = f"{ts_prefix}[{role_label}] {turn['content']}"
         line_tokens = count_tokens_approx(line)
 
         # If single turn exceeds target, split it
@@ -629,10 +637,12 @@ class ImportEngine:
                             await self.embedding_engine.generate_and_store(bucket_id, item["content"])
                         except Exception:
                             pass
-                    # API 级 preserve_raw=1 时,把原始 chunk 文本也存上(供工作台"查看原文"用)
+                    # API 级 preserve_raw=1 时,raw_source 优先用 LLM 推出的精准片段;
+                    # 没给 source_excerpt 才回退整 chunk 文本(避免每条 bucket 引同一坨)
                     if preserve_raw and bucket_id:
                         try:
-                            await self.bucket_mgr.update(bucket_id, raw_source=chunk.get("content", ""))
+                            raw_src = item.get("source_excerpt") or chunk.get("content", "")
+                            await self.bucket_mgr.update(bucket_id, raw_source=raw_src)
                         except Exception:
                             pass
                     self.state.data["memories_raw"] += 1
@@ -867,6 +877,13 @@ class ImportEngine:
             summary=summary or None,
             event_time=event_time,
         )
+        # 普通模式也存 raw_source(如 LLM 给了精准片段) — 让"查看原文"对每条 bucket 显示真相关的对话
+        src_excerpt = item.get("source_excerpt")
+        if bucket_id and src_excerpt:
+            try:
+                await self.bucket_mgr.update(bucket_id, raw_source=src_excerpt)
+            except Exception:
+                pass
         if self.embedding_engine:
             try:
                 await self.embedding_engine.generate_and_store(bucket_id, content)
