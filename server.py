@@ -1550,7 +1550,7 @@ async def api_mood_evoke(request):
     )
     user_msg = (
         f"心情坐标: valence={v:.2f}, arousal={a:.2f} ({mood_label})\n\n"
-        f"素材记忆 ({len(picks)} 条):\n\n" + "\n\n---\n\n".join(lines)
+        f"素材记忆 ({len(picks_with_d)} 条):\n\n" + "\n\n---\n\n".join(lines)
     )
     try:
         response = await dehydrator.client.chat.completions.create(
