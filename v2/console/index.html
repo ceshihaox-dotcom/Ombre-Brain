@@ -7060,7 +7060,11 @@ body {
   overflow: hidden;
   transition: max-height .35s ease;
 }
-.imp-raw.open .imp-raw-body { max-height: 600px; }
+/* 展开后允许内部滚动, 长原文不再被 overflow:hidden 截断 */
+.imp-raw.open .imp-raw-body {
+  max-height: 600px;
+  overflow-y: auto;
+}
 .imp-raw-content {
   padding: 0 18px 16px;
   font-family: var(--mono);
