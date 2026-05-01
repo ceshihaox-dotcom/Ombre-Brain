@@ -2178,14 +2178,15 @@ async def api_network(request):
 
 @mcp.custom_route("/api/backup", methods=["POST", "GET"])
 async def api_backup(request):
-    """夜间自动备份: 把 buckets/ 推到私有 git repo.
+    """夜间自动备份: 把 buckets/ 推到私有 git repo. 用 dulwich (纯 Python git),
+    不依赖系统 git 命令.
     需要 env 变量:
       OMBRE_BACKUP_REPO  = https://github.com/<user>/<repo>.git
-      OMBRE_BACKUP_TOKEN = github fine-grained PAT
+      OMBRE_BACKUP_TOKEN = github fine-grained PAT (Contents R/W)
       OMBRE_BACKUP_USER  = github 用户名
     UptimeRobot 每天 ping 一次此 endpoint 即可."""
     from starlette.responses import JSONResponse
-    import subprocess, tempfile, shutil
+    import tempfile, shutil
     from datetime import datetime as _dt
 
     repo_url = os.environ.get("OMBRE_BACKUP_REPO", "").strip()
@@ -2198,103 +2199,112 @@ async def api_backup(request):
     if not os.path.exists(buckets_dir):
         return JSONResponse({"error": f"buckets_dir 不存在: {buckets_dir}"}, status_code=500)
 
-    # 构造带 token 的 git URL (token 不写日志)
     if "https://" not in repo_url:
         return JSONResponse({"error": "REPO 必须是 https:// URL"}, status_code=500)
+    # 带 token 的 URL 用于 dulwich 的 push (它读 URL 内的 user:pass)
     auth_url = repo_url.replace("https://", f"https://x-access-token:{token}@", 1)
 
-    # 先确认 git 可用 — Render 标准容器有, 但保险起见
     try:
-        ver = subprocess.run(["git", "--version"], capture_output=True, text=True, timeout=10)
-        if ver.returncode != 0:
-            return JSONResponse({"error": "git 不可用", "stderr": ver.stderr[:200]}, status_code=500)
-        git_version = ver.stdout.strip()
-    except FileNotFoundError:
-        return JSONResponse({"error": "容器内没装 git, subprocess 找不到 git 命令"}, status_code=500)
-    except Exception as e:
-        return JSONResponse({"error": f"git 检测失败: {type(e).__name__}: {e}"}, status_code=500)
+        from dulwich import porcelain
+        from dulwich.errors import NotGitRepository
+    except ImportError as e:
+        return JSONResponse({"error": f"dulwich 未安装: {e}"}, status_code=500)
 
     tmp = tempfile.mkdtemp(prefix="ombre-backup-")
     try:
-        # 1. 浅克隆备份仓库 (主分支为空也能 clone)
-        clone = subprocess.run(
-            ["git", "clone", "--depth=1", auth_url, tmp],
-            capture_output=True, text=True, timeout=120,
-        )
-        if clone.returncode != 0:
-            # 仓库空时 clone 会失败, 改用 init + remote add
-            err = clone.stderr.replace(token, "***") if token in clone.stderr else clone.stderr
-            if "warning: You appear to have cloned an empty repository" not in err:
-                # 真错了 / 仓库不存在 / token 无权
-                if "remote: Repository not found" in err or "Authentication failed" in err:
-                    return JSONResponse({
-                        "error": "git clone 失败 — 仓库不存在或 token 无权限",
-                        "stderr_tail": err[-300:],
-                    }, status_code=500)
-                # 仓库可能完全空, 试试 init
-                shutil.rmtree(tmp)
-                tmp = tempfile.mkdtemp(prefix="ombre-backup-")
-                subprocess.run(["git", "init"], cwd=tmp, capture_output=True)
-                subprocess.run(["git", "remote", "add", "origin", auth_url], cwd=tmp, capture_output=True)
-                subprocess.run(["git", "checkout", "-b", "main"], cwd=tmp, capture_output=True)
+        # 1. 尝试浅克隆; 空仓 / 不存在 / 无权限 都尝试 init 一个空 repo 然后 push 上去
+        repo = None
+        clone_err = None
+        try:
+            repo = porcelain.clone(
+                auth_url, tmp,
+                depth=1,
+                checkout=True,
+                errstream=open(os.devnull, "wb"),
+            )
+        except Exception as e:
+            clone_err = str(e).replace(token, "***") if token in str(e) else str(e)
+            # 不管什么错, 试试当 fresh repo 来推
+            shutil.rmtree(tmp, ignore_errors=True)
+            tmp = tempfile.mkdtemp(prefix="ombre-backup-")
+            repo = porcelain.init(tmp)
 
-        # 2. 拷 buckets 内容到 backup 仓
+        # 2. 拷 buckets 全部内容
         backup_subdir = os.path.join(tmp, "buckets")
         if os.path.exists(backup_subdir):
             shutil.rmtree(backup_subdir)
         shutil.copytree(buckets_dir, backup_subdir)
 
-        # 3. 也把 runtime_config.json 备份(配置很重要)
+        # 3. runtime_config.json (放外面, 跟 buckets/ 同级)
         runtime_cfg = os.path.join(buckets_dir, "runtime_config.json")
         if os.path.exists(runtime_cfg):
             shutil.copy2(runtime_cfg, os.path.join(tmp, "runtime_config.json"))
 
-        # 4. 配置 git author
-        subprocess.run(["git", "config", "user.email", f"{user}@ombre-backup"], cwd=tmp, capture_output=True)
-        subprocess.run(["git", "config", "user.name", user], cwd=tmp, capture_output=True)
+        # 4. add 全部 (dulwich 需要相对路径)
+        all_files = []
+        for root, dirs, files in os.walk(tmp):
+            # 跳过 .git
+            if ".git" in dirs:
+                dirs.remove(".git")
+            for f in files:
+                rel = os.path.relpath(os.path.join(root, f), tmp)
+                all_files.append(rel)
+        if not all_files:
+            return JSONResponse({"ok": True, "message": "无文件可备份"})
+        porcelain.add(tmp, paths=all_files)
 
-        # 5. add + commit
-        subprocess.run(["git", "add", "-A"], cwd=tmp, capture_output=True)
-        diff = subprocess.run(["git", "diff", "--cached", "--quiet"], cwd=tmp)
-        if diff.returncode == 0:
-            return JSONResponse({"ok": True, "message": "无变化, 跳过 commit"})
-
+        # 5. commit
         ts = _dt.now().strftime("%Y-%m-%d %H:%M")
-        bucket_count = len([f for f in os.listdir(backup_subdir) if f.endswith(".md")])
-        commit_msg = f"auto-backup {ts} ({bucket_count} buckets)"
-        commit = subprocess.run(
-            ["git", "commit", "-m", commit_msg],
-            cwd=tmp, capture_output=True, text=True,
-        )
-        if commit.returncode != 0:
-            err = commit.stderr.replace(token, "***") if token in commit.stderr else commit.stderr
-            return JSONResponse({"error": "git commit 失败", "stderr_tail": err[-300:]}, status_code=500)
+        bucket_count = len([f for f in os.listdir(backup_subdir) if f.endswith(".md")]) if os.path.exists(backup_subdir) else 0
+        commit_msg = f"auto-backup {ts} ({bucket_count} buckets)".encode("utf-8")
+        author = f"{user} <{user}@ombre-backup>".encode("utf-8")
+        try:
+            commit_sha = porcelain.commit(
+                tmp,
+                message=commit_msg,
+                author=author,
+                committer=author,
+            )
+        except Exception as e:
+            err = str(e).replace(token, "***") if token in str(e) else str(e)
+            # commit 失败一般是因为没 staged change → 视为"无变化"
+            if "nothing to commit" in err.lower() or "no changes" in err.lower():
+                return JSONResponse({"ok": True, "message": "无变化, 跳过 commit"})
+            return JSONResponse({"error": f"commit 失败: {err}"}, status_code=500)
 
-        # 6. push
-        push = subprocess.run(
-            ["git", "push", "-u", "origin", "HEAD:main"],
-            cwd=tmp, capture_output=True, text=True, timeout=120,
-        )
-        if push.returncode != 0:
-            err = push.stderr.replace(token, "***") if token in push.stderr else push.stderr
-            return JSONResponse({"error": "git push 失败", "stderr_tail": err[-300:]}, status_code=500)
+        # 6. push 到 origin (如果是 fresh init, 先 add remote)
+        try:
+            # 尝试直接 push (clone 来的仓库已经有 origin)
+            porcelain.push(
+                tmp,
+                remote_location=auth_url,
+                refspecs=b"HEAD:refs/heads/main",
+                errstream=open(os.devnull, "wb"),
+            )
+        except Exception as e:
+            err = str(e).replace(token, "***") if token in str(e) else str(e)
+            return JSONResponse({
+                "error": f"push 失败: {err}",
+                "clone_status": clone_err if clone_err else "ok",
+            }, status_code=500)
 
         return JSONResponse({
             "ok": True,
             "timestamp": ts,
             "bucket_count": bucket_count,
-            "commit_message": commit_msg,
-            "git_version": git_version,
+            "commit_message": commit_msg.decode("utf-8"),
+            "commit_sha": commit_sha.decode("ascii") if isinstance(commit_sha, bytes) else str(commit_sha),
+            "clone_status": clone_err if clone_err else "ok",
+            "engine": "dulwich",
         })
     except Exception as e:
-        # 兜底, 任何意外都返回 JSON 而不是 500 plain text
         import traceback
         tb = traceback.format_exc()
         if token:
             tb = tb.replace(token, "***")
         return JSONResponse({
             "error": f"unhandled {type(e).__name__}: {e}",
-            "traceback_tail": tb[-800:],
+            "traceback_tail": tb[-1000:],
         }, status_code=500)
     finally:
         try:
