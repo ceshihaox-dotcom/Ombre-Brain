@@ -3437,7 +3437,8 @@ body {
 }
 .ob-line {
   display: flex; align-items: center; gap: 8px;
-  padding: 5px 6px 5px 0;
+  padding: 5px 6px 5px 8px;
+  /* 加 left padding 给高亮 dot 的 box-shadow + pulse 留出余地, 防被父容器 overflow:hidden 切 */
   font-size: 13px;
   color: var(--ink-2);
   border-radius: 6px;
@@ -5181,7 +5182,9 @@ body {
 
 <!-- ombre-overrides — 真实数据下的排版兜底:防长内容把卡片撑出去 -->
 <style>
-.ob-line { min-width: 0; max-width: 100%; overflow: hidden; }
+.ob-line { min-width: 0; max-width: 100%; overflow: hidden; padding-left: 6px; }
+/* 高亮 dot 有 box-shadow + pulse 动画扩到 dot 外, .ob-line overflow:hidden 会切; 给 dot 留出余地 */
+.ob-line .ob-dot { margin-left: 2px; }
 .ob-line > * { min-width: 0; }
 .ob-line-title {
   flex: 0 0 auto;       /* 不收缩,标题已经在 JS 里截到 10 字以内 */

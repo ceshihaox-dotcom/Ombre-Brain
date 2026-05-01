@@ -308,7 +308,7 @@ function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate, mode,
               className="ob-modal-edit-summary"
               value={draft.summary}
               onChange={(e) => setDraft(d => ({ ...d, summary: e.target.value }))}
-              placeholder="一句话摘要…"
+              placeholder="一句话摘要(留空则不显示)"
               rows={2}
             />
           ) : (

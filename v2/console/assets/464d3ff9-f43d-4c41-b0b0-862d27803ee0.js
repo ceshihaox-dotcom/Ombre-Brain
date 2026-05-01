@@ -118,7 +118,7 @@ function ImportWorkbench() {
     }));
   };
 
-  // 合并预览状态:{ a:{id,name}, b:{id,name}, merged_content, tags, domain, importance, valence, arousal, b_summary, b_event_time }
+  // 合并预览状态:{ a:{id,name}, b:{id,name}, merged_content, tags, domain, importance, valence, arousal, b_summary, b_event_time, b_created }
   const [mergePreview, setMergePreview] = iwS(null);
   const [mergeLoading, setMergeLoading] = iwS(false);  // preview 或 commit 进行中
   const [mergeLoadingPair, setMergeLoadingPair] = iwS(null);  // {aName, bName} 首次合并 loading 遮罩展示用
@@ -1131,9 +1131,6 @@ function ImportWorkbench() {
                 >
                   {redehydrating === active.id ? '⌛ 提炼中…' : '↻ 重新脱水'}
                 </button>
-                <button className="imp-act" onClick={() => alert('拆分暂未实装(需要新 API 拆桶逻辑),下次更新加上')}>
-                  ↯ 拆分
-                </button>
                 <button className="imp-act imp-act-danger" style={{ marginLeft: 'auto' }} onClick={deleteItem}>
                   ✕ 不入库
                 </button>
@@ -1372,8 +1369,9 @@ function ImportWorkbench() {
           title: mergePreview.b.name,
           summary: mergePreview.b_summary || '',
           body: mergePreview.merged_content,
-          date: (mergePreview.b_event_time || '').slice(0, 10) || '',
-          time: (mergePreview.b_event_time || '').slice(11, 16) || '',
+          // 日期优先 event_time, 没有就用 created (B 永远有 created); 这样合并后编辑界面不会空一截
+          date: ((mergePreview.b_event_time || mergePreview.b_created || '').slice(0, 10)) || '',
+          time: ((mergePreview.b_event_time || mergePreview.b_created || '').slice(11, 16)) || '',
           importance: mergePreview.importance || 5,
           tags: mergePreview.tags || [],
           protected: false, feel: false, highlight: false, internalized: false,

@@ -68,7 +68,7 @@ function MemoryRow({ item, onOpen }) {
           <span>{item.title}</span>
           {item.importance >= 8 && <span className="ob-row-imp">★ {item.importance}</span>}
         </div>
-        <div className="ob-row-summary">{item.summary}</div>
+        {item.summary && <div className="ob-row-summary">{item.summary}</div>}
         {item.tags && item.tags.length > 0 && (
           <div className="ob-row-tags">
             {item.tags.map(t => <Tag key={t} name={t} />)}
@@ -115,8 +115,8 @@ function DateModule({ date, items, onOpenItem, onOpenDay, density }) {
               <TimelineDot importance={it.importance} highlight={it.highlight} feel={it.feel} />
               <span className="ob-line-time">{it.time}</span>
               <span className="ob-line-title">{it.title}</span>
-              <span className="ob-line-sep">·</span>
-              <span className="ob-line-sum">{it.summary}</span>
+              {it.summary && <span className="ob-line-sep">·</span>}
+              {it.summary && <span className="ob-line-sum">{it.summary}</span>}
             </div>
           ))}
           {items.length > 4 && (

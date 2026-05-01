@@ -48,7 +48,7 @@ function DayDetail({ date, items, onClose, onOpenItem, accent }) {
                     <h3>{it.title}</h3>
                     <div className="ob-detail-imp">importance · <b>{it.importance}</b></div>
                   </header>
-                  <p className="ob-detail-sum">{it.summary}</p>
+                  {it.summary && <p className="ob-detail-sum">{it.summary}</p>}
                   {it.body && <div className="ob-detail-body">{it.body}</div>}
                   <div className="ob-detail-foot">
                     <div className="ob-detail-tags">

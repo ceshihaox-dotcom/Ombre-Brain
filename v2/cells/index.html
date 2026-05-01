@@ -3437,7 +3437,8 @@ body {
 }
 .ob-line {
   display: flex; align-items: center; gap: 8px;
-  padding: 5px 6px 5px 0;
+  padding: 5px 6px 5px 8px;
+  /* 加 left padding 给高亮 dot 的 box-shadow + pulse 留出余地, 防被父容器 overflow:hidden 切 */
   font-size: 13px;
   color: var(--ink-2);
   border-radius: 6px;

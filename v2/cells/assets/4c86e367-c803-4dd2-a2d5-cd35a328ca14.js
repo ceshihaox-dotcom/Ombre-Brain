@@ -244,7 +244,7 @@ function WriteDrawer({ open, onClose, onSave, defaultDate, defaultTime, defaultT
           {/* 摘要 */}
           <textarea
             className="ob-write-sum"
-            placeholder="一句话摘要 · 以后只看这句的样子"
+            placeholder="一句话摘要 · 留空则不显示"
             value={summary}
             onChange={(e) => setSummary(e.target.value)}
             rows="2"
@@ -357,7 +357,7 @@ function SiblingsRow({ items, current, onOpen }) {
             <button key={it.id} className="ob-sibling" onClick={() => onOpen(it)}>
               <div className="ob-sibling-time">{it.time}</div>
               <div className={`ob-sibling-title ${isHi ? 'hi' : ''} ${it.feel ? 'feel' : ''}`}>{it.title}</div>
-              <div className="ob-sibling-sum">{it.summary}</div>
+              {it.summary && <div className="ob-sibling-sum">{it.summary}</div>}
             </button>
           );
         })}
@@ -435,7 +435,7 @@ function RelatedRow({ all, current, onOpen }) {
               )}
             </div>
             <div className={`ob-sibling-title ${it.importance >= 8 ? 'hi' : ''} ${it.feel ? 'feel' : ''}`}>{it.title}</div>
-            <div className="ob-sibling-sum">{it.summary}</div>
+            {it.summary && <div className="ob-sibling-sum">{it.summary}</div>}
           </button>
         ))}
       </div>
