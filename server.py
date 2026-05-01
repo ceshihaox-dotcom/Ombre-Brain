@@ -423,12 +423,16 @@ async def breath(
         logger.error(f"Search failed / 检索失败: {e}")
         return "检索过程出错，请稍后重试。"
 
-    # --- Exclude highlighted/internalized from search results ---
-    # --- 搜索模式排除置顶桶(它们在浮现模式核心准则区已可见)和已内化桶 ---
+    # --- Exclude highlighted/internalized/noise from search results ---
+    # --- 搜索模式排除置顶桶(它们在浮现模式核心准则区已可见)、已内化桶、噪声桶 ---
     # 注:protected 但非 highlighted 的桶仍可被搜出(防衰减不影响搜索)
+    # noise = resolved + importance=1, 用户软删除标记 → 默认从检索排除
+    def _is_noise(meta):
+        return bool(meta.get("resolved", False) and meta.get("importance", 5) == 1)
     matches = [b for b in matches
                if not (is_highlighted(b["metadata"])
-                       or is_internalized(b["metadata"]))]
+                       or is_internalized(b["metadata"])
+                       or _is_noise(b["metadata"]))]
 
     # --- Vector similarity channel: find semantically related buckets ---
     # --- 向量相似度通道：找到语义相关的桶 ---
@@ -439,7 +443,8 @@ async def breath(
             if bucket_id not in matched_ids and sim_score > 0.5:
                 bucket = await bucket_mgr.get(bucket_id)
                 if bucket and not (is_highlighted(bucket["metadata"])
-                                   or is_internalized(bucket["metadata"])):
+                                   or is_internalized(bucket["metadata"])
+                                   or _is_noise(bucket["metadata"])):
                     bucket["score"] = round(sim_score * 100, 2)
                     bucket["vector_match"] = True
                     matches.append(bucket)
@@ -1817,6 +1822,9 @@ async def api_trash_list(request):
                 "trashed_at": meta.get("trashed_at", ""),
                 "summary": meta.get("summary", ""),
                 "content_preview": strip_wikilinks(b.get("content", ""))[:200],
+                "score": decay_engine.calculate_score(meta),
+                "resolved": meta.get("resolved", False),
+                "noise": bool(meta.get("resolved", False) and meta.get("importance", 5) == 1),
             })
         return JSONResponse({"trash": result, "count": len(result)})
     except Exception as e:

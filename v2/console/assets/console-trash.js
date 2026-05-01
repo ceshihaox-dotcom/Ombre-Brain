@@ -154,8 +154,27 @@ function TrashPage({ onCountChange }) {
                   }}
                 >
                   <div style={{ minWidth: 0 }}>
-                    <div style={{ fontFamily: 'var(--serif)', fontSize: 14, fontStyle: 'italic', color: 'var(--ink)', fontWeight: 500 }}>
-                      {it.name || it.id}
+                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, flexWrap: 'wrap' }}>
+                      <div style={{ fontFamily: 'var(--serif)', fontSize: 14, fontStyle: 'italic', color: 'var(--ink)', fontWeight: 500 }}>
+                        {it.name || it.id}
+                      </div>
+                      {it.noise && (
+                        <span style={{
+                          fontSize: 9.5, padding: '1px 7px', borderRadius: 999,
+                          border: '0.5px solid var(--ink-4)', color: 'var(--ink-4)',
+                          fontFamily: 'var(--mono)', letterSpacing: '0.05em',
+                          textTransform: 'uppercase',
+                        }} title="标记为噪声后被自动归档">⌀ 噪声</span>
+                      )}
+                      {typeof it.score === 'number' && (
+                        <span style={{
+                          fontFamily: 'var(--serif)', fontStyle: 'italic',
+                          fontSize: 12, color: 'var(--ink-4)',
+                          marginLeft: 'auto',
+                        }} title="decay 权重(归档时的最终值)">
+                          {it.score.toFixed(2)}
+                        </span>
+                      )}
                     </div>
                     <div style={{ fontSize: 11.5, color: 'var(--ink-3)', marginTop: 4, lineHeight: 1.6, overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
                       {summaryText}

@@ -246,7 +246,7 @@ function DateModuleV2({ date, items, onOpenItem, onOpenDay, density, query, isTo
 function LineRow({ it, query, onOpenItem, dense }) {
   return (
     <div
-      className={`ob-line ${it.importance >= 8 || it.highlight ? 'ob-line-hi' : ''} ${it.feel ? 'ob-line-feel' : ''}`}
+      className={`ob-line ${it.importance >= 8 || it.highlight ? 'ob-line-hi' : ''} ${it.feel ? 'ob-line-feel' : ''} ${it.noise ? 'ob-line-noise' : ''}`}
       onClick={(e) => { e.stopPropagation(); onOpenItem(it); }}
     >
       <TimelineDotV2 importance={it.importance} highlight={it.highlight} feel={it.feel} />
