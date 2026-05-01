@@ -25,6 +25,11 @@ function ConfigPage() {
   const [strategy, setStrategy] = ccS({ merge_threshold: 75, max_recall: 5 });
   const [strategySaving, setStrategySaving] = ccS(false);
 
+  // 权重配置 (decay engine 参数)
+  const [decayCfg, setDecayCfg] = ccS(null);     // { current, defaults, schema }
+  const [decaySaving, setDecaySaving] = ccS(false);
+  const [decayResetting, setDecayResetting] = ccS(false);
+
   const fetchAll = async () => {
     try {
       const r = await fetch('/api/config/api');
@@ -40,7 +45,51 @@ function ConfigPage() {
       if (r.ok) setStrategy(await r.json());
     } catch (e) { /* 沉默 */ }
   };
-  ccE(() => { fetchAll(); fetchStrategy(); }, []);
+  const fetchDecay = async () => {
+    try {
+      const r = await fetch('/api/decay-config');
+      if (r.ok) setDecayCfg(await r.json());
+    } catch (e) { /* 沉默 */ }
+  };
+  ccE(() => { fetchAll(); fetchStrategy(); fetchDecay(); }, []);
+
+  // 改单个权重参数: 乐观更新 + POST + 失败回滚
+  const updateDecay = async (key, value) => {
+    if (!decayCfg) return;
+    const old = decayCfg.current[key];
+    setDecayCfg(c => ({ ...c, current: { ...c.current, [key]: value } }));
+    setDecaySaving(true);
+    try {
+      const r = await fetch('/api/decay-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: value }),
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      if (d && d.current) setDecayCfg(c => ({ ...c, current: d.current }));
+    } catch (e) {
+      alert('保存失败: ' + e.message);
+      setDecayCfg(c => ({ ...c, current: { ...c.current, [key]: old } }));
+    } finally {
+      setDecaySaving(false);
+    }
+  };
+  const resetDecayAll = async () => {
+    if (!decayCfg) return;
+    if (!confirm('全部参数恢复出厂默认?')) return;
+    setDecayResetting(true);
+    try {
+      const r = await fetch('/api/decay-config/reset', { method: 'POST' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      if (d && d.current) setDecayCfg(c => ({ ...c, current: d.current }));
+    } catch (e) {
+      alert('恢复失败: ' + e.message);
+    } finally {
+      setDecayResetting(false);
+    }
+  };
 
   const startNew = () => { setEditing({ id: '', name: '', model: '', base_url: '', api_key: '', _preset: '' }); setShowKey(false); };
   const startEdit = (p) => { setEditing({ id: p.id, name: p.name, model: p.model, base_url: p.base_url, api_key: '', _preset: '' }); setShowKey(false); };
@@ -453,6 +502,69 @@ function ConfigPage() {
             <span style={{ fontSize: 12, color: 'var(--ink-4)', fontFamily: 'var(--mono)' }}>暂未实装 · 后续按重复唤起 + 激活强度自动标记</span>
           </div>
         </div>
+      </ConsoleCard>
+
+      {/* 权重配置 (decay 引擎参数) */}
+      <ConsoleCard label="权重配置" sub="调 score 公式 · 改完即刻生效 · 重启后保留">
+        {!decayCfg && <div style={{ color: 'var(--ink-4)', fontSize: 12 }}>载入中…</div>}
+        {decayCfg && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+            <button
+              className="oc-btn oc-btn-ghost"
+              onClick={resetDecayAll}
+              disabled={decayResetting}
+              style={{ fontSize: 11, padding: '3px 12px' }}
+            >{decayResetting ? '⌛' : '↺ 全部恢复默认'}</button>
+          </div>
+        )}
+        {decayCfg && decayCfg.schema.map(item => {
+          const cur = decayCfg.current[item.key];
+          const def = decayCfg.defaults[item.key];
+          const isDefault = Math.abs((cur ?? 0) - (def ?? 0)) < 1e-6;
+          return (
+            <div className="oc-field" key={item.key} style={{ alignItems: 'flex-start' }}>
+              <div className="oc-field-label" style={{ paddingTop: 6 }}>{item.label}</div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <input
+                    type="range"
+                    min={item.min}
+                    max={item.max}
+                    step={item.step}
+                    value={cur}
+                    onChange={(e) => updateDecay(item.key, +e.target.value)}
+                    className="oc-decay-slider"
+                    style={{ flex: 1, accentColor: 'var(--accent)' }}
+                  />
+                  <span style={{
+                    fontFamily: 'var(--mono)', fontSize: 13,
+                    color: isDefault ? 'var(--ink-3)' : 'var(--accent)',
+                    fontWeight: isDefault ? 400 : 600,
+                    minWidth: 56, textAlign: 'right',
+                  }}>
+                    {item.step < 1 ? Number(cur).toFixed(2) : Math.round(cur)}
+                  </span>
+                  <button
+                    className="oc-btn oc-btn-ghost"
+                    title={`恢复默认 ${def}`}
+                    onClick={() => updateDecay(item.key, def)}
+                    disabled={isDefault || decaySaving}
+                    style={{ fontSize: 10, padding: '2px 8px', minWidth: 32 }}
+                  >↺</button>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--ink-4)', fontFamily: 'var(--mono)' }}>
+                  <span>{item.hint}</span>
+                  <span>范围 {item.min} – {item.max} · 默认 {item.step < 1 ? Number(def).toFixed(2) : Math.round(def)}</span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {decayCfg && (
+          <div className="oc-field-help" style={{ paddingLeft: 126, marginTop: 10, color: 'var(--ink-4)' }}>
+            高亮 = 已偏离默认 · 改动写入 buckets/runtime_config.json, 重启自动加载
+          </div>
+        )}
       </ConsoleCard>
 
       {/* 系统信息 */}

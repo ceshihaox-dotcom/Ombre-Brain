@@ -1074,6 +1074,83 @@ def _reload_dehydrator_from_runtime():
         if p.get("model"): fresh_cfg["dehydration"]["model"] = p["model"]
     dehydrator.reload(fresh_cfg)
 
+def _reload_decay_from_runtime():
+    """读 runtime_config['decay'] → decay_engine.apply_runtime_overrides。
+    启动 + 每次 POST /api/decay-config 后调一次, 立刻生效到下次 score 计算。"""
+    rc = _read_runtime_config()
+    decay_overrides = rc.get("decay") or {}
+    if isinstance(decay_overrides, dict):
+        decay_engine.apply_runtime_overrides(decay_overrides)
+
+
+@mcp.custom_route("/api/decay-config", methods=["GET"])
+async def api_decay_config_get(request):
+    """读当前 decay 各参数当前值 + 出厂默认 + 范围/标签 schema (前端 slider 用)。"""
+    from starlette.responses import JSONResponse
+    # 字段元信息(前端 slider 显示用); 范围 / step / 中文名 / 解释
+    schema = [
+        {"key": "feel_score",            "label": "feel 基础权重",     "min": 0,    "max": 100,  "step": 1,    "hint": "0=跟随 importance, 锁定值则 feel 桶恒定 score"},
+        {"key": "protected_score",       "label": "protected 上限",     "min": 50,   "max": 200,  "step": 1,    "hint": "钉决/永久桶的 score(原硬编 999)"},
+        {"key": "highlight_boost_pct",   "label": "highlight 加成 %",   "min": 0,    "max": 50,   "step": 1,    "hint": "标重要的桶 score 上浮 X%"},
+        {"key": "surface_threshold",     "label": "浮现阈值",            "min": 1,    "max": 80,   "step": 1,    "hint": "score 高于此值标记为活跃(UI 提示)"},
+        {"key": "archive_threshold",     "label": "归档阈值",            "min": 0.1,  "max": 2.0,  "step": 0.05, "hint": "score 低于此值自动归档"},
+        {"key": "decay_lambda",          "label": "衰减速率 λ",          "min": 0.01, "max": 0.30, "step": 0.01, "hint": "时间衰减斜率(大=衰得快)"},
+        {"key": "arousal_boost",         "label": "arousal 加成",        "min": 0.0,  "max": 2.0,  "step": 0.1,  "hint": "高 arousal 提升 emotion_weight 系数"},
+        {"key": "emotion_base",          "label": "情感基线",            "min": 0.5,  "max": 2.0,  "step": 0.1,  "hint": "情感权重最低值(arousal=0 时)"},
+        {"key": "resolved_factor",       "label": "噪声衰减系数",        "min": 0.01, "max": 0.50, "step": 0.01, "hint": "标 resolved/noise 时 score × 此系数"},
+        {"key": "internalized_resolved_factor", "label": "已内化+噪声系数", "min": 0.01, "max": 0.50, "step": 0.01, "hint": "双标时更激进的衰减系数"},
+    ]
+    return JSONResponse({
+        "current": decay_engine.current_overrides(),
+        "defaults": dict(DecayEngine.DEFAULTS),
+        "schema": schema,
+    })
+
+
+@mcp.custom_route("/api/decay-config", methods=["POST"])
+async def api_decay_config_post(request):
+    """更新 decay 参数。body 是部分或全部 key→value 字典, 只更新传入的字段;
+    存到 runtime_config.json['decay'], 立刻 reload decay_engine。"""
+    from starlette.responses import JSONResponse
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "body 必须是对象"}, status_code=400)
+    rc = _read_runtime_config()
+    cur_decay = rc.get("decay") or {}
+    if not isinstance(cur_decay, dict):
+        cur_decay = {}
+    # 只接受白名单字段, 强制 float
+    for k in DecayEngine.DEFAULTS.keys():
+        if k in body:
+            try:
+                cur_decay[k] = float(body[k])
+            except (TypeError, ValueError):
+                pass
+    rc["decay"] = cur_decay
+    _write_runtime_config(rc)
+    _reload_decay_from_runtime()
+    return JSONResponse({
+        "ok": True,
+        "current": decay_engine.current_overrides(),
+    })
+
+
+@mcp.custom_route("/api/decay-config/reset", methods=["POST"])
+async def api_decay_config_reset(request):
+    """全部恢复出厂默认。清掉 runtime_config['decay'] 后 reload。"""
+    from starlette.responses import JSONResponse
+    rc = _read_runtime_config()
+    rc["decay"] = {}
+    _write_runtime_config(rc)
+    _reload_decay_from_runtime()
+    return JSONResponse({
+        "ok": True,
+        "current": decay_engine.current_overrides(),
+    })
+
 
 @mcp.custom_route("/api/config/api", methods=["GET"])
 async def api_config_get(request):
@@ -2535,6 +2612,13 @@ async def api_import_review(request):
 if __name__ == "__main__":
     transport = config.get("transport", "stdio")
     logger.info(f"Ombre Brain starting | transport: {transport}")
+
+    # 启动时把 runtime_config['decay'] 应用到 decay_engine, 让用户改的值在重启后还在
+    try:
+        _reload_decay_from_runtime()
+        logger.info("Decay runtime overrides applied")
+    except Exception as e:
+        logger.warning(f"Decay runtime overrides apply failed (using defaults): {e}")
 
     if transport in ("sse", "streamable-http"):
         import threading
