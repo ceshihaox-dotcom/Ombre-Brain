@@ -460,7 +460,24 @@ function MoodEvokeOverlay({ onClose }) {
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);   // { narrative, sources, mood_label }
   const [error, setError] = useState(null);
+  // 源记忆全文预览浮层: { id, name, content, loading?, error? }
+  // 同一条再点关闭(toggle), 不同条切换显示
+  const [preview, setPreview] = useState(null);
   const padRef = useRef(null);
+
+  const openSource = async (src) => {
+    // 同一条再点 → 关闭
+    if (preview && preview.id === src.id) { setPreview(null); return; }
+    setPreview({ id: src.id, name: src.name, loading: true });
+    try {
+      const r = await fetch('/api/bucket/' + encodeURIComponent(src.id));
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      setPreview(p => p && p.id === src.id ? { ...p, loading: false, content: d.content || '', meta: d.metadata || {} } : p);
+    } catch (e) {
+      setPreview(p => p && p.id === src.id ? { ...p, loading: false, error: e.message } : p);
+    }
+  };
 
   // pad 拖动: pointer 事件统一处理 mouse/touch
   const handlePointer = (e) => {
@@ -575,21 +592,57 @@ function MoodEvokeOverlay({ onClose }) {
             <div className="mood-result-narr">{result.narrative}</div>
             <div className="mood-result-srcs-hd">引自 {result.sources.length} 条记忆</div>
             <div className="mood-result-srcs">
-              {result.sources.map((s) => (
-                <div
-                  key={s.id}
-                  className="mood-result-src"
-                  onClick={() => { onClose(); navigate('/mem/' + encodeURIComponent(s.id)); }}
-                >
-                  <div className="mood-result-src-ttl">{s.name}</div>
-                  <div className="mood-result-src-sum">{s.summary}</div>
-                  <div className="mood-result-src-coord">v {s.valence.toFixed(2)} · a {s.arousal.toFixed(2)}</div>
-                </div>
-              ))}
+              {result.sources.map((s) => {
+                const isOpen = preview && preview.id === s.id;
+                return (
+                  <div
+                    key={s.id}
+                    className={'mood-result-src' + (isOpen ? ' on' : '')}
+                    onClick={() => openSource(s)}
+                  >
+                    <div className="mood-result-src-ttl">{s.name}</div>
+                    <div className="mood-result-src-sum">{s.summary}</div>
+                    <div className="mood-result-src-coord">v {s.valence.toFixed(2)} · a {s.arousal.toFixed(2)}</div>
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
       </div>
+
+      {/* 源记忆全文预览浮层(浮在 mood-sheet 之上) */}
+      {preview && (
+        <div className="mood-preview-bd" onClick={() => setPreview(null)}>
+          <div className="mood-preview-card" onClick={(e) => e.stopPropagation()}>
+            <div className="mood-preview-hd">
+              <div className="mood-preview-ttl">{preview.name}</div>
+              <button
+                className="mood-preview-x"
+                onClick={() => setPreview(null)}
+                aria-label="关闭"
+              >×</button>
+            </div>
+            <div className="mood-preview-body">
+              {preview.loading && <div className="mood-preview-loading">载入中…</div>}
+              {preview.error && <div className="mood-err" style={{ marginTop: 0 }}>{preview.error}</div>}
+              {!preview.loading && !preview.error && (
+                <>
+                  {(preview.content || '').split(/\n\s*\n/).filter(Boolean).map((p, i) => (
+                    <p key={i}>{p}</p>
+                  ))}
+                  {!preview.content && <p style={{ color: 'var(--ink-4)' }}>(无内容)</p>}
+                </>
+              )}
+            </div>
+            <button
+              className="mood-preview-jump"
+              onClick={() => { onClose(); navigate('/mem/' + encodeURIComponent(preview.id)); }}
+              title="去单条全貌界面(支持编辑等)"
+            >去全貌界面 ›</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1009,6 +1062,7 @@ function FormFields({
   imp, setImp, pin, setPin, tags, setTags, tagInput, setTagInput,
   eventTime, setEventTime,
   showSummary = true, showPin = true, contentRequired = false,
+  onRedehydrate, redehydrating,    // 可选:编辑既有桶时传入,新建时不传
 }) {
   const feel = tags.some(t => /^feel/i.test(String(t)));
   const toggleFeel = () => {
@@ -1089,6 +1143,16 @@ function FormFields({
               <span className="ic">⚲</span><span>钉决</span>
             </button>
           )}
+          {onRedehydrate && (
+            <button
+              className="edit-toggle action redehydrate"
+              onClick={onRedehydrate}
+              disabled={redehydrating}
+              title="LLM 重新生成标题/摘要/tags(原内容不变)"
+            >
+              <span className="ic">↻</span><span>{redehydrating ? '处理中…' : '重新脱水'}</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -1126,6 +1190,7 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
   const [tagInput, setTagInput] = useState('');
   const [eventTime, setEventTime] = useState('');
   const [saving, setSaving] = useState(false);
+  const [redehydrating, setRedehydrating] = useState(false);
 
   useEffect(() => {
     let cancel = false;
@@ -1176,6 +1241,31 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
     }
   };
 
+  const redehydrate = async () => {
+    if (redehydrating || saving) return;
+    if (!window.confirm('对当前记忆重新脱水?\nLLM 会重写标题/摘要/tags 等字段; 本次表单未保存的修改将被这次产出覆盖。')) return;
+    setRedehydrating(true);
+    setError(null);
+    try {
+      const r = await fetch('/api/bucket/' + encodeURIComponent(bucketId) + '/redehydrate', { method: 'POST' });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      const m = d.metadata || {};
+      // 用新元数据回填表单, content 不变
+      setName(m.name || '');
+      setSummary(m.summary || '');
+      setImp(m.importance || imp);
+      setPin(!!m.protected);
+      setTags(m.tags || []);
+      // 同步给父级状态(审阅区已立刻反映新标题/摘要/tags)
+      if (onSaved) onSaved(m);
+    } catch (e) {
+      setError(e.message || String(e));
+    } finally {
+      setRedehydrating(false);
+    }
+  };
+
   const del = async () => {
     if (!window.confirm('删除「' + (name || bucketId) + '」?\n移到回收站,可在设置 → 回收站恢复。')) return;
     setSaving(true);
@@ -1222,6 +1312,8 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
               tags={tags} setTags={setTags}
               tagInput={tagInput} setTagInput={setTagInput}
               eventTime={eventTime} setEventTime={setEventTime}
+              onRedehydrate={redehydrate}
+              redehydrating={redehydrating}
             />
             <button className="edit-delete-btn" onClick={del} disabled={loading || saving}>
               ✕ 删除这条记忆
@@ -1745,26 +1837,6 @@ function ReviewScreen() {
     }
   };
 
-  // 重新脱水: 让 LLM 对当前条目 content 重跑一遍,生成新 name/summary/tags 等元数据
-  // 不动 importance/event_time/状态 flag;content 不变所以 embedding 不重算
-  const redehydrateCur = async () => {
-    if (!cur || busy) return;
-    if (!window.confirm('对「' + (cur.name || cur.id) + '」重新脱水?\nLLM 会重新生成标题/摘要/tags 等(原内容不变)。')) return;
-    setBusy(true);
-    try {
-      const r = await fetch('/api/bucket/' + encodeURIComponent(cur.id) + '/redehydrate', { method: 'POST' });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
-      // 用后端回的 metadata 直接覆盖本地这条
-      const fresh = d.metadata || {};
-      setBuckets(prev => prev.map(b => b.id === cur.id ? { ...b, ...fresh } : b));
-    } catch (e) {
-      alert('重新脱水失败: ' + e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
-
   const deleteCur = async () => {
     if (!cur || busy) return;
     if (!window.confirm('删除「' + (cur.name || cur.id) + '」?\n移到回收站,可在设置 → 回收站恢复。')) return;
@@ -1877,14 +1949,6 @@ function ReviewScreen() {
                 title={statusOf(cur) === 'doubt' ? '再点一次取消存疑' : '标记存疑'}
               >
                 <span className="ic">?</span><span>存疑</span>
-              </button>
-              <button
-                className="rv-action-btn redehydrate"
-                onClick={redehydrateCur}
-                disabled={busy}
-                title="重新跑 LLM 提炼元数据(标题/摘要/tags),原内容不变"
-              >
-                <span className="ic">↻</span><span>重新脱水</span>
               </button>
               <button
                 className="rv-action-btn del"
