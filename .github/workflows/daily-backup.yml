@@ -1,0 +1,31 @@
+name: 每日备份 buckets 到私有 repo
+
+on:
+  schedule:
+    # 每天 UTC 19:00 = 北京时间凌晨 03:00 (避开活跃时段, 数据最稳定)
+    - cron: '0 19 * * *'
+  workflow_dispatch:  # 允许在 Actions 页面手动触发, 用于测试
+
+jobs:
+  trigger-backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Call /api/backup
+        run: |
+          response=$(curl -sS -w "\n__HTTP_STATUS__:%{http_code}" \
+            "https://ombre-brain-40jf.onrender.com/api/backup" \
+            --max-time 120 \
+            --retry 2 \
+            --retry-delay 30)
+          body=$(echo "$response" | sed -e 's/__HTTP_STATUS__:.*//' )
+          status=$(echo "$response" | grep -oE '__HTTP_STATUS__:[0-9]+' | cut -d: -f2)
+          echo "HTTP $status"
+          echo "$body"
+          if [ "$status" != "200" ]; then
+            echo "::error::Backup endpoint returned non-200"
+            exit 1
+          fi
+          if echo "$body" | grep -q '"ok":\s*false'; then
+            echo "::error::Backup reported failure"
+            exit 1
+          fi
