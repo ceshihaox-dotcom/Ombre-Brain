@@ -2203,6 +2203,17 @@ async def api_backup(request):
         return JSONResponse({"error": "REPO 必须是 https:// URL"}, status_code=500)
     auth_url = repo_url.replace("https://", f"https://x-access-token:{token}@", 1)
 
+    # 先确认 git 可用 — Render 标准容器有, 但保险起见
+    try:
+        ver = subprocess.run(["git", "--version"], capture_output=True, text=True, timeout=10)
+        if ver.returncode != 0:
+            return JSONResponse({"error": "git 不可用", "stderr": ver.stderr[:200]}, status_code=500)
+        git_version = ver.stdout.strip()
+    except FileNotFoundError:
+        return JSONResponse({"error": "容器内没装 git, subprocess 找不到 git 命令"}, status_code=500)
+    except Exception as e:
+        return JSONResponse({"error": f"git 检测失败: {type(e).__name__}: {e}"}, status_code=500)
+
     tmp = tempfile.mkdtemp(prefix="ombre-backup-")
     try:
         # 1. 浅克隆备份仓库 (主分支为空也能 clone)
@@ -2273,7 +2284,18 @@ async def api_backup(request):
             "timestamp": ts,
             "bucket_count": bucket_count,
             "commit_message": commit_msg,
+            "git_version": git_version,
         })
+    except Exception as e:
+        # 兜底, 任何意外都返回 JSON 而不是 500 plain text
+        import traceback
+        tb = traceback.format_exc()
+        if token:
+            tb = tb.replace(token, "***")
+        return JSONResponse({
+            "error": f"unhandled {type(e).__name__}: {e}",
+            "traceback_tail": tb[-800:],
+        }, status_code=500)
     finally:
         try:
             shutil.rmtree(tmp)
