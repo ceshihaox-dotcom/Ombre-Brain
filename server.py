@@ -1436,6 +1436,112 @@ async def api_bucket_redehydrate(request):
     })
 
 
+def _label_mood(v: float, a: float) -> str:
+    """把 (valence, arousal) 坐标映射到口语标签, 帮 LLM 理解用户选了什么心情"""
+    hi_a = a >= 0.6
+    lo_a = a <= 0.4
+    pos_v = v >= 0.6
+    neg_v = v <= 0.4
+    if pos_v and hi_a: return "兴奋/欣快"
+    if pos_v and lo_a: return "平和/满足"
+    if neg_v and hi_a: return "焦虑/愤怒"
+    if neg_v and lo_a: return "低落/沮丧"
+    if hi_a:           return "激动"
+    if lo_a:           return "平静"
+    if pos_v:          return "微微正向"
+    if neg_v:          return "微微负向"
+    return "中性"
+
+
+@mcp.custom_route("/api/mood-evoke", methods=["POST"])
+async def api_mood_evoke(request):
+    """情感唤起: 用户给一个 (valence, arousal) 坐标 → 找最近的 top_n 条记忆 →
+    让 LLM 按这个心情口吻把它们串成 1-2 段叙事。返回叙事 + 引用源。"""
+    from starlette.responses import JSONResponse
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "请求体不是 JSON"}, status_code=400)
+    try:
+        v = float(body.get("valence", 0.5))
+        a = float(body.get("arousal", 0.3))
+    except (TypeError, ValueError):
+        return JSONResponse({"error": "valence/arousal 须为数字"}, status_code=400)
+    if not (0.0 <= v <= 1.0 and 0.0 <= a <= 1.0):
+        return JSONResponse({"error": "valence/arousal 须在 0~1 范围内"}, status_code=400)
+    top_n = max(1, min(int(body.get("top_n", 5)), 10))
+
+    if not dehydrator.api_available or dehydrator.client is None:
+        return JSONResponse({"error": "LLM 未配置, 无法生成叙事"}, status_code=503)
+
+    all_buckets = await bucket_mgr.list_all(include_archive=False)
+    if not all_buckets:
+        return JSONResponse({"error": "记忆库为空"}, status_code=404)
+
+    def _dist(meta):
+        bv = float(meta.get("valence", 0.5))
+        ba = float(meta.get("arousal", 0.3))
+        return (bv - v) ** 2 + (ba - a) ** 2
+
+    scored = []
+    for b in all_buckets:
+        meta = b.get("metadata", {})
+        # 距离主排; importance 高的并列时优先(取负值升序 = 大的在前)
+        scored.append((_dist(meta), -float(meta.get("importance", 5)), b))
+    scored.sort(key=lambda x: (x[0], x[1]))
+    picks = [b for _, _, b in scored[:top_n]]
+
+    lines = []
+    sources = []
+    for b in picks:
+        meta = b.get("metadata", {})
+        name = meta.get("name", b["id"])
+        body_txt = strip_wikilinks(b.get("content", ""))[:600]
+        lines.append(f"《{name}》\n{body_txt}")
+        sources.append({
+            "id": b["id"],
+            "name": name,
+            "summary": (meta.get("summary", "") or "")[:200] or body_txt[:120],
+            "valence": float(meta.get("valence", 0.5)),
+            "arousal": float(meta.get("arousal", 0.3)),
+            "event_time": meta.get("event_time", ""),
+        })
+
+    mood_label = _label_mood(v, a)
+    sys_prompt = (
+        "你是一位记忆叙事者。用户选了一个情感坐标(valence 效价 / arousal 唤醒度), "
+        "请按这个心情的口吻把以下几条记忆串成 1-2 段、约 80-200 字的短叙事。"
+        "可以是回忆、感慨、或心情侧写, 不要罗列, 不要标号, 不要解释规则, "
+        "用第二人称'你'或第一人称'我'都可, 保留原记忆中具体的人/事/词。"
+    )
+    user_msg = (
+        f"心情坐标: valence={v:.2f}, arousal={a:.2f} ({mood_label})\n\n"
+        f"素材记忆 ({len(picks)} 条):\n\n" + "\n\n---\n\n".join(lines)
+    )
+    try:
+        response = await dehydrator.client.chat.completions.create(
+            model=dehydrator.model,
+            messages=[
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_msg[:8000]},
+            ],
+            max_tokens=600,
+            temperature=0.85,
+        )
+        narrative = (response.choices[0].message.content or "").strip() if response.choices else ""
+    except Exception as e:
+        return JSONResponse({"error": f"LLM 调用失败: {e}"}, status_code=500)
+
+    return JSONResponse({
+        "ok": True,
+        "valence": v,
+        "arousal": a,
+        "mood_label": mood_label,
+        "narrative": narrative,
+        "sources": sources,
+    })
+
+
 def _build_merge_meta(a_meta: dict, b_meta: dict) -> dict:
     """把 A、B 元数据合到 B 的字段集合;tags/domain 并集,importance max,情感平均"""
     a_tags = a_meta.get("tags", []) or []

@@ -166,6 +166,7 @@ function HomeScreen() {
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState(() => new Set());
+  const [moodOpen, setMoodOpen] = useState(false);
 
   useEffect(() => {
     let cancel = false;
@@ -293,7 +294,12 @@ function HomeScreen() {
           {searchQuery && (
             <button className="home-search-clear" onClick={() => setSearchQuery('')} title="清空">×</button>
           )}
-          <div className="home-search-mood" title="情感唤起 (待接通)"/>
+          <div
+            className="home-search-mood"
+            title="情感唤起 · 选一个心情坐标"
+            role="button"
+            onClick={() => setMoodOpen(true)}
+          />
         </div>
 
         <div className="home-chips">
@@ -377,10 +383,10 @@ function HomeScreen() {
           </>
         ) : (
           <>
-            <div className="home-mood-row">
+            <div className="home-mood-row" role="button" onClick={() => setMoodOpen(true)}>
               <div className="home-mood-pad"/>
               <div className="home-mood-text">
-                <b>情感唤起</b> · 按住罗盘选一个情绪坐标,看 AI 怎么挑相关记忆
+                <b>情感唤起</b> · 选一个情绪坐标, 看 AI 用这个心情串相关记忆
               </div>
               <span className="home-mood-arrow">›</span>
             </div>
@@ -436,6 +442,154 @@ function HomeScreen() {
 
       <button className="home-fab" onClick={() => navigate('/new')} title="写新记忆">+</button>
       <TabBar active="home"/>
+
+      {moodOpen && <MoodEvokeOverlay onClose={() => setMoodOpen(false)}/>}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────
+// 情感唤起浮层 (MoodEvokeOverlay)
+// 2D pad: 横轴 valence(左消极→右积极) / 纵轴 arousal(下平静→上激动)
+// 选定坐标 → POST /api/mood-evoke → 返回叙事 + 引用源
+// ─────────────────────────────────────────
+function MoodEvokeOverlay({ onClose }) {
+  // 默认中性偏低, 让用户自己挪
+  const [v, setV] = useState(0.5);
+  const [a, setA] = useState(0.4);
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);   // { narrative, sources, mood_label }
+  const [error, setError] = useState(null);
+  const padRef = useRef(null);
+
+  // pad 拖动: pointer 事件统一处理 mouse/touch
+  const handlePointer = (e) => {
+    const el = padRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const px = (e.clientX ?? (e.touches && e.touches[0]?.clientX) ?? 0) - rect.left;
+    const py = (e.clientY ?? (e.touches && e.touches[0]?.clientY) ?? 0) - rect.top;
+    const vx = Math.max(0, Math.min(1, px / rect.width));
+    // 屏幕 y 向下增大, arousal 反过来(上=高)
+    const vy = Math.max(0, Math.min(1, 1 - py / rect.height));
+    setV(vx);
+    setA(vy);
+  };
+
+  const onPadDown = (e) => {
+    e.preventDefault();
+    handlePointer(e);
+    const move = (ev) => handlePointer(ev);
+    const up = () => {
+      window.removeEventListener('pointermove', move);
+      window.removeEventListener('pointerup', up);
+    };
+    window.addEventListener('pointermove', move);
+    window.addEventListener('pointerup', up);
+  };
+
+  const moodLabel = (() => {
+    const hiA = a >= 0.6, loA = a <= 0.4;
+    const posV = v >= 0.6, negV = v <= 0.4;
+    if (posV && hiA) return '兴奋 / 欣快';
+    if (posV && loA) return '平和 / 满足';
+    if (negV && hiA) return '焦虑 / 愤怒';
+    if (negV && loA) return '低落 / 沮丧';
+    if (hiA) return '激动';
+    if (loA) return '平静';
+    if (posV) return '微微正向';
+    if (negV) return '微微负向';
+    return '中性';
+  })();
+
+  const submit = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    setResult(null);
+    try {
+      const r = await fetch('/api/mood-evoke', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ valence: v, arousal: a, top_n: 5 }),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      setResult(d);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mood-overlay" onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+      <div className="mood-sheet">
+        <div className="mood-hd">
+          <div>
+            <div className="mood-hd-eyebrow">MOOD · evoke</div>
+            <div className="mood-hd-ttl">情感唤起</div>
+          </div>
+          <button className="mood-x" onClick={onClose} aria-label="关闭">×</button>
+        </div>
+
+        <div className="mood-pad-wrap">
+          {/* 四角参照标签 */}
+          <span className="mood-pad-corner tl">焦虑 / 愤怒</span>
+          <span className="mood-pad-corner tr">兴奋 / 欣快</span>
+          <span className="mood-pad-corner bl">低落 / 沮丧</span>
+          <span className="mood-pad-corner br">平和 / 满足</span>
+          {/* 轴标签 */}
+          <span className="mood-pad-axis ax-v">→ 效价 valence</span>
+          <span className="mood-pad-axis ax-a">↑ 唤醒 arousal</span>
+          {/* pad 本体 */}
+          <div
+            ref={padRef}
+            className="mood-pad"
+            onPointerDown={onPadDown}
+          >
+            <div className="mood-pad-grid"/>
+            <div className="mood-pad-cross-h"/>
+            <div className="mood-pad-cross-v"/>
+            <div
+              className="mood-pad-dot"
+              style={{ left: `${v * 100}%`, top: `${(1 - a) * 100}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="mood-meta">
+          <span><b>{moodLabel}</b></span>
+          <span className="mood-meta-coord">v {v.toFixed(2)} · a {a.toFixed(2)}</span>
+        </div>
+
+        <button className="mood-submit" onClick={submit} disabled={busy}>
+          {busy ? '正在唤起 …' : '让 AI 用这个心情串记忆'}
+        </button>
+
+        {error && <div className="mood-err">{error}</div>}
+
+        {result && (
+          <div className="mood-result">
+            <div className="mood-result-narr">{result.narrative}</div>
+            <div className="mood-result-srcs-hd">引自 {result.sources.length} 条记忆</div>
+            <div className="mood-result-srcs">
+              {result.sources.map((s) => (
+                <div
+                  key={s.id}
+                  className="mood-result-src"
+                  onClick={() => { onClose(); navigate('/mem/' + encodeURIComponent(s.id)); }}
+                >
+                  <div className="mood-result-src-ttl">{s.name}</div>
+                  <div className="mood-result-src-sum">{s.summary}</div>
+                  <div className="mood-result-src-coord">v {s.valence.toFixed(2)} · a {s.arousal.toFixed(2)}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -1452,6 +1606,8 @@ function ReviewScreen() {
   const [curId, setCurId] = useState(null);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  // 全文缓存(/api/buckets 只回 200 字预览,审阅长文要拉单条全文)
+  const [fullById, setFullById] = useState({});
 
   useEffect(() => {
     let cancel = false;
@@ -1506,6 +1662,16 @@ function ReviewScreen() {
     if (!buckets || !curId) return null;
     return buckets.find(b => b.id === curId) || null;
   }, [buckets, curId]);
+
+  // 拉当前条目的全文(/api/buckets 只回 200 字预览),按 id 缓存避免重复请求
+  useEffect(() => {
+    if (!curId || fullById[curId] !== undefined) return;
+    let cancel = false;
+    api('/api/bucket/' + encodeURIComponent(curId))
+      .then(d => { if (!cancel) setFullById(prev => ({ ...prev, [curId]: (d && d.content) || '' })); })
+      .catch(() => { if (!cancel) setFullById(prev => ({ ...prev, [curId]: null })); });
+    return () => { cancel = true; };
+  }, [curId, fullById]);
 
   // 切 tab/scope 时,如果 cur 不在新 queue 里,自动切到新 queue 第一项
   // 故意只依赖 tab/scope,不让标记/删除等 buckets 变更打扰
@@ -1574,6 +1740,26 @@ function ReviewScreen() {
       if (!isUntoggle && next) setCurId(next.id);
     } catch (e) {
       alert('失败: ' + e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  // 重新脱水: 让 LLM 对当前条目 content 重跑一遍,生成新 name/summary/tags 等元数据
+  // 不动 importance/event_time/状态 flag;content 不变所以 embedding 不重算
+  const redehydrateCur = async () => {
+    if (!cur || busy) return;
+    if (!window.confirm('对「' + (cur.name || cur.id) + '」重新脱水?\nLLM 会重新生成标题/摘要/tags 等(原内容不变)。')) return;
+    setBusy(true);
+    try {
+      const r = await fetch('/api/bucket/' + encodeURIComponent(cur.id) + '/redehydrate', { method: 'POST' });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      // 用后端回的 metadata 直接覆盖本地这条
+      const fresh = d.metadata || {};
+      setBuckets(prev => prev.map(b => b.id === cur.id ? { ...b, ...fresh } : b));
+    } catch (e) {
+      alert('重新脱水失败: ' + e.message);
     } finally {
       setBusy(false);
     }
@@ -1659,11 +1845,17 @@ function ReviewScreen() {
             <div className="rv-main-text-wrap">
               <div className="rv-main-text">
                 {cur.summary && <p className="lead">{cur.summary}</p>}
-                {(cur.content_preview || '').split(/\n\s*\n/).filter(Boolean).map((p, i) => (
-                  <p key={i}>{p}</p>
-                ))}
-                {!cur.summary && !cur.content_preview && (
-                  <p style={{ color: 'var(--ink-4)' }}>(无内容预览)</p>
+                {(() => {
+                  // 优先全文(单条 fetch),没拉到时回退到 200 字 preview
+                  const body = fullById[cur.id] != null ? fullById[cur.id] : (cur.content_preview || '');
+                  const paras = body.split(/\n\s*\n/).filter(Boolean);
+                  return paras.map((p, i) => <p key={i}>{p}</p>);
+                })()}
+                {!cur.summary && !cur.content_preview && fullById[cur.id] == null && (
+                  <p style={{ color: 'var(--ink-4)' }}>(加载中…)</p>
+                )}
+                {!cur.summary && !cur.content_preview && fullById[cur.id] === '' && (
+                  <p style={{ color: 'var(--ink-4)' }}>(无内容)</p>
                 )}
               </div>
             </div>
@@ -1685,6 +1877,14 @@ function ReviewScreen() {
                 title={statusOf(cur) === 'doubt' ? '再点一次取消存疑' : '标记存疑'}
               >
                 <span className="ic">?</span><span>存疑</span>
+              </button>
+              <button
+                className="rv-action-btn redehydrate"
+                onClick={redehydrateCur}
+                disabled={busy}
+                title="重新跑 LLM 提炼元数据(标题/摘要/tags),原内容不变"
+              >
+                <span className="ic">↻</span><span>重新脱水</span>
               </button>
               <button
                 className="rv-action-btn del"
@@ -1715,6 +1915,7 @@ function ReviewScreen() {
           </div>
         </div>
 
+        {drawer && <div className="rv-queue-backdrop" onClick={() => setDrawer(false)} aria-hidden="true"/>}
         <div className={'rv-queue-drawer' + (drawer ? '' : ' closed')}>
           <div className="rv-queue-drawer-hd">
             <div className="rv-queue-drawer-hd-row">
