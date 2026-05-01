@@ -138,7 +138,7 @@ function ImportWorkbench() {
   const fetchQueue = iwC(async (opts = {}) => {
     try {
       if (!opts.silent) setLoadError(null);
-      const rows = await window.__obImportResults(100);
+      const rows = await window.__obImportResults(500);
       setQueue(rows.map(bucketToItem));
       setLoading(false);
     } catch (e) {
