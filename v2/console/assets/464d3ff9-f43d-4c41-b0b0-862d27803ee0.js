@@ -1063,15 +1063,22 @@ function ImportWorkbench() {
                 <div className="imp-attr-row">
                   <div className="imp-attr-key">类型</div>
                   <div style={{ display: 'flex', gap: 6 }}>
-                    {[['dynamic', '动态'], ['permanent', '钉决']].map(([k, label]) => (
-                      <button
-                        key={k}
-                        className={`imp-batch-pill${(active.protected ? 'permanent' : 'dynamic') === k ? ' on' : ''}`}
-                        onClick={() => updateActive({ protected: k === 'permanent' })}
-                      >
-                        {k === 'permanent' && '⛨ '}{label}
-                      </button>
-                    ))}
+                    {(() => {
+                      const current = active.noise ? 'noise' : (active.protected ? 'permanent' : 'dynamic');
+                      return [['dynamic', '动态'], ['permanent', '钉决'], ['noise', '⌀ 噪声']].map(([k, label]) => (
+                        <button
+                          key={k}
+                          className={`imp-batch-pill${current === k ? ' on' : ''}`}
+                          title={k === 'noise' ? '加速衰减(×0.05) + importance 锁 1, 几天内自动归档' : undefined}
+                          onClick={() => updateActive({
+                            noise: k === 'noise',
+                            protected: k === 'permanent',
+                          })}
+                        >
+                          {k === 'permanent' && '⛨ '}{label}
+                        </button>
+                      ));
+                    })()}
                   </div>
                 </div>
                 <div className="imp-attr-row">

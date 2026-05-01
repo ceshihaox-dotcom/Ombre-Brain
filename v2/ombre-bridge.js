@@ -64,6 +64,8 @@
       body: '',  // 列表 endpoint 不返回 content;打开详情时再 lazy-load
       importance: b.importance || 5,
       score: typeof b.score === 'number' ? b.score : 0,   // decay 分数, 999=钉/永久, 50=feel, 其他算出, <0.3 归档
+      noise: !!(b.resolved && (b.importance || 5) === 1), // 软删除/噪声: imp=1 + resolved 加速衰减(×0.05)
+      resolved: !!b.resolved,
       tags: tags,
       protected: !!(b.protected || b.pinned),
       feel: b.type === 'feel',
@@ -135,6 +137,12 @@
     if (patch.protected != null) body.protected = !!patch.protected;
     if (patch.highlight != null) body.highlight = !!patch.highlight;
     if (patch.internalized != null) body.internalized = !!patch.internalized;
+    // noise(软删除/标记噪声) → 后端没单独字段, 用 resolved + importance=1 表达
+    if (patch.noise != null) {
+      body.resolved = !!patch.noise;
+      if (patch.noise) body.importance = 1;
+      // 取消 noise: 不强行恢复 importance(用户原值), 让父级 patch 里若同时改了 importance 自然覆盖
+    }
     // event_time:patch 里的 date/time(本地)组装成 UTC ISO,空 → 后端清掉 metadata.event_time
     if (patch.event_time != null) {
       body.event_time = patch.event_time;

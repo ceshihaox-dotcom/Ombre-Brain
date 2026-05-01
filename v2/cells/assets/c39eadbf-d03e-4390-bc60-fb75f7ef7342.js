@@ -51,6 +51,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
       feel: !!item.feel,
       highlight: !!item.highlight,
       internalized: !!item.internalized,
+      noise: !!item.noise,
     });
     setEditing(true);
   };
@@ -148,6 +149,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
             {!editing && view.feel && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--rose-deep)' }}>❀ feel</span></>}
             {!editing && view.protected && <><span style={{ opacity: 0.5 }}>/</span><span>⛨ 已保护</span></>}
             {!editing && view.internalized && <><span style={{ opacity: 0.5 }}>/</span><span>◐ 已内化</span></>}
+            {!editing && view.noise && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--ink-4)' }}>⌀ 噪声</span></>}
           </div>
 
           {editing ? (
@@ -304,6 +306,22 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
                 <label className={`ob-modal-edit-flag ${draft.internalized ? 'on' : ''}`}>
                   <input type="checkbox" checked={draft.internalized} onChange={(e) => setDraft(d => ({ ...d, internalized: e.target.checked }))} />
                   <span>◐ 已内化</span>
+                </label>
+                <label className={`ob-modal-edit-flag ${draft.noise ? 'on' : ''}`} title="软删除: 加速衰减(×0.05) + 重要度锁 1, 几天内自动归档; 取消可恢复">
+                  <input
+                    type="checkbox"
+                    checked={!!draft.noise}
+                    onChange={(e) => setDraft(d => {
+                      const noise = e.target.checked;
+                      return {
+                        ...d,
+                        noise,
+                        // 标噪声 = importance 锁 1; 取消则恢复到原值或 5
+                        importance: noise ? 1 : (item.importance && item.importance > 1 ? item.importance : 5),
+                      };
+                    })}
+                  />
+                  <span>⌀ 噪声</span>
                 </label>
               </div>
             </>

@@ -60,6 +60,8 @@
       body: '',  // 列表 endpoint 不返回 content;打开详情时再 lazy-load
       importance: b.importance || 5,
       score: typeof b.score === 'number' ? b.score : 0,   // decay 分数
+      noise: !!(b.resolved && (b.importance || 5) === 1),
+      resolved: !!b.resolved,
       tags: tags,
       protected: !!(b.protected || b.pinned),
       feel: b.type === 'feel',
@@ -131,6 +133,10 @@
     if (patch.protected != null) body.protected = !!patch.protected;
     if (patch.highlight != null) body.highlight = !!patch.highlight;
     if (patch.internalized != null) body.internalized = !!patch.internalized;
+    if (patch.noise != null) {
+      body.resolved = !!patch.noise;
+      if (patch.noise) body.importance = 1;
+    }
     // event_time:patch 里的 date/time(本地)组装成 UTC ISO,空 → 后端清掉
     if (patch.event_time != null) {
       body.event_time = patch.event_time;

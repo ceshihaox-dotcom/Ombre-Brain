@@ -270,6 +270,7 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
       { id: 'internal', label: '已内化', tone: '', count: c(i => i.internalized) },
       { id: 'cold', label: '待消化', tone: '', count: c(i => i.importance < 2) },
       { id: 'mine', label: '我写的', tone: '', count: c(i => (i.tags || []).includes('亲手写')) },
+      { id: 'noise', label: '⌀ 噪声', tone: '', count: c(i => i.noise) },
     ];
   }, [items]);
 
@@ -294,6 +295,7 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
       else if (statusFilter === 'internal') v = v.filter(i => i.internalized);
       else if (statusFilter === 'cold') v = v.filter(i => i.importance < 2);
       else if (statusFilter === 'mine') v = v.filter(i => (i.tags || []).includes('亲手写'));
+      else if (statusFilter === 'noise') v = v.filter(i => i.noise);
     }
     if (tagFilters.length > 0) {
       v = v.filter(i => tagFilters.every(t => (i.tags || []).includes(t)));
