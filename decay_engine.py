@@ -24,7 +24,7 @@ import asyncio
 import logging
 from datetime import datetime
 
-from utils import is_internalized, is_protected
+from utils import is_internalized, is_protected, is_highlighted
 
 logger = logging.getLogger("ombre_brain.decay")
 
@@ -38,24 +38,71 @@ class DecayEngine:
     计算衰减得分，将低活跃桶自动归档，模拟自然遗忘。
     """
 
+    # ---------------------------------------------------------
+    # Default values — 这些是出厂默认, runtime_config 可覆盖
+    # 前端"恢复默认"按钮回到这套值
+    # ---------------------------------------------------------
+    DEFAULTS = {
+        "feel_score": 50.0,            # feel 桶基础权重 (0=跟随 importance, >0=锁定值)
+        "protected_score": 100.0,      # protected/permanent 桶上限 (原硬编 999, 太极端)
+        "highlight_boost_pct": 30.0,   # highlight=true 时 score *= (1 + pct/100)
+        "surface_threshold": 5.0,      # score 高于此值 → 标记为"活跃" (UI 提示用)
+        "archive_threshold": 0.3,      # score 低于此值 → 自动归档
+        "decay_lambda": 0.05,          # 时间衰减速率 (大→快)
+        "arousal_boost": 0.8,          # arousal 对 emotion_weight 的加成系数
+        "emotion_base": 1.0,           # 情感权重基线
+        "resolved_factor": 0.05,       # 标 resolved/noise 时的衰减乘数
+        "internalized_resolved_factor": 0.02,  # resolved + internalized 双标加速
+    }
+
     def __init__(self, config: dict, bucket_mgr):
         # --- Load decay parameters / 加载衰减参数 ---
         decay_cfg = config.get("decay", {})
-        self.decay_lambda = decay_cfg.get("lambda", 0.05)
-        self.threshold = decay_cfg.get("threshold", 0.3)
+        # check_interval 不暴露 UI(后台任务调度), 沿用 config
         self.check_interval = decay_cfg.get("check_interval_hours", 24)
 
-        # --- Emotion weight params (continuous arousal coordinate) ---
-        # --- 情感权重参数（基于连续 arousal 坐标）---
+        # 所有可调参数初始化为默认 (后续 apply_runtime_overrides 会覆盖)
+        for k, v in self.DEFAULTS.items():
+            setattr(self, k, v)
+        # 兼容旧字段名(仍被外部代码读)
+        self.threshold = self.archive_threshold
+
+        # config.yaml 里的初值覆盖默认 (启动时一次)
+        if "lambda" in decay_cfg:
+            self.decay_lambda = float(decay_cfg["lambda"])
+        if "threshold" in decay_cfg:
+            self.archive_threshold = float(decay_cfg["threshold"])
+            self.threshold = self.archive_threshold
         emotion_cfg = decay_cfg.get("emotion_weights", {})
-        self.emotion_base = emotion_cfg.get("base", 1.0)
-        self.arousal_boost = emotion_cfg.get("arousal_boost", 0.8)
+        if "base" in emotion_cfg:
+            self.emotion_base = float(emotion_cfg["base"])
+        if "arousal_boost" in emotion_cfg:
+            self.arousal_boost = float(emotion_cfg["arousal_boost"])
 
         self.bucket_mgr = bucket_mgr
 
         # --- Background task control / 后台任务控制 ---
         self._task: asyncio.Task | None = None
         self._running = False
+
+    def apply_runtime_overrides(self, overrides: dict) -> None:
+        """前端 POST /api/decay-config 后调用,把 dict 里的字段设到 instance.
+        无效 key 静默忽略;非法值类型转换失败也忽略不抛。"""
+        if not isinstance(overrides, dict):
+            return
+        for k, default_v in self.DEFAULTS.items():
+            if k in overrides:
+                try:
+                    new_v = float(overrides[k])
+                    setattr(self, k, new_v)
+                except (TypeError, ValueError):
+                    pass
+        # 同步老字段
+        self.threshold = self.archive_threshold
+
+    def current_overrides(self) -> dict:
+        """读当前所有可调参数(用于 GET endpoint 返回)。"""
+        return {k: getattr(self, k, v) for k, v in self.DEFAULTS.items()}
 
     @property
     def is_running(self) -> bool:
@@ -103,15 +150,15 @@ class DecayEngine:
 
         # --- Protected buckets: never decay (highlight 单独不防衰减) ---
         if is_protected(metadata):
-            return 999.0
+            return self.protected_score
 
         # --- Permanent buckets never decay ---
         if metadata.get("type") == "permanent":
-            return 999.0
+            return self.protected_score
 
-        # --- Feel buckets: never decay, fixed moderate score ---
-        if metadata.get("type") == "feel":
-            return 50.0
+        # --- Feel buckets: 锁定 feel_score; 设为 0 时回退跟随 importance 公式 ---
+        if metadata.get("type") == "feel" and self.feel_score > 0:
+            return self.feel_score
 
         importance = max(1, min(10, int(metadata.get("importance", 5))))
         activation_count = max(1, int(metadata.get("activation_count", 1)))
@@ -160,14 +207,17 @@ class DecayEngine:
         resolved = metadata.get("resolved", False)
         internalized = is_internalized(metadata)
         if resolved and internalized:
-            resolved_factor = 0.02
+            resolved_factor = self.internalized_resolved_factor
         elif resolved:
-            resolved_factor = 0.05
+            resolved_factor = self.resolved_factor
         else:
             resolved_factor = 1.0
         urgency_boost = 1.5 if (arousal > 0.7 and not resolved) else 1.0
 
-        return round(base_score * resolved_factor * urgency_boost, 4)
+        # --- Highlight 加成: 标记重要的桶 score 上浮 highlight_boost_pct % ---
+        highlight_mult = 1.0 + (self.highlight_boost_pct / 100.0) if is_highlighted(metadata) else 1.0
+
+        return round(base_score * resolved_factor * urgency_boost * highlight_mult, 4)
 
     # ---------------------------------------------------------
     # Execute one decay cycle
