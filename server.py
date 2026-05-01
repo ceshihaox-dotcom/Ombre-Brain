@@ -2176,6 +2176,156 @@ async def api_network(request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@mcp.custom_route("/api/auto-surface", methods=["POST"])
+async def api_auto_surface(request):
+    """前端自动浮现注入 endpoint.
+    每轮 user 消息发出前, 前端调一次此 API, 拿回 2-3 条相关记忆摘要,
+    拼到 system prompt 末尾. 让 AI 自动"想起"相关旧事, 不再依赖
+    它自己决定要不要调 breath 工具.
+
+    body: {
+      user_message: str,        必填, 当前轮 user 消息(取前 50 字当 query)
+      max_results:  int = 3,    返回几条
+      max_tokens:   int = 500,  injection_text 总 token 软上限
+      exclude_ids:  [str] = [], 排除的 bucket_id 列表(用于上下文去重)
+      include_feel: bool = True, 是否单独保留 1 个 feel 槽
+    }
+
+    return: {
+      injection_text: str,      可直接拼到 system prompt 的文本
+      sources:        [{id, name, score, summary}]
+    }
+    """
+    from starlette.responses import JSONResponse
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+
+    user_message = (body.get("user_message") or "").strip()
+    if not user_message:
+        return JSONResponse({"injection_text": "", "sources": []})
+    max_results = max(1, min(int(body.get("max_results", 3)), 10))
+    max_tokens  = max(50, min(int(body.get("max_tokens", 500)), 3000))
+    exclude_ids = set(body.get("exclude_ids") or [])
+    include_feel = bool(body.get("include_feel", True))
+
+    # 用消息前 80 字当 query (50 字克的建议偏短, 80 给点缓冲)
+    query = user_message[:80]
+
+    try:
+        all_buckets = await bucket_mgr.list_all(include_archive=False)
+    except Exception as e:
+        return JSONResponse({"error": f"list_all failed: {e}"}, status_code=500)
+
+    w_sum = bucket_mgr.w_topic + bucket_mgr.w_emotion + bucket_mgr.w_time + bucket_mgr.w_importance
+
+    scored = []   # [(normalized, is_feel, bucket)]
+    for b in all_buckets:
+        meta = b.get("metadata", {})
+        bid = b["id"]
+        if bid in exclude_ids:
+            continue
+        # 排除: 已内化(隐藏)/ 噪声(软删除); highlight 是核心准则, 也排除避免每次都浮(走另外通道)
+        if is_internalized(meta):
+            continue
+        if meta.get("resolved", False) and meta.get("importance", 5) == 1:
+            continue   # noise
+        if is_highlighted(meta):
+            continue
+        try:
+            topic = bucket_mgr._calc_topic_score(query, b)
+            emotion = bucket_mgr._calc_emotion_score(None, None, meta)
+            time_s = bucket_mgr._calc_time_score(meta)
+            imp = max(1, min(10, int(meta.get("importance", 5)))) / 10.0
+            raw = (topic * bucket_mgr.w_topic
+                   + emotion * bucket_mgr.w_emotion
+                   + time_s * bucket_mgr.w_time
+                   + imp * bucket_mgr.w_importance)
+            normalized = (raw / w_sum) * 100 if w_sum > 0 else 0
+            if meta.get("resolved", False):
+                normalized *= 0.3
+            is_feel = (meta.get("type") == "feel")
+            scored.append((normalized, is_feel, b))
+        except Exception:
+            continue
+
+    # 按分数排序
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    # 浮现阈值 = 配置的 surface_threshold 或回退到 fuzzy_threshold * 0.6 (略宽松)
+    surface_thr = float(getattr(decay_engine, "surface_threshold", 5.0))
+    # surface_threshold 是 0-80 范围, 这里转成跟 normalized(0-100) 同尺度
+    threshold = max(15, surface_thr * 0.5)   # 不低于 15
+
+    # 选 top results: 优先非 feel, 留 1 个槽给 feel 如果 include_feel
+    feel_slot = 1 if include_feel else 0
+    normal_slots = max_results - feel_slot
+    picks = []
+    used_ids = set()
+    # 先填普通槽
+    for normalized, is_feel, b in scored:
+        if is_feel:
+            continue
+        if normalized < threshold:
+            break
+        picks.append((normalized, b))
+        used_ids.add(b["id"])
+        if len(picks) >= normal_slots:
+            break
+    # 再填 feel 槽
+    if feel_slot > 0:
+        for normalized, is_feel, b in scored:
+            if not is_feel:
+                continue
+            if b["id"] in used_ids:
+                continue
+            if normalized < threshold:
+                break
+            picks.append((normalized, b))
+            used_ids.add(b["id"])
+            break   # 只要 1 个 feel
+
+    # 没浮出任何东西就返回空(让前端不注入也不出错)
+    if not picks:
+        return JSONResponse({"injection_text": "", "sources": [], "threshold": threshold})
+
+    # 格式化注入文本; 用 summary 优先, 没 summary 用 content_preview 截 100 字
+    lines = []
+    sources = []
+    token_used = 0
+    for normalized, b in picks:
+        meta = b.get("metadata", {})
+        name = meta.get("name", b["id"])
+        summary = (meta.get("summary") or "").strip()
+        if not summary:
+            content = strip_wikilinks(b.get("content", "") or "")
+            summary = content[:100].strip()
+        if not summary:
+            continue
+        line = f"[记忆浮现] {name}: {summary}"
+        # 软上限: 累加超过 max_tokens 就停
+        line_tokens = count_tokens_approx(line)
+        if token_used + line_tokens > max_tokens:
+            break
+        lines.append(line)
+        token_used += line_tokens
+        sources.append({
+            "id": b["id"],
+            "name": name,
+            "summary": summary,
+            "score": round(normalized, 2),
+            "is_feel": meta.get("type") == "feel",
+        })
+
+    return JSONResponse({
+        "injection_text": "\n".join(lines),
+        "sources": sources,
+        "threshold": round(threshold, 2),
+        "total_candidates": len(scored),
+    })
+
+
 @mcp.custom_route("/api/breath-debug", methods=["GET"])
 async def api_breath_debug(request):
     """Debug endpoint: simulate breath scoring and return per-bucket breakdown."""
