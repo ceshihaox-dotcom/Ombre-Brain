@@ -27,3 +27,6 @@ httpx>=0.27.0
 # 向量相似度计算 (导入模式/聚类)
 numpy>=1.24.0
 scikit-learn>=1.2.0
+
+# 纯 Python git 实现 (备份 endpoint 用, 不依赖系统 git 命令)
+dulwich>=0.21.0
