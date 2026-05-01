@@ -392,6 +392,11 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
             ) : (
               <>
                 <button
+                  className={`ob-modal-btn ${view.noise ? 'on' : ''}`}
+                  onClick={() => onUpdate && onUpdate(item.id, { noise: !view.noise })}
+                  title="软删除: 加速衰减 + 重要度锁 1, 几天内自动归档"
+                >⌀ {view.noise ? '已标噪声' : '噪声'}</button>
+                <button
                   className={`ob-modal-btn ${view.protected ? 'on' : ''}`}
                   onClick={() => toggleField('protected')}
                 >⛨ {view.protected ? '已保护' : '保护'}</button>
