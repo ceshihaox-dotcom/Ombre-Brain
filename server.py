@@ -2253,9 +2253,12 @@ async def api_backup(request):
             return JSONResponse({"ok": True, "message": "无文件可备份"})
         porcelain.add(tmp, paths=all_files)
 
-        # 5. commit
+        # 5. commit; bucket 数 = 递归数所有 .md (因为 buckets/ 下面是 dynamic/permanent/feel 等子目录)
         ts = _dt.now().strftime("%Y-%m-%d %H:%M")
-        bucket_count = len([f for f in os.listdir(backup_subdir) if f.endswith(".md")]) if os.path.exists(backup_subdir) else 0
+        bucket_count = 0
+        if os.path.exists(backup_subdir):
+            for _root, _dirs, _files in os.walk(backup_subdir):
+                bucket_count += sum(1 for f in _files if f.endswith(".md"))
         commit_msg = f"auto-backup {ts} ({bucket_count} buckets)".encode("utf-8")
         author = f"{user} <{user}@ombre-backup>".encode("utf-8")
         try:
