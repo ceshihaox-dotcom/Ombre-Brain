@@ -720,6 +720,15 @@ input, textarea { font: inherit; color: inherit; }
   background: var(--bg-2);
 }
 .dd-item-imp i.on { background: var(--accent); }
+.dd-item-score {
+  flex-shrink: 0;
+  align-self: center;
+  font-family: var(--serif); font-style: italic;
+  font-size: 11px;
+  color: var(--ink-4);
+  letter-spacing: 0.03em;
+  margin-right: 2px;
+}
 
 /* ========= 屏 3 · 单条全貌 ========= */
 
@@ -771,19 +780,14 @@ input, textarea { font: inherit; color: inherit; }
 .mem-full-tag.hi    { color: var(--accent); background: var(--accent-3); }
 .mem-full-tag.ai    { color: var(--accent); background: var(--accent-3); }
 .mem-full-tag.noise { color: var(--ink-4); background: rgba(120,120,130,0.08); }
-.mem-full-score-row {
-  display: flex; align-items: baseline; gap: 8px;
-  margin-top: 6px;
-  padding-left: 60px; /* 对齐 importance bar 后面的位置 */
+/* score 数字内联在 importance 行末尾, 字体字号沿用旧 score-row 的数字样式 */
+.mem-full-score-inline {
+  margin-left: 8px;
   font-family: var(--serif); font-style: italic;
-  font-size: 11px;
-  color: var(--ink-4);
-  letter-spacing: 0.04em;
-}
-.mem-full-score-row b {
   font-weight: 600;
   font-size: 13px;
   color: var(--ink-3);
+  letter-spacing: 0.04em;
 }
 .mem-full-title {
   font-family: var(--serif); font-style: italic;

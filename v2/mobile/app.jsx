@@ -815,6 +815,9 @@ function DayDetailScreen({ dayKey }) {
               </div>
               <div className="dd-item-snip">{bucketSummary(b)}</div>
             </div>
+            {typeof b.score === 'number' && (
+              <span className="dd-item-score" title="decay 权重">{b.score.toFixed(2)}</span>
+            )}
             <span className="dd-item-imp">
               {Array.from({ length: 10 }).map((_, k) => (
                 <i key={k} style={{
@@ -919,11 +922,10 @@ function MemFullScreen({ id }) {
             fontFamily: 'var(--serif)', fontStyle: 'italic',
             color: 'var(--accent)', fontWeight: 600, fontSize: '15px'
           }}>{importance} / 10</b>
-        </div>
-
-        <div className="mem-full-score-row" title="decay 权重 · 999 = 钉决/永久, <0.3 自动归档">
-          <span>score</span>
-          <b>{(typeof m.score === 'number' ? m.score : 0).toFixed(2)}</b>
+          <span
+            className="mem-full-score-inline"
+            title="decay 权重 · 999 = 钉决/永久, <0.3 自动归档"
+          >{(typeof data.score === 'number' ? data.score : 0).toFixed(2)}</span>
         </div>
 
         <div className="mem-full-text">
@@ -1305,14 +1307,32 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
     return () => { cancel = true; };
   }, [bucketId]);
 
-  // 切噪声: 标=resolved+importance=1, 取消=resolved=false 并把 importance 拉回 5(避免留 1 看起来像普通低重要度)
-  const toggleNoise = () => {
-    if (noise) {
-      setNoise(false);
-      if (imp === 1) setImp(5);
-    } else {
-      setNoise(true);
-      setImp(1);
+  // 切噪声: 立刻 POST 持久化(对齐桌面 view-mode 噪声按钮)
+  //   标=resolved+importance=1, 取消=resolved=false + importance 拉回 5(避免留 1 显得像普通低重要度)
+  //   不依赖顶部"保存"按钮: 用户标完直接删 / 关闭, 噪声标记也已写后端
+  const toggleNoise = async () => {
+    const newNoise = !noise;
+    const prevImp = imp;
+    const newImp = newNoise ? 1 : (imp === 1 ? 5 : imp);
+    // 乐观本地更新
+    setNoise(newNoise);
+    setImp(newImp);
+    try {
+      const r = await fetch('/api/bucket/' + encodeURIComponent(bucketId) + '/update', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ resolved: newNoise, importance: newImp }),
+      });
+      if (!r.ok) {
+        const err = await r.json().catch(() => ({}));
+        throw new Error(err.error || ('HTTP ' + r.status));
+      }
+      originalNoiseRef.current = newNoise;
+    } catch (e) {
+      // 回滚
+      setNoise(!newNoise);
+      setImp(prevImp);
+      alert('噪声标记失败: ' + e.message);
     }
   };
 
