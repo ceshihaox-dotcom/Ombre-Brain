@@ -92,6 +92,10 @@ function isFeel(b) {
   return (b.tags || []).some(t => /feel/i.test(String(t)));
 }
 
+function isNoise(b) {
+  return !!(b.resolved && (b.importance || 5) === 1);
+}
+
 function bucketTitle(b) {
   return b.name || b.id;
 }
@@ -200,9 +204,12 @@ function HomeScreen() {
   };
 
   // 应用 chip 筛选 + 搜索 → flat 结果集
+  //   噪声: 默认隐藏; 只有 noise chip 开启时才(且只)显示噪声
   const filteredBuckets = useMemo(() => {
     if (!buckets) return [];
-    let result = buckets;
+    let result = filters.has('noise')
+      ? buckets.filter(b => isNoise(b))
+      : buckets.filter(b => !isNoise(b));
     if (filters.has('hi'))      result = result.filter(b => b.highlight);
     if (filters.has('feel'))    result = result.filter(b => isFeel(b));
     if (filters.has('recent7')) {
@@ -231,6 +238,7 @@ function HomeScreen() {
     if (!buckets) return [];
     const grouped = new Map();
     for (const b of buckets) {
+      if (isNoise(b)) continue; // 默认天卡不计入噪声
       const dt = bucketDate(b);
       if (!dt) continue;
       const k = dayKeyOf(dt);
@@ -341,6 +349,11 @@ function HomeScreen() {
             className={'home-chip' + (filters.has('ai') ? ' on' : '')}
             onClick={() => toggleFilter('ai')}
           >AI 写入</span>
+          <span
+            className={'home-chip noise' + (filters.has('noise') ? ' on' : '')}
+            onClick={() => toggleFilter('noise')}
+            title="只看标了噪声的(默认其它视图都隐藏)"
+          >⌀ 噪声</span>
         </div>
       </div>
 
@@ -724,6 +737,7 @@ function DayDetailScreen({ dayKey }) {
     if (!buckets) return null;
     const items = [];
     for (const b of buckets) {
+      if (isNoise(b)) continue; // 噪声不进当天列表
       const dt = bucketDate(b);
       if (!dt) continue;
       if (dayKeyOf(dt) === dayKey) items.push({ b, dt });
@@ -885,6 +899,7 @@ function MemFullScreen({ id }) {
         <div className="mem-full-tags">
           {m.highlight && <span className="mem-full-tag hi">★ highlight</span>}
           {feel && <span className="mem-full-tag feel">feel</span>}
+          {isNoise(m) && <span className="mem-full-tag noise">⌀ 噪声</span>}
           {tags.map((t, i) => <span key={i} className="mem-full-tag">{t}</span>)}
         </div>
 
@@ -904,6 +919,11 @@ function MemFullScreen({ id }) {
             fontFamily: 'var(--serif)', fontStyle: 'italic',
             color: 'var(--accent)', fontWeight: 600, fontSize: '15px'
           }}>{importance} / 10</b>
+        </div>
+
+        <div className="mem-full-score-row" title="decay 权重 · 999 = 钉决/永久, <0.3 自动归档">
+          <span>score</span>
+          <b>{(typeof m.score === 'number' ? m.score : 0).toFixed(2)}</b>
         </div>
 
         <div className="mem-full-text">
@@ -1120,6 +1140,7 @@ function FormFields({
   eventTime, setEventTime,
   showSummary = true, showPin = true, contentRequired = false,
   onRedehydrate, redehydrating,    // 可选:编辑既有桶时传入,新建时不传
+  noise, onToggleNoise,            // 可选:编辑既有桶时传入(噪声 toggle)
 }) {
   const feel = tags.some(t => /^feel/i.test(String(t)));
   const toggleFeel = () => {
@@ -1200,6 +1221,15 @@ function FormFields({
               <span className="ic">⚲</span><span>钉决</span>
             </button>
           )}
+          {onToggleNoise && (
+            <button
+              className={'edit-toggle noise ' + (noise ? 'on' : '')}
+              onClick={onToggleNoise}
+              title="标噪声 = 加速衰减(×0.05),从默认列表 / 检索 / AI 浮现里隐藏"
+            >
+              <span className="ic">⌀</span><span>噪声</span>
+            </button>
+          )}
           {onRedehydrate && (
             <button
               className="edit-toggle action redehydrate"
@@ -1243,11 +1273,15 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
   const [content, setContent] = useState('');
   const [imp, setImp] = useState(5);
   const [pin, setPin] = useState(false);
+  const [noise, setNoise] = useState(false);
   const [tags, setTags] = useState([]);
   const [tagInput, setTagInput] = useState('');
   const [eventTime, setEventTime] = useState('');
   const [saving, setSaving] = useState(false);
   const [redehydrating, setRedehydrating] = useState(false);
+  // 记下加载时的 noise 初值, save 时若没变就完全不动 resolved 字段
+  // (resolved 不止是噪声标记, 还表"已解决/未解决", 不能误覆盖)
+  const originalNoiseRef = useRef(false);
 
   useEffect(() => {
     let cancel = false;
@@ -1260,6 +1294,9 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
         setContent(d.content || '');
         setImp(m.importance || 5);
         setPin(!!m.protected);
+        const initialNoise = isNoise(m);
+        setNoise(initialNoise);
+        originalNoiseRef.current = initialNoise;
         setTags(m.tags || []);
         setEventTime(toLocalDateTimeStr(m.event_time || m.created || ''));
         setLoading(false);
@@ -1268,22 +1305,39 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
     return () => { cancel = true; };
   }, [bucketId]);
 
+  // 切噪声: 标=resolved+importance=1, 取消=resolved=false 并把 importance 拉回 5(避免留 1 看起来像普通低重要度)
+  const toggleNoise = () => {
+    if (noise) {
+      setNoise(false);
+      if (imp === 1) setImp(5);
+    } else {
+      setNoise(true);
+      setImp(1);
+    }
+  };
+
   const save = async () => {
     setSaving(true);
     setError(null);
     try {
+      const body = {
+        name: name.trim() || bucketId,
+        summary: summary,
+        content: content,
+        importance: imp,
+        tags: tags,
+        protected: pin,
+        event_time: fromLocalDateTimeStr(eventTime),
+      };
+      // 噪声字段只在用户实际切换时发送, 避免误覆盖 resolved 的本意(已解决/未解决)
+      if (noise !== originalNoiseRef.current) {
+        body.resolved = noise;
+        if (noise) body.importance = 1;
+      }
       const r = await fetch('/api/bucket/' + encodeURIComponent(bucketId) + '/update', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: name.trim() || bucketId,
-          summary: summary,
-          content: content,
-          importance: imp,
-          tags: tags,
-          protected: pin,
-          event_time: fromLocalDateTimeStr(eventTime),
-        }),
+        body: JSON.stringify(body),
       });
       if (!r.ok) {
         const err = await r.json().catch(() => ({}));
@@ -1313,6 +1367,9 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
       setSummary(m.summary || '');
       setImp(m.importance || imp);
       setPin(!!m.protected);
+      const newNoise = isNoise(m);
+      setNoise(newNoise);
+      originalNoiseRef.current = newNoise;
       setTags(m.tags || []);
       // 同步给父级状态(审阅区已立刻反映新标题/摘要/tags)
       if (onSaved) onSaved(m);
@@ -1371,6 +1428,7 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
               eventTime={eventTime} setEventTime={setEventTime}
               onRedehydrate={redehydrate}
               redehydrating={redehydrating}
+              noise={noise} onToggleNoise={toggleNoise}
             />
             <button className="edit-delete-btn" onClick={del} disabled={loading || saving}>
               ✕ 删除这条记忆
@@ -2179,6 +2237,18 @@ function SettingScreen() {
             <span className="setting-row-arrow">›</span>
           </div>
         </div>
+
+        <div className="setting-section-hd">引擎</div>
+        <div className="setting-list">
+          <div className="setting-row" onClick={() => navigate('/setting/decay')}>
+            <div className="setting-row-ic">∿</div>
+            <div className="setting-row-mid">
+              <div className="setting-row-title">调律</div>
+              <div className="setting-row-sub">decay 权重 · 影响浮现/归档</div>
+            </div>
+            <span className="setting-row-arrow">›</span>
+          </div>
+        </div>
       </div>
       <TabBar active="setting"/>
     </div>
@@ -2279,6 +2349,151 @@ function ApiSettingScreen() {
   );
 }
 
+// ─────────────────────────────────────────
+// 调律 · 衰减权重(decay)配置子页
+//   只列最常用的几个参数(桌面端有全部 10 个)
+//   API: GET /api/decay-config, POST /api/decay-config (单参数), POST /api/decay-config/reset
+// ─────────────────────────────────────────
+
+const DECAY_KEYS_MOBILE = [
+  'archive_threshold',
+  'surface_threshold',
+  'decay_lambda',
+  'emotion_base',
+  'highlight_boost_pct',
+];
+
+function DecayConfigScreen() {
+  const [cfg, setCfg] = useState(null);
+  const [error, setError] = useState(null);
+  const [savingKey, setSavingKey] = useState(null);
+  const [resetting, setResetting] = useState(false);
+
+  useEffect(() => {
+    api('/api/decay-config')
+      .then(d => setCfg(d))
+      .catch(e => setError(e.message));
+  }, []);
+
+  const updateOne = async (key, value) => {
+    if (!cfg) return;
+    const old = cfg.current[key];
+    setCfg(c => ({ ...c, current: { ...c.current, [key]: value } }));
+    setSavingKey(key);
+    try {
+      const r = await fetch('/api/decay-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: value }),
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      if (d && d.current) setCfg(c => ({ ...c, current: d.current }));
+    } catch (e) {
+      alert('保存失败: ' + e.message);
+      setCfg(c => ({ ...c, current: { ...c.current, [key]: old } }));
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const resetAll = async () => {
+    if (!cfg) return;
+    if (!window.confirm('全部参数恢复出厂默认?')) return;
+    setResetting(true);
+    try {
+      const r = await fetch('/api/decay-config/reset', { method: 'POST' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      if (d && d.current) setCfg(c => ({ ...c, current: d.current }));
+    } catch (e) {
+      alert('恢复失败: ' + e.message);
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  // 按白名单过滤 + 保留 schema 顺序
+  const visibleSchema = useMemo(() => {
+    if (!cfg || !cfg.schema) return [];
+    return cfg.schema.filter(it => DECAY_KEYS_MOBILE.includes(it.key));
+  }, [cfg]);
+
+  return (
+    <div className="trash-body">
+      <div className="sub-top">
+        <div className="sub-back-row">
+          <button className="app-back" onClick={() => navigate('/setting')}>‹ 设置</button>
+          <span className="app-eyebrow" style={{ marginLeft: 'auto' }}>
+            <span>改完即刻生效</span>
+          </span>
+        </div>
+        <h1 className="sub-title">调律</h1>
+        <div className="sub-meta">decay 权重 · 影响 score 高低 / 浮现 / 归档</div>
+      </div>
+
+      <div className="decay-list">
+        {error && <div className="app-error">后端错: {error}</div>}
+        {!cfg && !error && <div className="app-loading">载入中…</div>}
+
+        {cfg && (
+          <div className="decay-reset-row">
+            <button
+              className="decay-reset-btn"
+              onClick={resetAll}
+              disabled={resetting}
+            >{resetting ? '⌛ 恢复中…' : '↺ 全部恢复默认'}</button>
+          </div>
+        )}
+
+        {cfg && visibleSchema.map(item => {
+          const cur = cfg.current[item.key];
+          const def = cfg.defaults[item.key];
+          const isDefault = Math.abs((cur ?? 0) - (def ?? 0)) < 1e-6;
+          const fmt = v => (item.step < 1 ? Number(v).toFixed(2) : Math.round(v));
+          return (
+            <div className="decay-row" key={item.key}>
+              <div className="decay-row-hd">
+                <span className="decay-row-lbl">{item.label}</span>
+                <span className={'decay-row-val' + (isDefault ? '' : ' changed')}>
+                  {fmt(cur)}
+                </span>
+                <button
+                  className="decay-row-reset"
+                  onClick={() => updateOne(item.key, def)}
+                  disabled={isDefault || savingKey === item.key}
+                  title={'恢复默认 ' + fmt(def)}
+                >↺</button>
+              </div>
+              <input
+                type="range"
+                min={item.min}
+                max={item.max}
+                step={item.step}
+                value={cur}
+                onChange={e => updateOne(item.key, +e.target.value)}
+                className="decay-row-slider"
+              />
+              <div className="decay-row-hint">
+                <span>{item.hint}</span>
+                <span>{item.min} – {item.max} · 默认 {fmt(def)}</span>
+              </div>
+            </div>
+          );
+        })}
+
+        {cfg && (
+          <div className="decay-foot">
+            桌面控制台还有更多参数 · 改动写入 buckets/runtime_config.json
+          </div>
+        )}
+      </div>
+
+      <TabBar active="setting"/>
+    </div>
+  );
+}
+
 function TrashScreen() {
   const [items, setItems] = useState(null);
   const [error, setError] = useState(null);
@@ -2341,6 +2556,10 @@ function TrashScreen() {
           <div key={it.id} className="trash-item">
             <div className="trash-item-hd">
               <span className="trash-item-title">{it.name || it.id}</span>
+              {it.noise && <span className="trash-item-noise">⌀ 噪声</span>}
+              {typeof it.score === 'number' && (
+                <span className="trash-item-score" title="decay score">{it.score.toFixed(2)}</span>
+              )}
               <span className="trash-item-when">
                 {it.trashed_at ? new Date(it.trashed_at).toLocaleDateString() : '—'}
               </span>
@@ -2674,6 +2893,7 @@ function App() {
       if (rest[0] === 'trash') return <TrashScreen/>;
       if (rest[0] === 'import') return <ImportScreen/>;
       if (rest[0] === 'api') return <ApiSettingScreen/>;
+      if (rest[0] === 'decay') return <DecayConfigScreen/>;
       return <SettingScreen/>;
     case 'new':
       return <NewScreen/>;
