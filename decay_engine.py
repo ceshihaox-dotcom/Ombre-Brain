@@ -43,7 +43,7 @@ class DecayEngine:
     # 前端"恢复默认"按钮回到这套值
     # ---------------------------------------------------------
     DEFAULTS = {
-        "feel_score": 50.0,            # feel 桶基础权重 (0=跟随 importance, >0=锁定值)
+        "feel_score": 0.0,             # feel 桶基础权重 (0=跟随 importance, >0=锁定值)
         "protected_score": 100.0,      # protected/permanent 桶上限 (原硬编 999, 太极端)
         "highlight_boost_pct": 30.0,   # highlight=true 时 score *= (1 + pct/100)
         "surface_threshold": 5.0,      # score 高于此值 → 标记为"活跃" (UI 提示用)
@@ -246,10 +246,12 @@ class DecayEngine:
         for bucket in buckets:
             meta = bucket.get("metadata", {})
 
-            # Skip permanent / protected / feel buckets
-            # 跳过固化桶、保护桶(防衰减)和 feel 桶。highlight 单独不防衰减,
-            # 仍参与衰减/归档,只是浮现时被推到核心准则区。
-            if meta.get("type") in ("permanent", "feel") or is_protected(meta):
+            # Skip permanent / protected buckets
+            # 跳过固化桶、保护桶(防衰减)。highlight 单独不防衰减,仍参与
+            # 衰减/归档, 只是浮现时被推到核心准则区。
+            # 注 (2026-05-02): feel 原本也豁免, 现去掉 — feel 实质已从
+            # "心动时刻" 演化成 "日记记录", 让它跟普通记忆一起按分数自然遗忘
+            if meta.get("type") in ("permanent",) or is_protected(meta):
                 continue
 
             checked += 1
