@@ -286,8 +286,13 @@ class BucketManager:
             kwargs.setdefault("highlight", v)
 
         # --- Protected 桶 importance 锁 10(highlight 单独不锁) ---
+        # 例外: 标噪声(resolved=True + importance=1)与 protected 语义矛盾,
+        # 自动取消保护让噪声能落, 不要求用户先手动取消置顶
+        marking_noise = kwargs.get("resolved") is True and kwargs.get("importance") == 1
+        if marking_noise:
+            kwargs["protected"] = False
         currently_protected = bool(post.get("protected", False)) or kwargs.get("protected", False)
-        if currently_protected:
+        if currently_protected and not marking_noise:
             kwargs.pop("importance", None)  # 静默忽略,protected 始终是 10
 
         # --- Update only fields that were passed in / 只改传入的字段 ---

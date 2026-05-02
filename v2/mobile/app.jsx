@@ -815,17 +815,19 @@ function DayDetailScreen({ dayKey }) {
               </div>
               <div className="dd-item-snip">{bucketSummary(b)}</div>
             </div>
-            {typeof b.score === 'number' && (
-              <span className="dd-item-score" title="decay 权重">{b.score.toFixed(2)}</span>
-            )}
-            <span className="dd-item-imp">
-              {Array.from({ length: 10 }).map((_, k) => (
-                <i key={k} style={{
-                  height: ((k + 1) * 1.2 + 3) + 'px',
-                  background: k < (b.importance || 5) ? 'var(--accent)' : 'var(--bg-2)',
-                }}/>
-              ))}
-            </span>
+            <div className="dd-item-right">
+              <span className="dd-item-imp">
+                {Array.from({ length: 10 }).map((_, k) => (
+                  <i key={k} style={{
+                    height: ((k + 1) * 1.2 + 3) + 'px',
+                    background: k < (b.importance || 5) ? 'var(--accent)' : 'var(--bg-2)',
+                  }}/>
+                ))}
+              </span>
+              {typeof b.score === 'number' && (
+                <span className="dd-item-score" title="decay 权重">{b.score.toFixed(2)}</span>
+              )}
+            </div>
           </div>
         ))}
       </div>
@@ -1308,15 +1310,17 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
   }, [bucketId]);
 
   // 切噪声: 立刻 POST 持久化(对齐桌面 view-mode 噪声按钮)
-  //   标=resolved+importance=1, 取消=resolved=false + importance 拉回 5(避免留 1 显得像普通低重要度)
-  //   不依赖顶部"保存"按钮: 用户标完直接删 / 关闭, 噪声标记也已写后端
+  //   标=resolved+importance=1, 取消=resolved=false + importance 拉回 5
+  //   置顶桶: 标噪声会自动取消置顶(后端做了, 这里同步表单状态避免后续保存又把它推回去)
   const toggleNoise = async () => {
     const newNoise = !noise;
     const prevImp = imp;
+    const prevPin = pin;
     const newImp = newNoise ? 1 : (imp === 1 ? 5 : imp);
     // 乐观本地更新
     setNoise(newNoise);
     setImp(newImp);
+    if (newNoise && pin) setPin(false);
     try {
       const r = await fetch('/api/bucket/' + encodeURIComponent(bucketId) + '/update', {
         method: 'POST',
@@ -1332,6 +1336,7 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
       // 回滚
       setNoise(!newNoise);
       setImp(prevImp);
+      setPin(prevPin);
       alert('噪声标记失败: ' + e.message);
     }
   };

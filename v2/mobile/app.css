@@ -720,14 +720,18 @@ input, textarea { font: inherit; color: inherit; }
   background: var(--bg-2);
 }
 .dd-item-imp i.on { background: var(--accent); }
-.dd-item-score {
+.dd-item-right {
   flex-shrink: 0;
-  align-self: center;
+  display: flex; flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+.dd-item-score {
   font-family: var(--serif); font-style: italic;
   font-size: 11px;
   color: var(--ink-4);
   letter-spacing: 0.03em;
-  margin-right: 2px;
+  line-height: 1;
 }
 
 /* ========= 屏 3 · 单条全貌 ========= */
