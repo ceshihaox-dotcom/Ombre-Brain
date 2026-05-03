@@ -24,6 +24,11 @@ function ConstellationApp() {
   caE(() => { refreshFn(); }, []);
   const [mode, setMode] = caS('constellation');  // constellation / cluster / time / type
   const [enabledTypes, setEnabledTypes] = caS(new Set(['dynamic', 'permanent', 'feel', 'archived']));
+  // 额外属性筛选 (默认空 = 不过滤; 加入 'fresh' = 只看重要; 加入 'mine' = 只看我写的)
+  const [extraFilters, setExtraFilters] = caS(new Set());
+  const toggleExtra = (k) => setExtraFilters(s => {
+    const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n;
+  });
   const [tagFilters, setTagFilters] = caS(new Set());
   const [impMin, setImpMin] = caS(1);
   const [searchQuery, setSearchQueryRaw] = caS('');
@@ -63,7 +68,7 @@ function ConstellationApp() {
   const sortedAsc = caM(() => [...data].sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time)), [data]);
   caE(() => { setTimeIdx(sortedAsc.length - 1); }, [sortedAsc.length]);
 
-  // 可见 items：tag/imp/type 过滤
+  // 可见 items：tag/imp/type/extra 过滤
   const visibleItems = caM(() => {
     let arr = data;
     if (timeOpen) {
@@ -74,8 +79,19 @@ function ConstellationApp() {
     if (tagFilters.size > 0) {
       arr = arr.filter(i => (i.tags || []).some(t => tagFilters.has(t)));
     }
+    // enabledTypes 过滤 (4 视觉类: dynamic/permanent/feel/archived; 全开则不筛)
+    if (enabledTypes.size < 4) {
+      arr = arr.filter(i => enabledTypes.has(inferType(i)));
+    }
+    // extraFilters 是 AND 过滤 (勾了"重要" → 只显示重要; 勾了"我写的" → 只显示我写的)
+    if (extraFilters.has('fresh')) {
+      arr = arr.filter(i => i.highlight || (i.importance || 5) >= 8);
+    }
+    if (extraFilters.has('mine')) {
+      arr = arr.filter(i => i.created_by === 'user');
+    }
     return arr;
-  }, [data, timeOpen, sortedAsc, timeIdx, impMin, tagFilters]);
+  }, [data, timeOpen, sortedAsc, timeIdx, impMin, tagFilters, enabledTypes, extraFilters]);
 
   // ─────────── Web Worker 异步布局 ───────────
   // 物理计算放后台线程, 主线程不卡; worker 失败 fallback 到同步计算
@@ -358,6 +374,8 @@ function ConstellationApp() {
           setMode={setMode}
           enabledTypes={enabledTypes}
           toggleType={toggleType}
+          extraFilters={extraFilters}
+          toggleExtra={toggleExtra}
           tagFilters={tagFilters}
           toggleTag={toggleTag}
           impMin={impMin}

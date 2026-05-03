@@ -8,7 +8,7 @@ function radiusOf(item) {
 }
 
 function inferType(item) {
-  if (item.archived) return 'archived';
+  if (item.internalized || item.archived) return 'archived';
   if (item.feel) return 'feel';
   if (item.protected || item.highlight) return 'permanent';
   return 'dynamic';
@@ -248,6 +248,8 @@ self.onmessage = function (e) {
       date: i.date, time: i.time,
       feel: !!i.feel, protected: !!i.protected,
       archived: !!i.archived, highlight: !!i.highlight,
+      internalized: !!i.internalized,
+      created_by: i.created_by || '',
     }));
     let layout;
     if (mode === 'time') {

@@ -1,8 +1,9 @@
 // constellation-physics.jsx —— 力导向布局 + 类型推断 + 边权计算
 
-// 推断星体类型（4 类）
+// 推断星体类型（4 视觉类）
+// archived 视觉灰色用于已内化的桶 (老 item.archived 字段桥接层从未填, 改读 internalized)
 function inferType(item) {
-  if (item.archived) return 'archived';
+  if (item.internalized || item.archived) return 'archived';
   if (item.feel) return 'feel';
   if (item.protected || item.highlight) return 'permanent';
   return 'dynamic';
