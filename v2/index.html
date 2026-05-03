@@ -3256,16 +3256,40 @@ body {
 }
 .ob-toolbar-search input::placeholder { color: var(--ink-4); }
 
-/* 主题域筛选行 — 跟 ob-toolbar 同样卡片风格 */
+/* 主题域筛选行 — 跟 ob-toolbar 同样卡片风格, 默认收起 */
 .ob-domain-row {
   display: flex; align-items: center; gap: 6px;
   flex-wrap: wrap;
   margin: -16px 0 24px;
-  padding: 8px 12px;
+  padding: 6px 10px;
   background: var(--paper);
   border: 0.5px solid var(--line);
   border-radius: 12px;
   box-shadow: 0 1px 0 rgba(255,255,255,0.6) inset;
+}
+.ob-domain-row.is-collapsed { padding: 4px 8px; }
+.ob-domain-row-toggle {
+  appearance: none; border: 0;
+  background: transparent;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .12s;
+  flex-shrink: 0;
+  user-select: none;
+}
+.ob-domain-row-toggle:hover { background: var(--bg-2); }
+.ob-domain-row-chev {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  width: 10px;
+  text-align: center;
+}
+.ob-domain-row-toggle.has-active .ob-domain-row-lab,
+.ob-domain-row-toggle.has-active .ob-domain-row-chev {
+  color: var(--accent);
 }
 .ob-domain-row-lab {
   font-family: var(--mono);
@@ -3273,8 +3297,28 @@ body {
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--ink-4);
-  margin-right: 6px;
   flex-shrink: 0;
+}
+.ob-domain-row-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px;
+  padding: 0 6px;
+  background: var(--accent);
+  color: var(--paper);
+  border-radius: 999px;
+  font: 600 10px var(--mono);
+}
+.ob-domain-row-meta {
+  font: 11px var(--sans);
+  color: var(--ink-4);
+  margin-left: 4px;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ob-domain-row-toggle.has-active .ob-domain-row-meta {
+  color: var(--accent);
 }
 .ob-domain-row-clear {
   appearance: none; border: 0; background: transparent;

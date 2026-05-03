@@ -59,6 +59,7 @@ function AppV2() {
   const [query, setQuery] = uSA('');
   const [filters, setFilters] = uSA({ importantOnly: false, feelOnly: false, protectedOnly: false, noiseOnly: false });
   const [domainFilters, setDomainFilters] = uSA([]);  // 主题域多选
+  const [domainOpen, setDomainOpen] = uSA(false);     // 默认收起
   const [openDay, setOpenDay] = uSA(null);
   const [openItem, setOpenItem] = uSA(null);
   const [writeOpen, setWriteOpen] = uSA(false);
@@ -296,24 +297,41 @@ function AppV2() {
           >⌀ 噪声</FilterChipV2>
         </div>
 
-        {/* 主题域筛选行 (上游 dashboard domain filter 的 v2 实现) */}
+        {/* 主题域筛选行 (默认收起, 点击展开) */}
         {(() => {
           const counts = {};
           data.forEach(b => (b.domain || []).forEach(d => { if (d) counts[d] = (counts[d] || 0) + 1; }));
           const list = Object.entries(counts).sort((a, b) => b[1] - a[1]);
           if (list.length === 0) return null;
+          const hasActive = domainFilters.length > 0;
           return (
-            <div className="ob-domain-row">
-              <span className="ob-domain-row-lab">主题域</span>
-              {list.map(([d, c]) => (
-                <FilterChipV2
-                  key={d}
-                  active={domainFilters.includes(d)}
-                  onClick={() => setDomainFilters(curr => curr.includes(d) ? curr.filter(x => x !== d) : [...curr, d])}
-                >{d} <span style={{ opacity: 0.5, fontSize: '0.85em' }}>{c}</span></FilterChipV2>
-              ))}
-              {domainFilters.length > 0 && (
-                <button className="ob-domain-row-clear" onClick={() => setDomainFilters([])}>清空</button>
+            <div className={'ob-domain-row' + (domainOpen ? ' is-open' : ' is-collapsed')}>
+              <button
+                className={'ob-domain-row-toggle' + (hasActive ? ' has-active' : '')}
+                onClick={() => setDomainOpen(o => !o)}
+              >
+                <span className="ob-domain-row-chev">{domainOpen ? '▾' : '▸'}</span>
+                <span className="ob-domain-row-lab">主题域</span>
+                {hasActive && <span className="ob-domain-row-badge">{domainFilters.length}</span>}
+                {!domainOpen && (
+                  <span className="ob-domain-row-meta">
+                    {hasActive ? domainFilters.join(' / ') : `${list.length} 个`}
+                  </span>
+                )}
+              </button>
+              {domainOpen && (
+                <>
+                  {list.map(([d, c]) => (
+                    <FilterChipV2
+                      key={d}
+                      active={domainFilters.includes(d)}
+                      onClick={() => setDomainFilters(curr => curr.includes(d) ? curr.filter(x => x !== d) : [...curr, d])}
+                    >{d} <span style={{ opacity: 0.5, fontSize: '0.85em' }}>{c}</span></FilterChipV2>
+                  ))}
+                  {hasActive && (
+                    <button className="ob-domain-row-clear" onClick={() => setDomainFilters([])}>清空</button>
+                  )}
+                </>
               )}
             </div>
           );

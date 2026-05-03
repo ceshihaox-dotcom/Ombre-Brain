@@ -243,8 +243,10 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
   const [query, setQuery] = cuS('');
   const [statusFilter, setStatusFilter] = cuS('all');
   const [domainFilters, setDomainFilters] = cuS([]);  // 新: 主题域筛选 (跟 tag 同样多选 AND)
+  const [domainOpen, setDomainOpen] = cuS(false);     // 默认收起
   const [tagFilters, setTagFilters] = cuS([]);
   const [tagSearch, setTagSearch] = cuS('');           // 新: tag 搜索框 (1000+ tag 时必备)
+  const [tagOpen, setTagOpen] = cuS(false);            // 默认收起
   const [showAllTags, setShowAllTags] = cuS(false);
   const [view, setView] = cuS('list');
   const [sort, setSort] = cuS('imp-desc');
@@ -622,59 +624,99 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
         </div>
         {allDomains.length > 0 && (
           <div className="ob-cells-frow">
-            <span className="ob-cells-frow-lab">主题域</span>
-            {allDomains.map(({ domain: dm, count }) => (
-              <button
-                key={dm}
-                className={`ob-cells-chip ${domainFilters.includes(dm) ? 'on' : ''}`}
-                onClick={() => toggleDomain(dm)}
-              >
-                <span>{dm}</span>
-                <span className="ob-cells-chip-count">{count}</span>
-              </button>
-            ))}
-            {domainFilters.length > 0 && (
-              <button className="ob-cells-frow-more" onClick={() => setDomainFilters([])} style={{color: 'var(--accent)'}}>
-                清空
-              </button>
+            <button
+              className={`ob-cells-frow-toggle ${domainFilters.length > 0 ? 'has-active' : ''}`}
+              onClick={() => setDomainOpen(o => !o)}
+            >
+              <span className="ob-cells-frow-toggle-chev">{domainOpen ? '▾' : '▸'}</span>
+              <span className="ob-cells-frow-lab">主题域</span>
+              {domainFilters.length > 0 && (
+                <span className="ob-cells-frow-toggle-badge">{domainFilters.length}</span>
+              )}
+              {!domainOpen && (
+                <span className="ob-cells-frow-toggle-meta">
+                  {domainFilters.length > 0
+                    ? domainFilters.join(' / ')
+                    : `${allDomains.length} 个`}
+                </span>
+              )}
+            </button>
+            {domainOpen && (
+              <>
+                {allDomains.map(({ domain: dm, count }) => (
+                  <button
+                    key={dm}
+                    className={`ob-cells-chip ${domainFilters.includes(dm) ? 'on' : ''}`}
+                    onClick={() => toggleDomain(dm)}
+                  >
+                    <span>{dm}</span>
+                    <span className="ob-cells-chip-count">{count}</span>
+                  </button>
+                ))}
+                {domainFilters.length > 0 && (
+                  <button className="ob-cells-frow-more" onClick={() => setDomainFilters([])} style={{color: 'var(--accent)'}}>
+                    清空
+                  </button>
+                )}
+              </>
             )}
           </div>
         )}
         <div className="ob-cells-frow">
-          <span className="ob-cells-frow-lab">标签</span>
-          <input
-            className="ob-cells-tag-search"
-            value={tagSearch}
-            onChange={(e) => setTagSearch(e.target.value)}
-            placeholder={`搜 ${allTags.length} 个标签…`}
-          />
-          {tagSearch && (
-            <button className="ob-cells-search-clear" onClick={() => setTagSearch('')}>×</button>
-          )}
-          {visibleTags.map(({ tag: tg, count }) => (
-            <button
-              key={tg}
-              className={`ob-cells-chip ${tagFilters.includes(tg) ? 'on' : ''}`}
-              onClick={() => toggleTag(tg)}
-            >
-              <span>{tg}</span>
-              <span className="ob-cells-chip-count">{count}</span>
-            </button>
-          ))}
-          {!tagSearch && !showAllTags && allTags.length > 30 && (
-            <button className="ob-cells-frow-more" onClick={() => setShowAllTags(true)}>
-              +{allTags.length - 30} 全部展开
-            </button>
-          )}
-          {!tagSearch && showAllTags && allTags.length > 30 && (
-            <button className="ob-cells-frow-more" onClick={() => setShowAllTags(false)}>
-              收起 (前 30)
-            </button>
-          )}
-          {tagFilters.length > 0 && (
-            <button className="ob-cells-frow-more" onClick={() => setTagFilters([])} style={{color: 'var(--accent)'}}>
-              清空筛选
-            </button>
+          <button
+            className={`ob-cells-frow-toggle ${tagFilters.length > 0 ? 'has-active' : ''}`}
+            onClick={() => setTagOpen(o => !o)}
+          >
+            <span className="ob-cells-frow-toggle-chev">{tagOpen ? '▾' : '▸'}</span>
+            <span className="ob-cells-frow-lab">标签</span>
+            {tagFilters.length > 0 && (
+              <span className="ob-cells-frow-toggle-badge">{tagFilters.length}</span>
+            )}
+            {!tagOpen && (
+              <span className="ob-cells-frow-toggle-meta">
+                {tagFilters.length > 0
+                  ? tagFilters.slice(0, 3).join(' / ') + (tagFilters.length > 3 ? ` +${tagFilters.length - 3}` : '')
+                  : `${allTags.length} 个`}
+              </span>
+            )}
+          </button>
+          {tagOpen && (
+            <>
+              <input
+                className="ob-cells-tag-search"
+                value={tagSearch}
+                onChange={(e) => setTagSearch(e.target.value)}
+                placeholder={`搜 ${allTags.length} 个标签…`}
+              />
+              {tagSearch && (
+                <button className="ob-cells-search-clear" onClick={() => setTagSearch('')}>×</button>
+              )}
+              {visibleTags.map(({ tag: tg, count }) => (
+                <button
+                  key={tg}
+                  className={`ob-cells-chip ${tagFilters.includes(tg) ? 'on' : ''}`}
+                  onClick={() => toggleTag(tg)}
+                >
+                  <span>{tg}</span>
+                  <span className="ob-cells-chip-count">{count}</span>
+                </button>
+              ))}
+              {!tagSearch && !showAllTags && allTags.length > 30 && (
+                <button className="ob-cells-frow-more" onClick={() => setShowAllTags(true)}>
+                  +{allTags.length - 30} 全部展开
+                </button>
+              )}
+              {!tagSearch && showAllTags && allTags.length > 30 && (
+                <button className="ob-cells-frow-more" onClick={() => setShowAllTags(false)}>
+                  收起 (前 30)
+                </button>
+              )}
+              {tagFilters.length > 0 && (
+                <button className="ob-cells-frow-more" onClick={() => setTagFilters([])} style={{color: 'var(--accent)'}}>
+                  清空筛选
+                </button>
+              )}
+            </>
           )}
         </div>
       </div>

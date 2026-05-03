@@ -5386,6 +5386,55 @@ body {
   width: 240px;
 }
 .ob-cells-tag-search::placeholder { color: var(--ink-4); }
+
+/* 折叠/展开 toggle (主题域 + 标签 默认收起) */
+.ob-cells-frow-toggle {
+  appearance: none; border: 0;
+  background: transparent;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background .12s;
+  flex-shrink: 0;
+  user-select: none;
+}
+.ob-cells-frow-toggle:hover { background: var(--bg-2); }
+.ob-cells-frow-toggle-chev {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink-3);
+  width: 10px;
+  text-align: center;
+}
+.ob-cells-frow-toggle .ob-cells-frow-lab {
+  margin-right: 0;
+}
+.ob-cells-frow-toggle.has-active .ob-cells-frow-lab,
+.ob-cells-frow-toggle.has-active .ob-cells-frow-toggle-chev {
+  color: var(--accent);
+}
+.ob-cells-frow-toggle-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 18px; height: 18px;
+  padding: 0 6px;
+  background: var(--accent);
+  color: var(--paper);
+  border-radius: 999px;
+  font: 600 10px var(--mono);
+}
+.ob-cells-frow-toggle-meta {
+  font: 11px var(--sans);
+  color: var(--ink-4);
+  margin-left: 4px;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ob-cells-frow-toggle.has-active .ob-cells-frow-toggle-meta {
+  color: var(--accent);
+}
 .ob-cells-chip {
   appearance: none;
   background: transparent;
