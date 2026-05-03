@@ -89,11 +89,16 @@ function _qtBuild(positions) {
 function _qtApplyRepulsion(node, p, theta) {
   if (node.mass === 0) return;
   if (node.point === p) return;
+  // 关键: p 落在 node 边界内必须递归, 否则把含 p 的子树当外部质心 → 节点全被吸到中心
+  const insideNode = (
+    p.x >= node.x && p.x < node.x + node.size &&
+    p.y >= node.y && p.y < node.y + node.size
+  );
   const dx = node.cx - p.x;
   const dy = node.cy - p.y;
   const d2 = dx * dx + dy * dy + 0.01;
   const d = Math.sqrt(d2);
-  if (node.point !== null || node.size / d < theta) {
+  if (!insideNode && (node.point !== null || node.size / d < theta)) {
     const baseForce = 1800 * node.mass / d2;
     let f = baseForce;
     if (node.point !== null) {
@@ -104,7 +109,9 @@ function _qtApplyRepulsion(node, p, theta) {
     p.vy -= (dy / d) * f;
     return;
   }
-  for (const child of node.children) _qtApplyRepulsion(child, p, theta);
+  if (node.children) {
+    for (const child of node.children) _qtApplyRepulsion(child, p, theta);
+  }
 }
 
 // ── 布局函数 ──

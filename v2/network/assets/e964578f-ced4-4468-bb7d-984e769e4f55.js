@@ -109,16 +109,21 @@ function _qtBuild(positions) {
 // theta=0.9: 节点距离够远时 (size/d < theta) 用质心近似整个子树
 function _qtApplyRepulsion(node, p, theta) {
   if (node.mass === 0) return;
-  if (node.point === p) return;  // skip self
+  if (node.point === p) return;  // skip self leaf
+  // 关键: 如果 p 落在 node 边界内, 必须递归 — 否则会把"包含 p 的子树质心" 当外部质心,
+  // 导致 p 自己的位置参与对自己的斥力计算 (永远抵消, 节点全被引到中心)
+  const insideNode = (
+    p.x >= node.x && p.x < node.x + node.size &&
+    p.y >= node.y && p.y < node.y + node.size
+  );
   const dx = node.cx - p.x;
   const dy = node.cy - p.y;
   const d2 = dx * dx + dy * dy + 0.01;
   const d = Math.sqrt(d2);
-  if (node.point !== null || node.size / d < theta) {
+  if (!insideNode && (node.point !== null || node.size / d < theta)) {
     // 当作单点 (质心 + 总质量)
     const baseForce = 1800 * node.mass / d2;
     let f = baseForce;
-    // 叶子时(单点)再叠加 minD 防重叠
     if (node.point !== null) {
       const minD = (p.r + (node.point.r || 5)) * 1.6 + 30;
       if (d < minD) f += (minD - d) * 0.5;
@@ -127,8 +132,12 @@ function _qtApplyRepulsion(node, p, theta) {
     p.vy -= (dy / d) * f;
     return;
   }
-  // 太近 → 递归子节点
-  for (const child of node.children) _qtApplyRepulsion(child, p, theta);
+  // 包含 p 或太近 → 递归子节点 (单点 leaf 但被 p 落在内, 也走递归 (其实就 return,因为 point===p))
+  if (node.children) {
+    for (const child of node.children) _qtApplyRepulsion(child, p, theta);
+  }
+  // 注: insideNode + node.point !== null + node.point !== p 的情况罕见(同位置两点),
+  // 此时跳过即可避免 NaN
 }
 
 // 力导向布局（Barnes-Hut quadtree, O(N log N)）
