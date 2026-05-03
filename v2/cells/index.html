@@ -4272,6 +4272,157 @@ body {
 .ob-dark-btn:hover { background: var(--ink); color: var(--paper); transform: rotate(20deg); }
 .ob-dark-btn.on { background: var(--accent-3); color: var(--accent); border-color: var(--accent); }
 
+/* ── 主题色切换 (跟 DarkToggle 同款圆形) ── */
+.ob-theme-toggle-wrap { position: relative; display: inline-block; }
+.ob-theme-btn {
+  appearance: none; border: 0;
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  background: var(--paper);
+  border: 0.5px solid var(--line-2);
+  cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .2s;
+  padding: 0;
+}
+.ob-theme-btn:hover { transform: rotate(20deg); border-color: var(--ink-3); }
+.ob-theme-btn-mark {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, var(--accent), var(--rose), var(--gold), var(--accent));
+  border: 0.5px solid var(--ink-4);
+}
+.ob-theme-panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--paper);
+  border: 0.5px solid var(--line-2);
+  border-radius: 12px;
+  box-shadow: 0 12px 32px -8px rgba(26,25,34,0.18);
+  padding: 6px;
+  display: flex;
+  gap: 4px;
+  z-index: 100;
+  white-space: nowrap;
+  animation: obThemeFadeIn .14s ease-out;
+}
+@keyframes obThemeFadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+.ob-theme-chip {
+  appearance: none; border: 0;
+  background: transparent;
+  padding: 6px 10px;
+  border-radius: 999px;
+  display: inline-flex; align-items: center; gap: 6px;
+  font: 500 12px var(--sans);
+  color: var(--ink-2);
+  cursor: pointer;
+  transition: background .12s;
+}
+.ob-theme-chip:hover { background: var(--bg-2); }
+.ob-theme-chip.on { background: var(--accent-3); color: var(--accent); }
+.ob-theme-chip-dot {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  border: 0.5px solid rgba(0,0,0,0.15);
+  flex-shrink: 0;
+}
+
+.ob-theme-modal-mask {
+  position: fixed; inset: 0;
+  background: rgba(26, 25, 34, 0.42);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 200;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px;
+}
+.ob-theme-modal {
+  background: var(--paper);
+  border: 0.5px solid var(--line-2);
+  border-radius: 16px;
+  padding: 24px 26px 18px;
+  width: 380px;
+  max-width: 100%;
+  box-shadow: 0 24px 60px -16px rgba(26,25,34,0.32);
+}
+.ob-theme-modal-hd {
+  font-family: var(--serif);
+  font-style: italic;
+  font-size: 19px;
+  color: var(--ink);
+  letter-spacing: 0.005em;
+}
+.ob-theme-modal-sub {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-4);
+  margin: 4px 0 16px;
+  letter-spacing: 0.06em;
+}
+.ob-theme-modal-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 0;
+  border-bottom: 0.5px dashed var(--line);
+}
+.ob-theme-modal-row:last-of-type { border-bottom: 0; }
+.ob-theme-modal-row-l { flex: 1; min-width: 0; }
+.ob-theme-modal-lbl {
+  font: 600 13px var(--sans);
+  color: var(--ink);
+}
+.ob-theme-modal-hint {
+  font-size: 11px;
+  color: var(--ink-4);
+  margin-top: 2px;
+}
+.ob-theme-modal-row input[type=color] {
+  width: 38px; height: 30px;
+  border: 0.5px solid var(--line-2);
+  border-radius: 6px;
+  background: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 2px;
+}
+.ob-theme-modal-val {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--ink-3);
+  width: 64px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.ob-theme-modal-foot {
+  display: flex; gap: 10px;
+  justify-content: flex-end;
+  margin-top: 18px;
+  padding-top: 6px;
+}
+.ob-theme-modal-btn {
+  appearance: none;
+  border: 0.5px solid var(--line-2);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 8px 18px;
+  border-radius: 999px;
+  font: 500 12.5px var(--sans);
+  cursor: pointer;
+  transition: all .15s;
+}
+.ob-theme-modal-btn:hover:not(.primary) { background: var(--bg-2); border-color: var(--ink-3); }
+.ob-theme-modal-btn.ghost { color: var(--ink-3); }
+.ob-theme-modal-btn.primary {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+.ob-theme-modal-btn.primary:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: translateY(-1px);
+}
+
 /* ── 月份分隔符 ── */
 .ob-month {
   display: grid;
@@ -6083,6 +6234,8 @@ body {
   <script>window.__OB_NO_AUTO_RENDER = true;</script>
   <!-- Ombre-Brain real-data bridge — must run before babel scripts -->
   <script src="./ombre-bridge.js"></script>
+  <!-- Theme system -->
+  <script type="text/babel" src="../theme-system.js"></script>
 
   <script type="text/babel" src="./assets/0b0fa7aa-da74-4156-8eca-b68d919c42dd.js"></script>
   <script type="text/babel" src="./assets/a5dd4daf-8d08-4b35-a51c-03ebc2aa6b05.jsx"></script>
