@@ -30,6 +30,13 @@ function ConfigPage() {
   const [decaySaving, setDecaySaving] = ccS(false);
   const [decayResetting, setDecayResetting] = ccS(false);
 
+  // Prompt 配置 (LLM system prompt 编辑)
+  const [promptCfg, setPromptCfg] = ccS(null);   // { current, defaults, overridden, schema }
+  const [promptDraft, setPromptDraft] = ccS({}); // key → 编辑中的草稿(未保存)
+  const [promptSaving, setPromptSaving] = ccS({}); // key → bool
+  const [promptOpen, setPromptOpen] = ccS({});   // key → 折叠展开
+  const [promptResetAllBusy, setPromptResetAllBusy] = ccS(false);
+
   const fetchAll = async () => {
     try {
       const r = await fetch('/api/config/api');
@@ -51,7 +58,88 @@ function ConfigPage() {
       if (r.ok) setDecayCfg(await r.json());
     } catch (e) { /* 沉默 */ }
   };
-  ccE(() => { fetchAll(); fetchStrategy(); fetchDecay(); }, []);
+  const fetchPrompts = async () => {
+    try {
+      const r = await fetch('/api/prompts-config');
+      if (r.ok) {
+        const d = await r.json();
+        setPromptCfg(d);
+        setPromptDraft({});  // 拉到新数据 → 清掉所有草稿
+      }
+    } catch (e) { /* 沉默 */ }
+  };
+  ccE(() => { fetchAll(); fetchStrategy(); fetchDecay(); fetchPrompts(); }, []);
+
+  // ─── Prompt 编辑相关 ───
+  const isPromptOverridden = (key) => promptCfg && promptCfg.overridden && promptCfg.overridden.includes(key);
+  const promptCurrent = (key) => promptDraft[key] !== undefined
+    ? promptDraft[key]
+    : (promptCfg ? (promptCfg.current[key] || '') : '');
+  const promptIsDirty = (key) => {
+    if (!promptCfg) return false;
+    if (promptDraft[key] === undefined) return false;
+    return promptDraft[key] !== promptCfg.current[key];
+  };
+  const savePrompt = async (key) => {
+    if (!promptCfg) return;
+    const val = promptDraft[key];
+    if (val === undefined) return;
+    setPromptSaving(s => ({ ...s, [key]: true }));
+    try {
+      const r = await fetch('/api/prompts-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: val }),
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      setPromptCfg(d);
+      setPromptDraft(s => { const n = { ...s }; delete n[key]; return n; });
+    } catch (e) {
+      alert('保存失败: ' + e.message);
+    } finally {
+      setPromptSaving(s => ({ ...s, [key]: false }));
+    }
+  };
+  const resetPromptOne = async (key) => {
+    if (!promptCfg) return;
+    if (!confirm(`恢复「${(promptCfg.schema.find(s => s.key === key) || {}).label || key}」为出厂默认?\n当前编辑/保存的版本会被清掉。`)) return;
+    setPromptSaving(s => ({ ...s, [key]: true }));
+    try {
+      const r = await fetch('/api/prompts-config/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key }),
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      setPromptCfg(d);
+      setPromptDraft(s => { const n = { ...s }; delete n[key]; return n; });
+    } catch (e) {
+      alert('恢复失败: ' + e.message);
+    } finally {
+      setPromptSaving(s => ({ ...s, [key]: false }));
+    }
+  };
+  const resetPromptAll = async () => {
+    if (!promptCfg) return;
+    if (!confirm('全部 prompt 恢复出厂默认?\n所有自定义版本将被清掉。')) return;
+    setPromptResetAllBusy(true);
+    try {
+      const r = await fetch('/api/prompts-config/reset', { method: 'POST' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      setPromptCfg(d);
+      setPromptDraft({});
+    } catch (e) {
+      alert('恢复失败: ' + e.message);
+    } finally {
+      setPromptResetAllBusy(false);
+    }
+  };
+  const discardPromptDraft = (key) => {
+    setPromptDraft(s => { const n = { ...s }; delete n[key]; return n; });
+  };
 
   // 改单个权重参数: 乐观更新 + POST + 失败回滚
   const updateDecay = async (key, value) => {
@@ -564,6 +652,88 @@ function ConfigPage() {
           <div className="oc-field-help" style={{ paddingLeft: 126, marginTop: 10, color: 'var(--ink-4)' }}>
             高亮 = 已偏离默认 · 改动写入 buckets/runtime_config.json, 重启自动加载
           </div>
+        )}
+      </ConsoleCard>
+
+      {/* Prompt 配置 (LLM system prompt 直接编辑) */}
+      <ConsoleCard label="Prompt 配置" sub="改 LLM 系统提示词 · 改完即刻生效 · 重启后保留">
+        {!promptCfg && <div style={{ color: 'var(--ink-4)', fontSize: 12 }}>载入中…</div>}
+        {promptCfg && (
+          <>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <div style={{ fontSize: 11, color: 'var(--ink-4)', fontFamily: 'var(--mono)' }}>
+                {promptCfg.overridden && promptCfg.overridden.length > 0
+                  ? `${promptCfg.overridden.length} 个已自定义 · 其余使用出厂默认`
+                  : '全部使用出厂默认'}
+              </div>
+              <button
+                className="oc-btn oc-btn-ghost"
+                onClick={resetPromptAll}
+                disabled={promptResetAllBusy || !promptCfg.overridden || promptCfg.overridden.length === 0}
+                style={{ fontSize: 11, padding: '3px 12px' }}
+              >{promptResetAllBusy ? '⌛' : '↺ 全部恢复默认'}</button>
+            </div>
+            {promptCfg.schema.map(item => {
+              const cur = promptCurrent(item.key);
+              const overridden = isPromptOverridden(item.key);
+              const dirty = promptIsDirty(item.key);
+              const saving = !!promptSaving[item.key];
+              const open = !!promptOpen[item.key];
+              const charCount = (cur || '').length;
+              return (
+                <div key={item.key} className={'oc-prompt-row' + (overridden ? ' is-overridden' : '') + (dirty ? ' is-dirty' : '')}>
+                  <div
+                    className="oc-prompt-hd"
+                    onClick={() => setPromptOpen(s => ({ ...s, [item.key]: !s[item.key] }))}
+                  >
+                    <span className="oc-prompt-chev">{open ? '▾' : '▸'}</span>
+                    <span className="oc-prompt-label">{item.label}</span>
+                    <code className="oc-prompt-key">{item.key}</code>
+                    {overridden && <span className="oc-prompt-badge">已自定义</span>}
+                    {dirty && <span className="oc-prompt-badge oc-prompt-badge-dirty">未保存</span>}
+                    <span className="oc-prompt-meta">{charCount} 字</span>
+                  </div>
+                  {open && (
+                    <div className="oc-prompt-body">
+                      <div className="oc-prompt-desc">{item.desc}</div>
+                      <textarea
+                        className="oc-prompt-textarea"
+                        rows={item.rows || 16}
+                        value={cur}
+                        onChange={(e) => setPromptDraft(s => ({ ...s, [item.key]: e.target.value }))}
+                        spellCheck={false}
+                        disabled={saving}
+                      />
+                      <div className="oc-prompt-foot">
+                        <button
+                          className="oc-btn oc-btn-ghost"
+                          onClick={() => resetPromptOne(item.key)}
+                          disabled={saving || (!overridden && !dirty)}
+                          title={overridden ? '清掉这条覆盖, 回到出厂默认' : '当前已是出厂默认'}
+                        >↺ 恢复默认</button>
+                        <div style={{ flex: 1 }} />
+                        {dirty && (
+                          <button
+                            className="oc-btn oc-btn-ghost"
+                            onClick={() => discardPromptDraft(item.key)}
+                            disabled={saving}
+                          >放弃改动</button>
+                        )}
+                        <button
+                          className="oc-btn oc-btn-primary"
+                          onClick={() => savePrompt(item.key)}
+                          disabled={saving || !dirty}
+                        >{saving ? '保存中…' : '✓ 保存'}</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            <div className="oc-field-help" style={{ marginTop: 14, color: 'var(--ink-4)' }}>
+              改动写入 buckets/runtime_config.json['prompts'], 重启自动加载 · 全部 prompt 都用 LLM system role 注入, 改完即刻生效
+            </div>
+          </>
         )}
       </ConsoleCard>
 

@@ -1083,6 +1083,17 @@ def _reload_decay_from_runtime():
         decay_engine.apply_runtime_overrides(decay_overrides)
 
 
+def _reload_prompts_from_runtime():
+    """读 runtime_config['prompts'] → dehydrator.set_prompts。
+    启动 + 每次 POST /api/prompts-config 后调一次。
+    runtime_config['prompts'] 形如 {key: prompt_str}, 缺 key/空串都视为用默认。"""
+    import dehydrator as _dh
+    rc = _read_runtime_config()
+    prompt_overrides = rc.get("prompts") or {}
+    if isinstance(prompt_overrides, dict):
+        _dh.set_prompts(prompt_overrides)
+
+
 @mcp.custom_route("/api/decay-config", methods=["GET"])
 async def api_decay_config_get(request):
     """读当前 decay 各参数当前值 + 出厂默认 + 范围/标签 schema (前端 slider 用)。"""
@@ -1150,6 +1161,83 @@ async def api_decay_config_reset(request):
         "ok": True,
         "current": decay_engine.current_overrides(),
     })
+
+
+# =============================================================
+# Prompts config — 让前端配置页直接编辑系统 prompt, 不动代码
+# 数据流: GET → 当前生效 + 出厂默认 + schema(标签/说明)
+#         POST {key: prompt_str | ""} → 写 runtime_config['prompts'] + 立刻生效
+#         POST /reset → 全部回出厂; POST /reset {key} → 单个回出厂
+# =============================================================
+
+@mcp.custom_route("/api/prompts-config", methods=["GET"])
+async def api_prompts_config_get(request):
+    """返回 {defaults, current, overridden, schema} — 前端编辑界面初始化用"""
+    from starlette.responses import JSONResponse
+    import dehydrator as _dh
+    return JSONResponse(_dh.get_prompts_state())
+
+
+@mcp.custom_route("/api/prompts-config", methods=["POST"])
+async def api_prompts_config_post(request):
+    """更新 prompt 覆盖。body 是 {key: prompt_str} 部分或全部 key.
+       - prompt_str 非空 → 写入覆盖
+       - prompt_str 为 "" / null → 撤销该 key 的覆盖, 回到默认
+       写到 runtime_config['prompts'], 立刻 reload 到 dehydrator。"""
+    from starlette.responses import JSONResponse
+    import dehydrator as _dh
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "body 必须是对象"}, status_code=400)
+    rc = _read_runtime_config()
+    cur_prompts = rc.get("prompts") or {}
+    if not isinstance(cur_prompts, dict):
+        cur_prompts = {}
+    # 只接受白名单 key
+    valid_keys = set(_dh._DEFAULT_PROMPTS.keys())
+    for k, v in body.items():
+        if k not in valid_keys:
+            continue
+        if v is None or (isinstance(v, str) and not v.strip()):
+            cur_prompts.pop(k, None)  # 撤销
+        elif isinstance(v, str):
+            # 限个长度 (32K 字符, 远超任何合理 prompt)
+            cur_prompts[k] = v[:32000]
+    rc["prompts"] = cur_prompts
+    _write_runtime_config(rc)
+    _reload_prompts_from_runtime()
+    return JSONResponse(_dh.get_prompts_state())
+
+
+@mcp.custom_route("/api/prompts-config/reset", methods=["POST"])
+async def api_prompts_config_reset(request):
+    """复位 — 默认全部恢复 (清掉 runtime_config['prompts'])。
+       可选 body {"key": "dehydrate"} → 只复位单个 key."""
+    from starlette.responses import JSONResponse
+    import dehydrator as _dh
+    target_key = None
+    try:
+        body = await request.json()
+        if isinstance(body, dict):
+            target_key = body.get("key")
+    except Exception:
+        pass
+    rc = _read_runtime_config()
+    cur_prompts = rc.get("prompts") or {}
+    if not isinstance(cur_prompts, dict):
+        cur_prompts = {}
+    if target_key:
+        if target_key in _dh._DEFAULT_PROMPTS:
+            cur_prompts.pop(target_key, None)
+    else:
+        cur_prompts = {}
+    rc["prompts"] = cur_prompts
+    _write_runtime_config(rc)
+    _reload_prompts_from_runtime()
+    return JSONResponse(_dh.get_prompts_state())
 
 
 @mcp.custom_route("/api/config/api", methods=["GET"])
@@ -3047,6 +3135,13 @@ if __name__ == "__main__":
         logger.info("Decay runtime overrides applied")
     except Exception as e:
         logger.warning(f"Decay runtime overrides apply failed (using defaults): {e}")
+
+    # 同上, runtime_config['prompts'] → dehydrator.set_prompts
+    try:
+        _reload_prompts_from_runtime()
+        logger.info("Prompt runtime overrides applied")
+    except Exception as e:
+        logger.warning(f"Prompt runtime overrides apply failed (using defaults): {e}")
 
     if transport in ("sse", "streamable-http"):
         import threading

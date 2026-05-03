@@ -246,6 +246,72 @@ ANALYZE_PROMPT = """你是一个内容分析器。请分析以下文本，输出
 }"""
 
 
+# =============================================================
+# Runtime prompt overrides
+# 运行时 prompt 覆盖机制 — 让前端配置页能直接编辑 prompt, 不动代码
+# 持久化由 server 端通过 runtime_config.json["prompts"] 调 set_prompts() 注入
+# =============================================================
+_DEFAULT_PROMPTS = {
+    "dehydrate":     DEHYDRATE_PROMPT,
+    "digest":        DIGEST_PROMPT,
+    "merge":         MERGE_PROMPT,
+    "redehydrate":   REDEHYDRATE_PROMPT,
+    "regen_content": REGEN_CONTENT_PROMPT,
+    "analyze":       ANALYZE_PROMPT,
+}
+
+# 当前生效的覆盖, key → str. 缺 key / 空字符串都视为"用默认".
+_ACTIVE_PROMPTS: dict = {}
+
+# 前端展示用的 schema(中文标签 / 用途说明 / 大概行高)
+PROMPT_SCHEMA = [
+    {"key": "dehydrate",     "label": "脱水压缩",      "desc": "/api/extract 把单段长内容压成紧凑摘要时用",                                  "rows": 12},
+    {"key": "digest",        "label": "日记拆条",      "desc": "导入工作台把一大段聊天/日记原文拆成多条独立记忆时用 (主流场景)",            "rows": 28},
+    {"key": "merge",         "label": "新旧合并",      "desc": "合并两条记忆时用 (合并预览界面)",                                          "rows": 8},
+    {"key": "redehydrate",   "label": "元数据重提炼",  "desc": "↻ 重新脱水: 重生成标题/摘要/标签/情感, 不动正文",                          "rows": 22},
+    {"key": "regen_content", "label": "正文重写",      "desc": "↻ 重新脱水勾选「同时重写正文」时用 — 主题锚点法",                          "rows": 22},
+    {"key": "analyze",       "label": "自动打标",      "desc": "把任意文本分析出 domain/valence/arousal/tags 等元数据 (内部 + 工具调用)",    "rows": 22},
+]
+
+
+def get_prompt(key: str) -> str:
+    """取当前生效的 prompt; 没覆盖就用模块默认。"""
+    v = _ACTIVE_PROMPTS.get(key)
+    if isinstance(v, str) and v.strip():
+        return v
+    return _DEFAULT_PROMPTS.get(key, "")
+
+
+def set_prompts(overrides: dict) -> dict:
+    """批量设置覆盖 — 接受 {key: prompt_str | None | ""}。
+    None / 空串 → 撤销该 key 的覆盖, 回退到默认。
+    返回当前生效的覆盖 dict (只含真正有覆盖的 key)。"""
+    global _ACTIVE_PROMPTS
+    new_active = {}
+    for k, v in (overrides or {}).items():
+        if k not in _DEFAULT_PROMPTS:
+            continue
+        if v is None:
+            continue
+        if isinstance(v, str) and v.strip():
+            new_active[k] = v
+        # 空字符串 → 不写入, 等于回到默认
+    _ACTIVE_PROMPTS = new_active
+    logger.info(f"set_prompts: {len(_ACTIVE_PROMPTS)} key(s) overridden ({list(_ACTIVE_PROMPTS.keys())})")
+    return dict(_ACTIVE_PROMPTS)
+
+
+def get_prompts_state() -> dict:
+    """前端用 — 返回 {defaults, current, schema}, current 含 ALL key (覆盖了的取覆盖, 没覆盖的取默认)"""
+    cur = {k: get_prompt(k) for k in _DEFAULT_PROMPTS}
+    return {
+        "defaults": dict(_DEFAULT_PROMPTS),
+        "current": cur,
+        "overridden": sorted(_ACTIVE_PROMPTS.keys()),
+        "schema": list(PROMPT_SCHEMA),
+    }
+
+
 class Dehydrator:
     """
     Data dehydrator + content analyzer.
@@ -415,7 +481,7 @@ class Dehydrator:
         response = await self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": DEHYDRATE_PROMPT},
+                {"role": "system", "content": get_prompt("dehydrate")},
                 {"role": "user", "content": content[:3000]},
             ],
             max_tokens=self.max_tokens,
@@ -438,7 +504,7 @@ class Dehydrator:
         response = await self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": MERGE_PROMPT},
+                {"role": "system", "content": get_prompt("merge")},
                 {"role": "user", "content": user_msg},
             ],
             max_tokens=self.max_tokens,
@@ -551,7 +617,7 @@ class Dehydrator:
         response = await self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": ANALYZE_PROMPT},
+                {"role": "system", "content": get_prompt("analyze")},
                 {"role": "user", "content": content[:2000]},
             ],
             max_tokens=1024,  # Gemini 2.5 Flash thinking 会吃 token,256 太紧
@@ -661,7 +727,7 @@ class Dehydrator:
         response = await self.client.chat.completions.create(
             model=self.model,
             messages=[
-                {"role": "system", "content": DIGEST_PROMPT},
+                {"role": "system", "content": get_prompt("digest")},
                 {"role": "user", "content": content[:5000]},
             ],
             max_tokens=2048,
@@ -741,7 +807,7 @@ class Dehydrator:
             create_kwargs = dict(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": REDEHYDRATE_PROMPT},
+                    {"role": "system", "content": get_prompt("redehydrate")},
                     {"role": "user", "content": content[:4000]},
                 ],
                 max_tokens=8192,
@@ -821,7 +887,7 @@ class Dehydrator:
             response = await self.client.chat.completions.create(
                 model=self.model,
                 messages=[
-                    {"role": "system", "content": REGEN_CONTENT_PROMPT},
+                    {"role": "system", "content": get_prompt("regen_content")},
                     {"role": "user", "content": user_msg},
                 ],
                 max_tokens=4096,
