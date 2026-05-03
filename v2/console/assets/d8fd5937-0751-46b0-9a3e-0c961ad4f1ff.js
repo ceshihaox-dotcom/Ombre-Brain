@@ -137,6 +137,34 @@ function ConfigPage() {
       setPromptResetAllBusy(false);
     }
   };
+  const alignUpstream = async () => {
+    if (!promptCfg) return;
+    const upstreamKeys = promptCfg.upstream ? Object.keys(promptCfg.upstream) : [];
+    if (upstreamKeys.length === 0) {
+      alert('当前后端未提供上游 prompt 数据');
+      return;
+    }
+    const skipped = (promptCfg.schema || []).filter(s => !upstreamKeys.includes(s.key)).map(s => s.label);
+    const aligned = (promptCfg.schema || []).filter(s => upstreamKeys.includes(s.key)).map(s => s.label);
+    const msg = `把以下 ${aligned.length} 个 prompt 切到原作者(P0luz/Ombre-Brain)版本:\n  · ${aligned.join('\n  · ')}\n\n` +
+      (skipped.length > 0 ? `跳过(本项目独创, 上游没有):\n  · ${skipped.join('\n  · ')}\n\n` : '') +
+      `这会覆盖你当前任何自定义版本(可以再用 ↺ 全部恢复默认 撤销)。继续?`;
+    if (!confirm(msg)) return;
+    setPromptResetAllBusy(true);
+    try {
+      const r = await fetch('/api/prompts-config/align-upstream', { method: 'POST' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      if (d.state) setPromptCfg(d.state);
+      setPromptDraft({});
+      alert(`已对齐上游 ${(d.aligned || []).length} 个 prompt` +
+        (d.skipped && d.skipped.length ? ` · 跳过 ${d.skipped.length} 个独创 prompt` : ''));
+    } catch (e) {
+      alert('对齐失败: ' + e.message);
+    } finally {
+      setPromptResetAllBusy(false);
+    }
+  };
   const discardPromptDraft = (key) => {
     setPromptDraft(s => { const n = { ...s }; delete n[key]; return n; });
   };
@@ -660,12 +688,19 @@ function ConfigPage() {
         {!promptCfg && <div style={{ color: 'var(--ink-4)', fontSize: 12 }}>载入中…</div>}
         {promptCfg && (
           <>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-              <div style={{ fontSize: 11, color: 'var(--ink-4)', fontFamily: 'var(--mono)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12, gap: 8 }}>
+              <div style={{ fontSize: 11, color: 'var(--ink-4)', fontFamily: 'var(--mono)', flex: 1 }}>
                 {promptCfg.overridden && promptCfg.overridden.length > 0
                   ? `${promptCfg.overridden.length} 个已自定义 · 其余使用出厂默认`
                   : '全部使用出厂默认'}
               </div>
+              <button
+                className="oc-btn oc-btn-ghost"
+                onClick={alignUpstream}
+                disabled={promptResetAllBusy}
+                style={{ fontSize: 11, padding: '3px 12px' }}
+                title="把上游 (P0luz/Ombre-Brain) 有的 prompt 全部切到上游版本"
+              >{promptResetAllBusy ? '⌛' : '⇆ 对齐原作者版本'}</button>
               <button
                 className="oc-btn oc-btn-ghost"
                 onClick={resetPromptAll}

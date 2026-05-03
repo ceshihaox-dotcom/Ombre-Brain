@@ -1212,6 +1212,27 @@ async def api_prompts_config_post(request):
     return JSONResponse(_dh.get_prompts_state())
 
 
+@mcp.custom_route("/api/prompts-config/align-upstream", methods=["POST"])
+async def api_prompts_config_align_upstream(request):
+    """一键把所有"上游有的"prompt 切到上游版本(作为运行时覆盖, 不改代码)。
+    本项目独创的 prompt (redehydrate / regen_content) 上游没有, 跳过不动。
+    持久化到 runtime_config['prompts']。"""
+    from starlette.responses import JSONResponse
+    import dehydrator as _dh
+    result = _dh.align_to_upstream()
+    # 持久化当前 active 到 runtime_config
+    rc = _read_runtime_config()
+    rc["prompts"] = dict(_dh._ACTIVE_PROMPTS)
+    _write_runtime_config(rc)
+    state = _dh.get_prompts_state()
+    return JSONResponse({
+        "ok": True,
+        "aligned": result["aligned"],
+        "skipped": result["skipped"],
+        "state": state,
+    })
+
+
 @mcp.custom_route("/api/prompts-config/reset", methods=["POST"])
 async def api_prompts_config_reset(request):
     """复位 — 默认全部恢复 (清掉 runtime_config['prompts'])。
