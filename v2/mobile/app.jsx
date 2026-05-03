@@ -1283,6 +1283,10 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
   const [eventTime, setEventTime] = useState('');
   const [saving, setSaving] = useState(false);
   const [redehydrating, setRedehydrating] = useState(false);
+  // 重新脱水弹窗
+  const [redehyOpen, setRedehyOpen] = useState(false);
+  // 是否有可重写正文用的原文 (raw_source)
+  const [hasRawSource, setHasRawSource] = useState(false);
   // 记下加载时的 noise 初值, save 时若没变就完全不动 resolved 字段
   // (resolved 不止是噪声标记, 还表"已解决/未解决", 不能误覆盖)
   const originalNoiseRef = useRef(false);
@@ -1303,6 +1307,7 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
         originalNoiseRef.current = initialNoise;
         setTags(m.tags || []);
         setEventTime(toLocalDateTimeStr(m.event_time || m.created || ''));
+        setHasRawSource(!!(m.raw_source && String(m.raw_source).trim()));
         setLoading(false);
       })
       .catch(e => { if (!cancel) { setError(e.message); setLoading(false); } });
@@ -1377,17 +1382,27 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
     }
   };
 
-  const redehydrate = async () => {
+  // 入口:打开弹窗,让用户选要不要顺带重写正文
+  const openRedehydrate = () => {
     if (redehydrating || saving) return;
-    if (!window.confirm('对当前记忆重新脱水?\nLLM 会重写标题/摘要/tags 等字段; 本次表单未保存的修改将被这次产出覆盖。')) return;
+    setRedehyOpen(true);
+  };
+
+  // 弹窗确认后真正执行
+  const doRedehydrate = async ({ regenerate_content }) => {
+    if (redehydrating || saving) return;
     setRedehydrating(true);
     setError(null);
     try {
-      const r = await fetch('/api/bucket/' + encodeURIComponent(bucketId) + '/redehydrate', { method: 'POST' });
+      const r = await fetch('/api/bucket/' + encodeURIComponent(bucketId) + '/redehydrate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ regenerate_content: !!regenerate_content }),
+      });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
       const m = d.metadata || {};
-      // 用新元数据回填表单, content 不变
+      // 用新元数据回填表单
       setName(m.name || '');
       setSummary(m.summary || '');
       setImp(m.importance || imp);
@@ -1396,8 +1411,16 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
       setNoise(newNoise);
       originalNoiseRef.current = newNoise;
       setTags(m.tags || []);
-      // 同步给父级状态(审阅区已立刻反映新标题/摘要/tags)
+      // 正文若被重写,刷新表单 content
+      if (d.regenerated_content && d.new_content) {
+        setContent(d.new_content);
+      } else if (d.content) {
+        // 后端始终回传 fresh content, 兜底也同步一下
+        setContent(d.content);
+      }
+      // 同步给父级状态
       if (onSaved) onSaved(m);
+      setRedehyOpen(false);
     } catch (e) {
       setError(e.message || String(e));
     } finally {
@@ -1451,7 +1474,7 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
               tags={tags} setTags={setTags}
               tagInput={tagInput} setTagInput={setTagInput}
               eventTime={eventTime} setEventTime={setEventTime}
-              onRedehydrate={redehydrate}
+              onRedehydrate={openRedehydrate}
               redehydrating={redehydrating}
               noise={noise} onToggleNoise={toggleNoise}
             />
@@ -1460,6 +1483,69 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
             </button>
           </>
         )}
+      </div>
+      <RedehydrateSheet
+        open={redehyOpen}
+        title={name}
+        hasRawSource={hasRawSource}
+        busy={redehydrating}
+        onCancel={() => { if (!redehydrating) setRedehyOpen(false); }}
+        onConfirm={doRedehydrate}
+      />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────
+// RedehydrateSheet — 手机端重新脱水弹窗
+// 含「同时重新提炼正文」勾选项;无 raw_source 时置灰
+// ─────────────────────────────────────────
+function RedehydrateSheet({ open, title, hasRawSource, busy, onCancel, onConfirm }) {
+  const [regen, setRegen] = useState(false);
+  useEffect(() => { if (!open) setRegen(false); }, [open]);
+  if (!open) return null;
+  const allowRegen = hasRawSource && !busy;
+  return (
+    <div className="redehy-sheet-mask" onClick={busy ? undefined : onCancel}>
+      <div className="redehy-sheet" onClick={e => e.stopPropagation()}>
+        <div className="redehy-sheet-grip"/>
+        <div className="redehy-sheet-hd">
+          <div className="redehy-sheet-icon">↻</div>
+          <div className="redehy-sheet-title">重新脱水</div>
+        </div>
+        <div className="redehy-sheet-target">「{title || '当前记忆'}」</div>
+        <div className="redehy-sheet-desc">
+          让 LLM 重新生成这条记忆的<b>标题 / 摘要 / 标签 / 情感</b>。<br/>
+          重要度 / 状态 / 事件时间会保留。
+        </div>
+
+        <label className={'redehy-opt' + (hasRawSource ? '' : ' is-disabled')}>
+          <input
+            type="checkbox"
+            checked={regen && hasRawSource}
+            disabled={!allowRegen}
+            onChange={e => setRegen(e.target.checked)}
+          />
+          <div className="redehy-opt-text">
+            <div className="redehy-opt-ttl">同时重新提炼正文</div>
+            <div className="redehy-opt-sub">
+              {hasRawSource
+                ? '基于原文 (raw_source) 让 LLM 重写正文,会刷新 embedding。多耗一次 LLM 调用。'
+                : '此条无原文 (raw_source 为空),无法重新提炼正文。'}
+            </div>
+          </div>
+        </label>
+
+        <div className="redehy-sheet-foot">
+          <button className="redehy-btn" onClick={onCancel} disabled={busy}>取消</button>
+          <button
+            className="redehy-btn is-primary"
+            onClick={() => onConfirm({ regenerate_content: regen && hasRawSource })}
+            disabled={busy}
+          >
+            {busy ? '处理中…' : (regen && hasRawSource ? '重新脱水(含正文)' : '开始重新脱水')}
+          </button>
+        </div>
       </div>
     </div>
   );
