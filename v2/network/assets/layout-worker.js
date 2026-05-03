@@ -1,6 +1,12 @@
-// constellation-physics.jsx —— 力导向布局 + 类型推断 + 边权计算
+// layout-worker.js — 在后台线程跑 quadtree 力导向布局
+// 主线程不卡, 几百到几千节点都流畅
 
-// 推断星体类型（4 类）
+// ── 辅助函数 (从 e964578f-... 移植, 保持算法一致) ──
+
+function radiusOf(item) {
+  return 5 + (item.importance || 5) * 1.1;
+}
+
 function inferType(item) {
   if (item.archived) return 'archived';
   if (item.feel) return 'feel';
@@ -8,69 +14,44 @@ function inferType(item) {
   return 'dynamic';
 }
 
-// 类型 → 视觉
-const TYPE_VIS = {
-  dynamic:   { fill: '#a78bd0', glow: 'rgba(167,139,208,0.5)', label: '深紫蓝小星点',  en: 'dynamic'  },
-  permanent: { fill: '#d4a85f', glow: 'rgba(212,168,95,0.7)',  label: '金色核心星',    en: 'permanent'},
-  feel:      { fill: '#d291b3', glow: 'rgba(210,145,179,0.6)', label: '玫瑰粉情绪星',  en: 'feel'     },
-  archived:  { fill: '#8a8898', glow: 'rgba(138,136,152,0.3)', label: '低透明灰星',    en: 'archived' }
-};
-window.TYPE_VIS = TYPE_VIS;
-window.inferType = inferType;
-
-// 半径：importance 1..10 → 5..16
-function radiusOf(item) {
-  return 5 + (item.importance || 5) * 1.1;
-}
-window.radiusOf = radiusOf;
-
-// 计算"最近活跃度"（用于光晕）—— 距今 0..30 天
-function activityOf(item, now) {
-  const d = new Date(item.date + 'T' + (item.time || '00:00'));
-  const days = Math.max(0, (now - d) / 864e5);
-  return Math.max(0, 1 - days / 30);
-}
-window.activityOf = activityOf;
-
-// 基于 tag 共现 + 时间邻近 计算边
 function buildLinks(items) {
   const links = [];
+  // 性能优化: 内层循环外预 build a 的 tag set, 避免 N² 次创建
   for (let i = 0; i < items.length; i++) {
+    const a = items[i];
+    const aTagSet = new Set(a.tags || []);
+    if (aTagSet.size === 0) continue;
     for (let j = i + 1; j < items.length; j++) {
-      const a = items[i], b = items[j];
-      const aTags = new Set(a.tags || []);
-      const sharedTags = (b.tags || []).filter(t => aTags.has(t));
-      let w = sharedTags.length;
-      if (w === 0) continue;
-      // 同日 +0.5；importance 都高 +0.3
+      const b = items[j];
+      const bTags = b.tags || [];
+      let shared = 0;
+      const sharedArr = [];
+      for (const t of bTags) {
+        if (aTagSet.has(t)) { shared++; sharedArr.push(t); }
+      }
+      if (shared === 0) continue;
+      let w = shared;
       if (a.date === b.date) w += 0.6;
       if ((a.importance >= 7) && (b.importance >= 7)) w += 0.3;
-      // feel ↔ feel 加权
       if (a.feel && b.feel) w += 0.3;
-      links.push({ source: a.id, target: b.id, weight: w, shared: sharedTags });
+      links.push({ source: a.id, target: b.id, weight: w, shared: sharedArr });
     }
   }
   return links;
 }
-window.buildLinks = buildLinks;
 
-// ──────────────────────────────────────────────────────────
-// Barnes-Hut 四叉树 — 排斥力 O(N²) → O(N log N)
-// 200 节点: 17M ops → 150K ops, 提速 ~100x
-// 1000 节点: 220M ops → 1M ops, 提速 ~200x
-// ──────────────────────────────────────────────────────────
+// ── Quadtree (Barnes-Hut) ──
+
 function _qtMakeNode(x, y, size) {
   return { x, y, size, point: null, children: null, mass: 0, cx: 0, cy: 0 };
 }
 function _qtInsert(node, p) {
-  // 累加质心
   node.cx = (node.cx * node.mass + p.x) / (node.mass + 1);
   node.cy = (node.cy * node.mass + p.y) / (node.mass + 1);
   node.mass++;
   if (node.children === null) {
     if (node.point === null) { node.point = p; return; }
-    if (node.size < 1) return;  // 太小, 不再细分
-    // 已有点 → 细分
+    if (node.size < 1) return;
     const old = node.point;
     node.point = null;
     const half = node.size / 2;
@@ -105,20 +86,16 @@ function _qtBuild(positions) {
   for (const p of positions) _qtInsert(root, p);
   return root;
 }
-// 对节点 p 应用从整棵树来的排斥力 (Barnes-Hut)
-// theta=0.9: 节点距离够远时 (size/d < theta) 用质心近似整个子树
 function _qtApplyRepulsion(node, p, theta) {
   if (node.mass === 0) return;
-  if (node.point === p) return;  // skip self
+  if (node.point === p) return;
   const dx = node.cx - p.x;
   const dy = node.cy - p.y;
   const d2 = dx * dx + dy * dy + 0.01;
   const d = Math.sqrt(d2);
   if (node.point !== null || node.size / d < theta) {
-    // 当作单点 (质心 + 总质量)
     const baseForce = 1800 * node.mass / d2;
     let f = baseForce;
-    // 叶子时(单点)再叠加 minD 防重叠
     if (node.point !== null) {
       const minD = (p.r + (node.point.r || 5)) * 1.6 + 30;
       if (d < minD) f += (minD - d) * 0.5;
@@ -127,19 +104,17 @@ function _qtApplyRepulsion(node, p, theta) {
     p.vy -= (dy / d) * f;
     return;
   }
-  // 太近 → 递归子节点
   for (const child of node.children) _qtApplyRepulsion(child, p, theta);
 }
 
-// 力导向布局（Barnes-Hut quadtree, O(N log N)）
-// 参数：nodes [{id, r}], links [{source, target, weight}], width, height
+// ── 布局函数 ──
+
 function simulateLayout(nodes, links, width, height, iters = 220) {
   const N = nodes.length;
   if (N === 0) return [];
   const cx = width / 2, cy = height / 2;
   const ringR = Math.min(width, height) * 0.36;
 
-  // 初始位置: 圆形布散 (按 importance 内圈)
   const positions = nodes.map((n, i) => {
     const a = (i / N) * Math.PI * 2;
     const importance = n.importance || 5;
@@ -152,7 +127,6 @@ function simulateLayout(nodes, links, width, height, iters = 220) {
     };
   });
 
-  // id → idx 映射 (link 引用用)
   const idIdx = {};
   nodes.forEach((n, i) => { idIdx[n.id] = i; });
   const linkPairs = [];
@@ -167,12 +141,9 @@ function simulateLayout(nodes, links, width, height, iters = 220) {
   const theta = 0.9;
   for (let step = 0; step < iters; step++) {
     const t = 1 - step / iters;
-
-    // 1) 排斥 (Barnes-Hut O(N log N))
     const tree = _qtBuild(positions);
     for (let i = 0; i < N; i++) _qtApplyRepulsion(tree, positions[i], theta);
 
-    // 2) 弹簧 (按权重) O(L)
     for (const l of linkPairs) {
       const a = positions[l.a], b = positions[l.b];
       const dx = b.x - a.x, dy = b.y - a.y;
@@ -185,13 +156,11 @@ function simulateLayout(nodes, links, width, height, iters = 220) {
       b.vx -= fx; b.vy -= fy;
     }
 
-    // 3) 中心引力 O(N)
     for (const p of positions) {
       p.vx += (cx - p.x) * 0.008;
       p.vy += (cy - p.y) * 0.008;
     }
 
-    // 4) 阻尼 + 步进 O(N)
     for (const p of positions) {
       p.vx *= 0.78; p.vy *= 0.78;
       p.x += p.vx * t;
@@ -201,9 +170,7 @@ function simulateLayout(nodes, links, width, height, iters = 220) {
 
   return nodes.map((n, i) => ({ ...n, x: positions[i].x, y: positions[i].y }));
 }
-window.simulateLayout = simulateLayout;
 
-// 时间环形布局（按日期排成螺旋）
 function timeRingLayout(nodes, width, height) {
   const sorted = [...nodes].sort((a, b) =>
     (a.date + a.time).localeCompare(b.date + b.time)
@@ -218,9 +185,7 @@ function timeRingLayout(nodes, width, height) {
     return { ...n, x: cx + Math.cos(a) * r, y: cy + Math.sin(a) * r };
   });
 }
-window.timeRingLayout = timeRingLayout;
 
-// 类型聚类布局
 function clusterLayout(nodes, width, height) {
   const groups = {};
   nodes.forEach(n => {
@@ -245,4 +210,31 @@ function clusterLayout(nodes, width, height) {
   });
   return out;
 }
-window.clusterLayout = clusterLayout;
+
+// ── Worker 消息处理 ──
+// 主线程 postMessage({ items, mode, width, height, requestId })
+// Worker 回 postMessage({ layout, links, requestId })
+
+self.onmessage = function (e) {
+  const { items, mode, width, height, requestId } = e.data;
+  try {
+    const links = buildLinks(items);
+    const nodes = items.map(i => ({
+      id: i.id, r: radiusOf(i), importance: i.importance,
+      date: i.date, time: i.time,
+      feel: !!i.feel, protected: !!i.protected,
+      archived: !!i.archived, highlight: !!i.highlight,
+    }));
+    let layout;
+    if (mode === 'time') {
+      layout = timeRingLayout(nodes, width, height);
+    } else if (mode === 'cluster' || mode === 'type') {
+      layout = clusterLayout(nodes, width, height);
+    } else {
+      layout = simulateLayout(nodes, links, width, height);
+    }
+    self.postMessage({ layout, links, requestId });
+  } catch (err) {
+    self.postMessage({ error: String(err && err.message || err), requestId });
+  }
+};

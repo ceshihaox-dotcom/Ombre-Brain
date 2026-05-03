@@ -26,7 +26,14 @@ function ConstellationApp() {
   const [enabledTypes, setEnabledTypes] = caS(new Set(['dynamic', 'permanent', 'feel', 'archived']));
   const [tagFilters, setTagFilters] = caS(new Set());
   const [impMin, setImpMin] = caS(1);
-  const [searchQuery, setSearchQuery] = caS('');
+  const [searchQuery, setSearchQueryRaw] = caS('');
+  // 搜索防抖: 用户连按键时不每次都触发下游高亮重算 (250ms 收敛)
+  const [debouncedQuery, setDebouncedQuery] = caS('');
+  const setSearchQuery = setSearchQueryRaw;
+  caE(() => {
+    const id = setTimeout(() => setDebouncedQuery(searchQuery), 250);
+    return () => clearTimeout(id);
+  }, [searchQuery]);
 
   const [hoverId, setHoverId] = caS(null);
   const [selectedId, setSelectedId] = caS(null);
@@ -70,23 +77,107 @@ function ConstellationApp() {
     return arr;
   }, [data, timeOpen, sortedAsc, timeIdx, impMin, tagFilters]);
 
-  // 边
-  const links = caM(() => buildLinks(visibleItems), [visibleItems]);
+  // ─────────── Web Worker 异步布局 ───────────
+  // 物理计算放后台线程, 主线程不卡; worker 失败 fallback 到同步计算
+  const workerRef = caR(null);
+  const layoutCache = caR(new Map());      // 最近 8 个 cacheKey → { layout, links }
+  const requestIdRef = caR(0);             // 防过期 worker 响应
+  const pendingRequestRef = caR(null);     // 当前请求的 cacheKey (worker 回来时存进缓存用)
+  const [layout, setLayout] = caS([]);
+  const [links, setLinks] = caS([]);
+  const [computing, setComputing] = caS(false);
+  const [workerOk, setWorkerOk] = caS(true);
 
-  // 布局（按 mode）
-  const layout = caM(() => {
-    const nodes = visibleItems.map(i => ({ id: i.id, r: radiusOf(i), importance: i.importance, date: i.date, time: i.time }));
-    if (mode === 'time') return timeRingLayout(nodes, size.width, size.height);
-    if (mode === 'cluster' || mode === 'type') {
-      // 用类型聚类（cluster vs type 区别留给后续）
-      const enriched = nodes.map(n => {
-        const it = visibleItems.find(i => i.id === n.id);
-        return { ...n, feel: it.feel, protected: it.protected, archived: it.archived, highlight: it.highlight };
-      });
-      return clusterLayout(enriched, size.width, size.height);
+  // 创建 worker (只一次)
+  caE(() => {
+    if (typeof Worker === 'undefined') { setWorkerOk(false); return; }
+    let w;
+    try {
+      w = new Worker('/v2/network/assets/layout-worker.js');
+    } catch (e) {
+      console.warn('[constellation] worker 创建失败, fallback 同步计算', e);
+      setWorkerOk(false);
+      return;
     }
-    return simulateLayout(nodes, links, size.width, size.height);
-  }, [visibleItems, links, size, mode]);
+    w.onmessage = (ev) => {
+      const { layout: newLayout, links: newLinks, requestId, error } = ev.data;
+      if (requestId !== requestIdRef.current) return;  // 过期响应
+      if (error) {
+        console.warn('[constellation] worker error:', error);
+        setComputing(false);
+        return;
+      }
+      // 缓存 (用 pendingRequestRef.current 拿到对应的 cacheKey)
+      const ck = pendingRequestRef.current;
+      if (ck) {
+        layoutCache.current.set(ck, { layout: newLayout, links: newLinks });
+        if (layoutCache.current.size > 8) {
+          const firstKey = layoutCache.current.keys().next().value;
+          layoutCache.current.delete(firstKey);
+        }
+      }
+      setLayout(newLayout);
+      setLinks(newLinks);
+      setComputing(false);
+    };
+    w.onerror = (ev) => {
+      console.warn('[constellation] worker fatal, fallback to sync:', ev.message);
+      setWorkerOk(false);
+    };
+    workerRef.current = w;
+    return () => { try { w.terminate(); } catch (_) {} };
+  }, []);
+
+  // 触发布局计算 (worker 异步 / 同步 fallback / 缓存命中直接返回)
+  caE(() => {
+    if (visibleItems.length === 0) {
+      setLayout([]); setLinks([]); setComputing(false);
+      return;
+    }
+    // 缓存键: mode + size + 排序后的 IDs
+    const ids = visibleItems.map(i => i.id).sort().join(',');
+    const cacheKey = mode + '|' + size.width + 'x' + size.height + '|' + ids;
+    const cached = layoutCache.current.get(cacheKey);
+    if (cached) {
+      setLayout(cached.layout);
+      setLinks(cached.links);
+      setComputing(false);
+      return;
+    }
+    requestIdRef.current++;
+    pendingRequestRef.current = cacheKey;
+    setComputing(true);
+    if (workerOk && workerRef.current) {
+      workerRef.current.postMessage({
+        items: visibleItems,
+        mode,
+        width: size.width,
+        height: size.height,
+        requestId: requestIdRef.current,
+      });
+    } else {
+      // worker 不可用 → 同步 fallback (老代码路径)
+      try {
+        const newLinks = buildLinks(visibleItems);
+        const nodes = visibleItems.map(i => ({
+          id: i.id, r: radiusOf(i), importance: i.importance,
+          date: i.date, time: i.time,
+          feel: i.feel, protected: i.protected, archived: i.archived, highlight: i.highlight,
+        }));
+        let newLayout;
+        if (mode === 'time') newLayout = timeRingLayout(nodes, size.width, size.height);
+        else if (mode === 'cluster' || mode === 'type') newLayout = clusterLayout(nodes, size.width, size.height);
+        else newLayout = simulateLayout(nodes, newLinks, size.width, size.height);
+        layoutCache.current.set(cacheKey, { layout: newLayout, links: newLinks });
+        setLayout(newLayout);
+        setLinks(newLinks);
+        setComputing(false);
+      } catch (e) {
+        console.error('[constellation] 同步 fallback 失败', e);
+        setComputing(false);
+      }
+    }
+  }, [visibleItems, size, mode, workerOk]);
 
   // toggles
   const toggleType = (k) => setEnabledTypes(s => {
@@ -220,6 +311,21 @@ function ConstellationApp() {
 
       {/* 主区 */}
       <div className="cs-main" ref={containerRef}>
+        {computing && (
+          <div style={{
+            position: 'absolute', top: 14, right: 14, zIndex: 50,
+            padding: '6px 14px',
+            background: 'rgba(20, 18, 32, 0.85)',
+            color: 'rgba(255,255,255,0.85)',
+            borderRadius: 999,
+            font: '500 11px var(--mono, monospace)',
+            letterSpacing: '0.06em',
+            backdropFilter: 'blur(8px)',
+            pointerEvents: 'none',
+          }}>
+            ◐ 排布中…
+          </div>
+        )}
         <StarCanvas
           items={visibleItems}
           links={links}
@@ -229,7 +335,7 @@ function ConstellationApp() {
           selectedId={selectedId}
           focusId={focusedId}
           hoverId={hoverId}
-          searchQuery={searchQuery}
+          searchQuery={debouncedQuery}
           filteredTypes={filteredTypes}
           showLinks={t.showLinks !== false}
           showLabels={t.showLabels || 'smart'}
@@ -256,7 +362,7 @@ function ConstellationApp() {
           toggleTag={toggleTag}
           impMin={impMin}
           setImpMin={setImpMin}
-          searchQuery={searchQuery}
+          searchQuery={debouncedQuery}
           onFocusIsland={onFocusIsland}
         />
 
