@@ -170,6 +170,10 @@ function HomeScreen() {
   const [error, setError] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState(() => new Set());
+  const [domainFilters, setDomainFilters] = useState([]);  // 主题域多选
+  const [tagFilters, setTagFilters] = useState([]);        // 标签多选 (AND)
+  const [tagSheetOpen, setTagSheetOpen] = useState(false); // 标签筛选 sheet
+  const [tagSearch, setTagSearch] = useState('');          // 标签搜索框
   // 跳全貌→back 回 home 的恢复: lazy useState 在 mount 时读一次 + 立即清 sessionStorage
   // 30 分钟内有效;过期就当没存
   const [moodInit] = useState(() => {
@@ -211,6 +215,7 @@ function HomeScreen() {
       ? buckets.filter(b => isNoise(b))
       : buckets.filter(b => !isNoise(b));
     if (filters.has('hi'))      result = result.filter(b => b.highlight);
+    if (filters.has('pin'))     result = result.filter(b => b.protected || b.pinned);
     if (filters.has('feel'))    result = result.filter(b => isFeel(b));
     if (filters.has('recent7')) {
       const cutoff = Date.now() - 7 * 86400000;
@@ -221,6 +226,12 @@ function HomeScreen() {
     }
     if (filters.has('imp7')) result = result.filter(b => (b.importance || 5) >= 7);
     if (filters.has('ai'))   result = result.filter(b => b.created_by === 'ai');
+    if (domainFilters.length > 0) {
+      result = result.filter(b => domainFilters.every(d => (b.domain || []).includes(d)));
+    }
+    if (tagFilters.length > 0) {
+      result = result.filter(b => tagFilters.every(t => (b.tags || []).includes(t)));
+    }
 
     const q = searchQuery.trim().toLowerCase();
     if (q) {
@@ -231,7 +242,33 @@ function HomeScreen() {
       });
     }
     return result;
-  }, [buckets, filters, searchQuery]);
+  }, [buckets, filters, domainFilters, tagFilters, searchQuery]);
+
+  // 聚合 domain / tag (用 buckets 全集而非 filteredBuckets, 让用户始终看到所有可选项)
+  const allDomains = useMemo(() => {
+    if (!buckets) return [];
+    const counts = {};
+    buckets.forEach(b => {
+      if (isNoise(b)) return;
+      (b.domain || []).forEach(d => { if (d) counts[d] = (counts[d] || 0) + 1; });
+    });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([d, c]) => ({ domain: d, count: c }));
+  }, [buckets]);
+
+  const allTags = useMemo(() => {
+    if (!buckets) return [];
+    const counts = {};
+    buckets.forEach(b => {
+      if (isNoise(b)) return;
+      (b.tags || []).forEach(t => {
+        if (t && !String(t).startsWith('__')) counts[t] = (counts[t] || 0) + 1;
+      });
+    });
+    return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([t, c]) => ({ tag: t, count: c }));
+  }, [buckets]);
+
+  const toggleDomain = (d) => setDomainFilters(curr => curr.includes(d) ? curr.filter(x => x !== d) : [...curr, d]);
+  const toggleTag = (t) => setTagFilters(curr => curr.includes(t) ? curr.filter(x => x !== t) : [...curr, t]);
 
   // 默认模式:按本地日期分组
   const days = useMemo(() => {
@@ -262,7 +299,7 @@ function HomeScreen() {
     return arr;
   }, [buckets]);
 
-  const isFiltering = !!searchQuery.trim() || filters.size > 0;
+  const isFiltering = !!searchQuery.trim() || filters.size > 0 || domainFilters.length > 0 || tagFilters.length > 0;
   const flatResults = useMemo(() => {
     if (!isFiltering) return null;
     return [...filteredBuckets].sort((a, b) => {
@@ -326,13 +363,17 @@ function HomeScreen() {
 
         <div className="home-chips">
           <span
-            className={'home-chip' + (filters.size === 0 ? ' on' : '')}
-            onClick={() => setFilters(new Set())}
+            className={'home-chip' + (filters.size === 0 && domainFilters.length === 0 && tagFilters.length === 0 ? ' on' : '')}
+            onClick={() => { setFilters(new Set()); setDomainFilters([]); setTagFilters([]); }}
           >全部</span>
+          <span
+            className={'home-chip pin' + (filters.has('pin') ? ' on' : '')}
+            onClick={() => toggleFilter('pin')}
+          >★ 钉决</span>
           <span
             className={'home-chip hi' + (filters.has('hi') ? ' on' : '')}
             onClick={() => toggleFilter('hi')}
-          >★ highlight</span>
+          >✦ highlight</span>
           <span
             className={'home-chip feel' + (filters.has('feel') ? ' on' : '')}
             onClick={() => toggleFilter('feel')}
@@ -354,8 +395,80 @@ function HomeScreen() {
             onClick={() => toggleFilter('noise')}
             title="只看标了噪声的(默认其它视图都隐藏)"
           >⌀ 噪声</span>
+          <span
+            className={'home-chip' + (tagFilters.length > 0 ? ' on' : '')}
+            onClick={() => setTagSheetOpen(true)}
+            title={`${allTags.length} 个标签可筛选`}
+          >🏷 标签{tagFilters.length > 0 ? ` ·${tagFilters.length}` : ''}</span>
         </div>
+
+        {/* 主题域筛选行 — 上游 dashboard domain filter 的 mobile 实现 */}
+        {allDomains.length > 0 && (
+          <div className="home-domains">
+            <span className="home-domains-lab">主题域</span>
+            <div className="home-domains-row">
+              {allDomains.map(({ domain: d, count }) => (
+                <span
+                  key={d}
+                  className={'home-chip domain' + (domainFilters.includes(d) ? ' on' : '')}
+                  onClick={() => toggleDomain(d)}
+                >{d} <span style={{ opacity: 0.55 }}>{count}</span></span>
+              ))}
+              {domainFilters.length > 0 && (
+                <span className="home-chip clear" onClick={() => setDomainFilters([])}>清空</span>
+              )}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* 标签筛选底部抽屉 — 1000+ 标签用专门 sheet 不挤 chip 行 */}
+      {tagSheetOpen && (
+        <div className="tag-sheet-mask" onClick={() => setTagSheetOpen(false)}>
+          <div className="tag-sheet" onClick={e => e.stopPropagation()}>
+            <div className="tag-sheet-grip"/>
+            <div className="tag-sheet-hd">
+              <span className="tag-sheet-title">标签筛选</span>
+              <span className="tag-sheet-meta">{allTags.length} 个标签 · 已选 {tagFilters.length}</span>
+              <button className="tag-sheet-close" onClick={() => setTagSheetOpen(false)}>完成</button>
+            </div>
+            <div className="tag-sheet-search">
+              <input
+                value={tagSearch}
+                onChange={(e) => setTagSearch(e.target.value)}
+                placeholder="搜索标签…"
+                autoFocus
+              />
+              {tagFilters.length > 0 && (
+                <button className="tag-sheet-clear" onClick={() => setTagFilters([])}>清空已选</button>
+              )}
+            </div>
+            <div className="tag-sheet-body">
+              {(() => {
+                const q = tagSearch.trim().toLowerCase();
+                const filtered = q
+                  ? allTags.filter(({ tag }) => String(tag).toLowerCase().includes(q))
+                  : allTags;
+                // 已选的永远顶部 + 视野内
+                const selected = tagFilters.map(t => ({ tag: t, count: (allTags.find(x => x.tag === t) || {}).count || 0 }));
+                const selectedSet = new Set(tagFilters);
+                const rest = filtered.filter(x => !selectedSet.has(x.tag));
+                const list = [...selected, ...rest].slice(0, 200);
+                if (list.length === 0) {
+                  return <div className="tag-sheet-empty">无匹配标签</div>;
+                }
+                return list.map(({ tag, count }) => (
+                  <span
+                    key={tag}
+                    className={'tag-sheet-chip' + (tagFilters.includes(tag) ? ' on' : '')}
+                    onClick={() => toggleTag(tag)}
+                  >{tag} <span style={{ opacity: 0.55 }}>{count}</span></span>
+                ));
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="home-body">
         {isFiltering ? (
@@ -363,8 +476,10 @@ function HomeScreen() {
             <div className="filter-result-meta">
               共 <b>{flatResults.length}</b> 条
               {searchQuery.trim() && <span> · 关键词「{searchQuery.trim()}」</span>}
-              {filters.size > 0 && <span> · {filters.size} 个筛选</span>}
-              <button className="clear-all" onClick={() => { setSearchQuery(''); setFilters(new Set()); }}>清空 ↺</button>
+              {filters.size > 0 && <span> · {filters.size} 个状态</span>}
+              {domainFilters.length > 0 && <span> · {domainFilters.length} 主题域</span>}
+              {tagFilters.length > 0 && <span> · {tagFilters.length} 标签</span>}
+              <button className="clear-all" onClick={() => { setSearchQuery(''); setFilters(new Set()); setDomainFilters([]); setTagFilters([]); }}>清空 ↺</button>
             </div>
             {flatResults.length === 0 && (
               <div style={{ color: 'var(--ink-4)', textAlign: 'center', padding: '40px 0', fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '0.1em' }}>

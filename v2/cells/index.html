@@ -5368,6 +5368,24 @@ body {
   margin-right: 4px;
   flex-shrink: 0;
 }
+.ob-cells-tag-search {
+  appearance: none;
+  border: 0.5px solid var(--line-2);
+  background: var(--bg-2);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font: 12px var(--sans);
+  color: var(--ink);
+  outline: none;
+  width: 160px;
+  transition: border-color .15s, width .2s;
+  flex-shrink: 0;
+}
+.ob-cells-tag-search:focus {
+  border-color: var(--accent);
+  width: 240px;
+}
+.ob-cells-tag-search::placeholder { color: var(--ink-4); }
 .ob-cells-chip {
   appearance: none;
   background: transparent;

@@ -58,6 +58,7 @@ function AppV2() {
   const [loadError, setLoadError] = uSA(null);
   const [query, setQuery] = uSA('');
   const [filters, setFilters] = uSA({ importantOnly: false, feelOnly: false, protectedOnly: false, noiseOnly: false });
+  const [domainFilters, setDomainFilters] = uSA([]);  // 主题域多选
   const [openDay, setOpenDay] = uSA(null);
   const [openItem, setOpenItem] = uSA(null);
   const [writeOpen, setWriteOpen] = uSA(false);
@@ -295,8 +296,31 @@ function AppV2() {
           >⌀ 噪声</FilterChipV2>
         </div>
 
+        {/* 主题域筛选行 (上游 dashboard domain filter 的 v2 实现) */}
+        {(() => {
+          const counts = {};
+          data.forEach(b => (b.domain || []).forEach(d => { if (d) counts[d] = (counts[d] || 0) + 1; }));
+          const list = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+          if (list.length === 0) return null;
+          return (
+            <div className="ob-domain-row">
+              <span className="ob-domain-row-lab">主题域</span>
+              {list.map(([d, c]) => (
+                <FilterChipV2
+                  key={d}
+                  active={domainFilters.includes(d)}
+                  onClick={() => setDomainFilters(curr => curr.includes(d) ? curr.filter(x => x !== d) : [...curr, d])}
+                >{d} <span style={{ opacity: 0.5, fontSize: '0.85em' }}>{c}</span></FilterChipV2>
+              ))}
+              {domainFilters.length > 0 && (
+                <button className="ob-domain-row-clear" onClick={() => setDomainFilters([])}>清空</button>
+              )}
+            </div>
+          );
+        })()}
+
         <TimelineV2
-          items={data}
+          items={domainFilters.length > 0 ? data.filter(b => domainFilters.every(d => (b.domain || []).includes(d))) : data}
           query={query}
           filters={filters}
           density={t.density}

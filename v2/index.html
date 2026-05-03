@@ -3256,6 +3256,34 @@ body {
 }
 .ob-toolbar-search input::placeholder { color: var(--ink-4); }
 
+/* 主题域筛选行 — 跟 ob-toolbar 同样卡片风格 */
+.ob-domain-row {
+  display: flex; align-items: center; gap: 6px;
+  flex-wrap: wrap;
+  margin: -16px 0 24px;
+  padding: 8px 12px;
+  background: var(--paper);
+  border: 0.5px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 1px 0 rgba(255,255,255,0.6) inset;
+}
+.ob-domain-row-lab {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--ink-4);
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+.ob-domain-row-clear {
+  appearance: none; border: 0; background: transparent;
+  font: 500 11px var(--sans);
+  color: var(--accent);
+  cursor: pointer;
+  padding: 4px 8px;
+}
+
 .ob-chip {
   appearance: none; border: 0;
   background: transparent;

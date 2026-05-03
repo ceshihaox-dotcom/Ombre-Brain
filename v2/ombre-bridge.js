@@ -71,6 +71,7 @@
       feel: b.type === 'feel',
       highlight: !!(b.highlight || b.pinned),
       internalized: !!(b.internalized || b.digested),
+      domain: Array.isArray(b.domain) ? b.domain.filter(Boolean) : [],
       artifacts: [],
       _hasEventTime: hasEvent,
     };

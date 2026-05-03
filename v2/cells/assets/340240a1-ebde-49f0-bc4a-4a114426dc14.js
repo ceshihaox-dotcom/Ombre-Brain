@@ -242,7 +242,9 @@ function PopMenu({ label, value, options, onChange }) {
 function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem }) {
   const [query, setQuery] = cuS('');
   const [statusFilter, setStatusFilter] = cuS('all');
+  const [domainFilters, setDomainFilters] = cuS([]);  // 新: 主题域筛选 (跟 tag 同样多选 AND)
   const [tagFilters, setTagFilters] = cuS([]);
+  const [tagSearch, setTagSearch] = cuS('');           // 新: tag 搜索框 (1000+ tag 时必备)
   const [showAllTags, setShowAllTags] = cuS(false);
   const [view, setView] = cuS('list');
   const [sort, setSort] = cuS('imp-desc');
@@ -277,7 +279,16 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
     ];
   }, [items]);
 
-  // tag 筛选
+  // domain 筛选 (聚合所有桶的 metadata.domain)
+  const allDomains = cuM(() => {
+    const counts = {};
+    items.forEach(i => (i.domain || []).forEach(d => { if (d) counts[d] = (counts[d] || 0) + 1; }));
+    return Object.entries(counts)
+      .sort((a, b) => b[1] - a[1])
+      .map(([d, c]) => ({ domain: d, count: c }));
+  }, [items]);
+
+  // tag 筛选 (高基数: 1000+ tag, top 30 + 搜索框)
   const allTags = cuM(() => {
     const counts = {};
     items.forEach(i => (i.tags || []).forEach(t => { counts[t] = (counts[t] || 0) + 1; }));
@@ -286,7 +297,22 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
       .map(([t, c]) => ({ tag: t, count: c }));
   }, [items]);
 
-  const visibleTags = showAllTags ? allTags : allTags.slice(0, 8);
+  // 搜索匹配 + top N + 始终包含已选中的
+  const visibleTags = cuM(() => {
+    const q = tagSearch.trim().toLowerCase();
+    let pool = allTags;
+    if (q) {
+      pool = allTags.filter(({ tag }) => String(tag).toLowerCase().includes(q));
+    }
+    const limit = showAllTags ? pool.length : Math.min(30, pool.length);
+    const sliced = pool.slice(0, limit);
+    // 已选中的 tag 即使不在 top 30 / 搜索结果里, 也要显示, 否则用户没法看到/取消
+    const shown = new Set(sliced.map(x => x.tag));
+    const extras = tagFilters
+      .filter(t => !shown.has(t))
+      .map(t => ({ tag: t, count: (allTags.find(x => x.tag === t) || {}).count || 0 }));
+    return [...extras, ...sliced];
+  }, [allTags, tagSearch, showAllTags, tagFilters]);
 
   // 过滤 + 排序
   const filtered = cuM(() => {
@@ -299,6 +325,9 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
       else if (statusFilter === 'cold') v = v.filter(i => i.importance < 2);
       else if (statusFilter === 'mine') v = v.filter(i => (i.tags || []).includes('亲手写'));
       else if (statusFilter === 'noise') v = v.filter(i => i.noise);
+    }
+    if (domainFilters.length > 0) {
+      v = v.filter(i => domainFilters.every(d => (i.domain || []).includes(d)));
     }
     if (tagFilters.length > 0) {
       v = v.filter(i => tagFilters.every(t => (i.tags || []).includes(t)));
@@ -317,7 +346,7 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
     else if (sort === 'score-desc') v.sort((a, b) => (b.score || 0) - (a.score || 0));
     else if (sort === 'score-asc')  v.sort((a, b) => (a.score || 0) - (b.score || 0));
     return v;
-  }, [items, statusFilter, tagFilters, query, sort]);
+  }, [items, statusFilter, domainFilters, tagFilters, query, sort]);
 
   // 分组
   const groups = cuM(() => {
@@ -373,6 +402,9 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
   }, [groups, collapsed]);
 
   // 切换 tag
+  const toggleDomain = (d) => {
+    setDomainFilters(curr => curr.includes(d) ? curr.filter(x => x !== d) : [...curr, d]);
+  };
   const toggleTag = (t) => {
     setTagFilters(curr => curr.includes(t) ? curr.filter(x => x !== t) : [...curr, t]);
   };
@@ -414,8 +446,8 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
         if (previewItem) { setPreviewItem(null); return; }
         if (editingTitle) { setEditingTitle(null); return; }
         if (selected.size > 0) { clearSelected(); return; }
-        if (tagFilters.length > 0 || statusFilter !== 'all' || query) {
-          setTagFilters([]); setStatusFilter('all'); setQuery('');
+        if (tagFilters.length > 0 || domainFilters.length > 0 || statusFilter !== 'all' || query) {
+          setTagFilters([]); setDomainFilters([]); setStatusFilter('all'); setQuery('');
           return;
         }
       }
@@ -588,8 +620,37 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
             </button>
           ))}
         </div>
+        {allDomains.length > 0 && (
+          <div className="ob-cells-frow">
+            <span className="ob-cells-frow-lab">主题域</span>
+            {allDomains.map(({ domain: dm, count }) => (
+              <button
+                key={dm}
+                className={`ob-cells-chip ${domainFilters.includes(dm) ? 'on' : ''}`}
+                onClick={() => toggleDomain(dm)}
+              >
+                <span>{dm}</span>
+                <span className="ob-cells-chip-count">{count}</span>
+              </button>
+            ))}
+            {domainFilters.length > 0 && (
+              <button className="ob-cells-frow-more" onClick={() => setDomainFilters([])} style={{color: 'var(--accent)'}}>
+                清空
+              </button>
+            )}
+          </div>
+        )}
         <div className="ob-cells-frow">
-          <span className="ob-cells-frow-lab">分类</span>
+          <span className="ob-cells-frow-lab">标签</span>
+          <input
+            className="ob-cells-tag-search"
+            value={tagSearch}
+            onChange={(e) => setTagSearch(e.target.value)}
+            placeholder={`搜 ${allTags.length} 个标签…`}
+          />
+          {tagSearch && (
+            <button className="ob-cells-search-clear" onClick={() => setTagSearch('')}>×</button>
+          )}
           {visibleTags.map(({ tag: tg, count }) => (
             <button
               key={tg}
@@ -600,9 +661,14 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
               <span className="ob-cells-chip-count">{count}</span>
             </button>
           ))}
-          {allTags.length > 8 && (
-            <button className="ob-cells-frow-more" onClick={() => setShowAllTags(v => !v)}>
-              {showAllTags ? '收起' : `+${allTags.length - 8} 更多`}
+          {!tagSearch && !showAllTags && allTags.length > 30 && (
+            <button className="ob-cells-frow-more" onClick={() => setShowAllTags(true)}>
+              +{allTags.length - 30} 全部展开
+            </button>
+          )}
+          {!tagSearch && showAllTags && allTags.length > 30 && (
+            <button className="ob-cells-frow-more" onClick={() => setShowAllTags(false)}>
+              收起 (前 30)
             </button>
           )}
           {tagFilters.length > 0 && (
