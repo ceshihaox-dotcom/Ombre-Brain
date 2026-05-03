@@ -1,0 +1,27 @@
+{
+  "name": "Ombre Brain",
+  "short_name": "Ombre",
+  "description": "长期情绪记忆系统 · 给 Claude 用的可视化前端",
+  "start_url": "/v2/mobile/",
+  "scope": "/v2/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f4f3f7",
+  "theme_color": "#f4f3f7",
+  "lang": "zh-CN",
+  "categories": ["productivity", "lifestyle"],
+  "icons": [
+    {
+      "src": "/v2/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/v2/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
