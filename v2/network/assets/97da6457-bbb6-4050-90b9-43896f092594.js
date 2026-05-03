@@ -2,29 +2,59 @@
 
 const { useState: cpS, useMemo: cpM } = React;
 
+// 跟 buildLinks 的 AUTO_TAGS 同步 — 桥接层自动注入的状态标签, 不算主题标签
+const _CS_AUTO_TAGS = new Set([
+  '亲手写', 'AI 写入', '已内化', '保护', '重要', 'feel(柔软)',
+]);
+function _csIsTopical(t) {
+  if (!t) return false;
+  const s = String(t);
+  if (s.startsWith('__')) return false;
+  if (_CS_AUTO_TAGS.has(s)) return false;
+  return true;
+}
+
 // ── 左浮面板 ──
 function LeftPanel({
   items, links, layout,
   mode, setMode,
   enabledTypes, toggleType,
+  extraFilters, toggleExtra,   // 新: Set<'fresh' | 'mine'>
   tagFilters, toggleTag,
   impMin, setImpMin,
   searchQuery,
   onFocusIsland,
 }) {
-  // 类型分布
+  // 类型分布 (4 视觉类)
   const typeCounts = cpM(() => {
     const c = { dynamic: 0, permanent: 0, feel: 0, archived: 0 };
     items.forEach(it => c[inferType(it)]++);
     return c;
   }, [items]);
 
-  // 全部 tag
-  const allTags = cpM(() => {
-    const s = new Set();
-    items.forEach(it => (it.tags || []).forEach(t => s.add(t)));
-    return [...s];
+  // 额外过滤项的统计
+  const extraCounts = cpM(() => ({
+    fresh: items.filter(i => i.highlight || (i.importance || 5) >= 8).length,
+    mine: items.filter(i => i.created_by === 'user').length,
+  }), [items]);
+
+  // 全部 tag (排除 AUTO_TAGS / __* + 按出现频次排序 + 含 count)
+  const sortedTags = cpM(() => {
+    const counts = new Map();
+    items.forEach(it => {
+      (it.tags || []).forEach(t => {
+        if (!_csIsTopical(t)) return;
+        counts.set(t, (counts.get(t) || 0) + 1);
+      });
+    });
+    return Array.from(counts.entries())
+      .sort((a, b) => b[1] - a[1])
+      .map(([tag, count]) => ({ tag, count }));
   }, [items]);
+
+  const [tagsExpanded, setTagsExpanded] = cpS(false);
+  const TAG_TOP_N = 30;
+  const visibleTags = tagsExpanded ? sortedTags : sortedTags.slice(0, TAG_TOP_N);
 
   // 孤岛：没有任何边的节点
   const islands = cpM(() => {
@@ -50,13 +80,13 @@ function LeftPanel({
       </div>
 
       <div className="cs-section">
-        <div className="cs-section-hd"><span>图例 · 星体类型</span><b>{items.length} 颗</b></div>
+        <div className="cs-section-hd"><span>记忆类型 · 点选筛选</span><b>记忆 ({items.length})</b></div>
         <div className="cs-legend">
+          {/* 原 4 视觉类 (mutually exclusive) */}
           {[
             ['dynamic',   'dynamic',   '日常动态'],
-            ['permanent', 'permanent', '永久 / 钉决'],
+            ['permanent', 'permanent', '钉决'],
             ['feel',      'feel',      '情感 · feel'],
-            ['archived',  'archived',  '归档低活']
           ].map(([k, en, name]) => (
             <div
               key={k}
@@ -68,6 +98,31 @@ function LeftPanel({
               <span className="cs-legend-count">{typeCounts[k] || 0}</span>
             </div>
           ))}
+          {/* 新增 2 个属性筛选 — 默认不勾选, 勾选后只显示对应记忆 */}
+          {[
+            ['fresh', 'fresh', '重要',  'imp ≥ 8 || highlight'],
+            ['mine',  'mine',  '我写的', 'created_by = user'],
+          ].map(([k, en, name, hint]) => (
+            <div
+              key={k}
+              className={`cs-legend-row extra ${extraFilters.has(k) ? 'on' : ''}`}
+              onClick={() => toggleExtra(k)}
+              title={hint}
+            >
+              <span className={`cs-legend-dot ${k}`}/>
+              <span className="cs-legend-name">{name}<em>{en}</em></span>
+              <span className="cs-legend-count">{extraCounts[k] || 0}</span>
+            </div>
+          ))}
+          {/* archived 视觉类 → "已内化" */}
+          <div
+            className={`cs-legend-row ${enabledTypes.has('archived') ? '' : 'off'}`}
+            onClick={() => toggleType('archived')}
+          >
+            <span className="cs-legend-dot archived"/>
+            <span className="cs-legend-name">已内化<em>internalized</em></span>
+            <span className="cs-legend-count">{typeCounts.archived || 0}</span>
+          </div>
         </div>
       </div>
 
@@ -79,17 +134,33 @@ function LeftPanel({
         </div>
       </div>
 
-      {allTags.length > 0 && (
+      {sortedTags.length > 0 && (
         <div className="cs-section">
-          <div className="cs-section-hd"><span>标签 · 点选筛选</span><b>{tagFilters.size}/{allTags.length}</b></div>
+          <div className="cs-section-hd">
+            <span>标签 · 点选筛选</span>
+            <b>{tagFilters.size > 0 ? `${tagFilters.size}/` : ''}{sortedTags.length}</b>
+          </div>
           <div className="cs-tag-filters">
-            {allTags.map(t => (
+            {visibleTags.map(({ tag, count }) => (
               <button
-                key={t}
-                className={`cs-tag-chip ${tagFilters.has(t) ? 'on' : ''}`}
-                onClick={() => toggleTag(t)}
-              >{t}</button>
+                key={tag}
+                className={`cs-tag-chip ${tagFilters.has(tag) ? 'on' : ''}`}
+                onClick={() => toggleTag(tag)}
+                title={`${count} 条记忆`}
+              >{tag} <span className="cs-tag-count">{count}</span></button>
             ))}
+            {sortedTags.length > TAG_TOP_N && (
+              <button
+                className="cs-tag-more"
+                onClick={() => setTagsExpanded(v => !v)}
+              >{tagsExpanded ? '收起' : `+${sortedTags.length - TAG_TOP_N} 全部`}</button>
+            )}
+            {tagFilters.size > 0 && (
+              <button
+                className="cs-tag-more clear"
+                onClick={() => Array.from(tagFilters).forEach(t => toggleTag(t))}
+              >清空 {tagFilters.size}</button>
+            )}
           </div>
         </div>
       )}

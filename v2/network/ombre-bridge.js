@@ -37,6 +37,7 @@
       feel: b.type === 'feel',
       highlight: !!(b.highlight || b.pinned),
       internalized: !!(b.internalized || b.digested),
+      created_by: b.created_by || '',
       domain: Array.isArray(b.domain) ? b.domain.filter(Boolean) : [],
       artifacts: [],
       _hasEventTime: hasEvent,

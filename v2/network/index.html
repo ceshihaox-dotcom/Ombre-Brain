@@ -3483,6 +3483,12 @@ body {
 .cs-legend-dot.permanent { background: var(--c-gold); box-shadow: 0 0 8px var(--c-gold); }
 .cs-legend-dot.feel      { background: var(--c-rose); }
 .cs-legend-dot.archived  { background: var(--c-sage); opacity: 0.55; }
+/* 额外属性筛选 (重要 / 我写的) — 默认浅色, on 时高亮 */
+.cs-legend-dot.fresh     { background: var(--c-gold); opacity: 0.7; }
+.cs-legend-dot.mine      { background: var(--c-accent); opacity: 0.7; }
+.cs-legend-row.extra     { opacity: 0.5; }
+.cs-legend-row.extra.on  { opacity: 1; background: rgba(167, 139, 208, 0.08); }
+.cs-legend-row.extra.on .cs-legend-dot { opacity: 1; }
 .cs-legend-name {
   flex: 1;
   display: flex; flex-direction: column;
@@ -3503,10 +3509,22 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
-/* 标签筛选 */
+/* 标签筛选 — 高度受控 + 滚动条减淡 + tag count display */
 .cs-tag-filters {
   display: flex; flex-wrap: wrap; gap: 5px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding-right: 2px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(150, 142, 168, 0.18) transparent;
 }
+.cs-tag-filters::-webkit-scrollbar { width: 4px; }
+.cs-tag-filters::-webkit-scrollbar-track { background: transparent; }
+.cs-tag-filters::-webkit-scrollbar-thumb {
+  background: rgba(150, 142, 168, 0.2);
+  border-radius: 4px;
+}
+.cs-tag-filters::-webkit-scrollbar-thumb:hover { background: rgba(150, 142, 168, 0.4); }
 .cs-tag-chip {
   appearance: none; border: 1px solid var(--c-line-2);
   background: transparent;
@@ -3517,6 +3535,7 @@ body {
   border-radius: 999px;
   cursor: pointer;
   transition: all .12s;
+  display: inline-flex; align-items: center; gap: 5px;
 }
 .cs-tag-chip:hover { border-color: var(--c-accent-2); color: var(--c-ink); }
 .cs-tag-chip.on {
@@ -3524,6 +3543,24 @@ body {
   border-color: var(--c-accent);
   color: white;
 }
+.cs-tag-count {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  opacity: 0.55;
+  font-variant-numeric: tabular-nums;
+}
+.cs-tag-chip.on .cs-tag-count { opacity: 0.85; }
+.cs-tag-more {
+  appearance: none; border: 0;
+  background: transparent;
+  color: var(--c-accent-2);
+  font: 500 10.5px var(--mono);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  padding: 4px 9px;
+}
+.cs-tag-more:hover { color: var(--c-accent); text-decoration: underline; }
+.cs-tag-more.clear { color: var(--c-rose); }
 
 /* importance 阈值 slider */
 .cs-imp-slider {
