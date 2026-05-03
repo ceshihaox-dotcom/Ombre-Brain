@@ -5587,6 +5587,22 @@ body {
   transition: border-color .15s, width .2s;
   flex-shrink: 0;
 }
+/* 主题域专用: 单行显示, 超出隐藏; 控制按钮永远可见 (在 track 之外) */
+.ob-cells-frow.domain-frow { flex-wrap: nowrap; align-items: center; }
+.domain-chips-track {
+  display: flex;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  flex-wrap: nowrap;
+}
+.ob-cells-frow.domain-frow.expanded { flex-wrap: wrap; }
+.ob-cells-frow.domain-frow.expanded .domain-chips-track {
+  flex-wrap: wrap;
+  overflow: visible;
+}
+.domain-chips-track .ob-cells-chip { flex-shrink: 0; }
 .ob-cells-tag-search:focus {
   border-color: var(--accent);
   width: 240px;

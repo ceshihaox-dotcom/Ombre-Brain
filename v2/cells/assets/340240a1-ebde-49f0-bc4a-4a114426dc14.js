@@ -622,18 +622,20 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
           const visibleDomains = domainExpanded ? allDomains : [...extraSelected, ...top];
           const hiddenCount = allDomains.length - visibleDomains.length;
           return (
-            <div className="ob-cells-frow">
+            <div className={`ob-cells-frow domain-frow ${domainExpanded ? 'expanded' : ''}`}>
               <span className="ob-cells-frow-lab">主题域</span>
-              {visibleDomains.map(({ domain: dm, count }) => (
-                <button
-                  key={dm}
-                  className={`ob-cells-chip ${domainFilters.includes(dm) ? 'on' : ''}`}
-                  onClick={() => toggleDomain(dm)}
-                >
-                  <span>{dm}</span>
-                  <span className="ob-cells-chip-count">{count}</span>
-                </button>
-              ))}
+              <div className="domain-chips-track">
+                {visibleDomains.map(({ domain: dm, count }) => (
+                  <button
+                    key={dm}
+                    className={`ob-cells-chip ${domainFilters.includes(dm) ? 'on' : ''}`}
+                    onClick={() => toggleDomain(dm)}
+                  >
+                    <span>{dm}</span>
+                    <span className="ob-cells-chip-count">{count}</span>
+                  </button>
+                ))}
+              </div>
               {hiddenCount > 0 && !domainExpanded && (
                 <button className="ob-cells-frow-more" onClick={() => setDomainExpanded(true)}>
                   +{hiddenCount} 更多
