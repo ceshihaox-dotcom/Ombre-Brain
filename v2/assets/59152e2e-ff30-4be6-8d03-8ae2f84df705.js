@@ -143,8 +143,8 @@ function DateModuleV2({ date, items, onOpenItem, onOpenDay, density, query, isTo
   const isDense = items.length >= 7;
   const cardCountAttr = isDense ? 'dense' : String(Math.min(items.length, 10));
 
-  // 当日按时间倒序（最新在最上）
-  const sorted = [...items].sort((a, b) => b.time.localeCompare(a.time));
+  // 当日按时间正序(早→晚, 跟阅读顺序一致)
+  const sorted = [...items].sort((a, b) => a.time.localeCompare(b.time));
 
   // 显示数量：折叠时按密度规则；本地展开则全部显示
   const COLLAPSED_SHOW = isDense ? 8 : 4;
@@ -291,7 +291,7 @@ function TimelineV2({ items, query, filters, density, onOpenItem, onOpenDay, tod
     }
     return [...map.entries()]
       .sort((a, b) => b[0].localeCompare(a[0]))
-      .map(([d, list]) => [d, list.sort((a, b) => b.time.localeCompare(a.time))]);
+      .map(([d, list]) => [d, list.sort((a, b) => a.time.localeCompare(b.time))]);
   }, [filtered]);
 
   // 折叠空白日 state

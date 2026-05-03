@@ -283,7 +283,7 @@ function HomeScreen() {
       grouped.get(k).items.push({ b, dt });
     }
     const arr = Array.from(grouped.entries()).map(([k, { dt, items }]) => {
-      items.sort((a, b) => b.dt - a.dt);
+      items.sort((a, b) => a.dt - b.dt);  // 当日内正序: 早→晚
       const peakImp = items.reduce((m, it) => Math.max(m, it.b.importance || 5), 0);
       const dots = new Set();
       let hasHi = false;
@@ -857,8 +857,8 @@ function DayDetailScreen({ dayKey }) {
       if (!dt) continue;
       if (dayKeyOf(dt) === dayKey) items.push({ b, dt });
     }
-    items.sort((a, b) => b.dt - a.dt);
-    const refDt = (items[0] && items[0].dt) || new Date(dayKey + 'T12:00:00');
+    items.sort((a, b) => a.dt - b.dt);  // 当日内正序: 早→晚
+    const refDt = (items[items.length - 1] && items[items.length - 1].dt) || new Date(dayKey + 'T12:00:00');
     return {
       items,
       dayFmt: fmtDay(refDt),

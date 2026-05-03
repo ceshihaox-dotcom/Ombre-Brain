@@ -45,10 +45,10 @@ function groupByDate(items) {
     if (!map.has(it.date)) map.set(it.date, []);
     map.get(it.date).push(it);
   }
-  // 按日期降序，每组内按时间降序
+  // 按日期降序,每组内按时间正序(早→晚, 跟当天阅读顺序一致)
   return [...map.entries()]
     .sort((a, b) => b[0].localeCompare(a[0]))
-    .map(([date, list]) => [date, list.sort((a, b) => b.time.localeCompare(a.time))]);
+    .map(([date, list]) => [date, list.sort((a, b) => a.time.localeCompare(b.time))]);
 }
 
 function formatDate(d) {

@@ -146,8 +146,17 @@
     return (
       <div className="ob-import-paste">
         <div className="ob-import-paste-hd">
-          <div className="ob-import-paste-title">粘贴原文</div>
-          <div className="ob-import-paste-title-sub">任意对话片段 / Markdown / 笔记</div>
+          <div
+            className="ob-import-paste-titlebox"
+            onClick={onClose}
+            role="button"
+            tabIndex={0}
+            title="再次点击收起"
+            style={{ cursor: 'pointer', display: 'flex', alignItems: 'baseline', gap: 10, flex: 1 }}
+          >
+            <div className="ob-import-paste-title">粘贴原文</div>
+            <div className="ob-import-paste-title-sub">任意对话片段 / Markdown / 笔记</div>
+          </div>
           <div className="ob-import-paste-filename">
             <input
               type="text"
@@ -156,7 +165,6 @@
               onChange={(e) => onFilenameChange(e.target.value)}
             />
           </div>
-          <button className="ob-import-paste-close" onClick={onClose} aria-label="收起">×</button>
         </div>
         <div className="ob-import-paste-body">
           <textarea

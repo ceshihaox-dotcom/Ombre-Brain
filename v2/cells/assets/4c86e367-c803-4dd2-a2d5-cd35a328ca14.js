@@ -87,14 +87,27 @@ function MiniTimeline({ items, onJump }) {
       if (!byDate[it.date]) byDate[it.date] = [];
       byDate[it.date].push(it);
     }
+    // 自适应步长: 总跨度越大, 空日抽样越稀疏 (有记忆的天永远显示)
+    const totalDays = Math.round((end - start) / 86400000) + 1;
+    let emptyStep;
+    if (totalDays <= 14)       emptyStep = 1;
+    else if (totalDays <= 60)  emptyStep = 3;
+    else if (totalDays <= 180) emptyStep = 7;
+    else if (totalDays <= 365) emptyStep = 14;
+    else                       emptyStep = 30;
     const result = [];
     const cur = new Date(end);
+    let counter = 0;
     while (cur >= start) {
       const ds = cur.getFullYear() + '-' +
         String(cur.getMonth() + 1).padStart(2, '0') + '-' +
         String(cur.getDate()).padStart(2, '0');
-      result.push({ date: ds, items: byDate[ds] || [] });
+      const dayItems = byDate[ds] || [];
+      if (dayItems.length > 0 || counter % emptyStep === 0) {
+        result.push({ date: ds, items: dayItems });
+      }
       cur.setDate(cur.getDate() - 1);
+      counter++;
     }
     return result;
   }, [items]);
