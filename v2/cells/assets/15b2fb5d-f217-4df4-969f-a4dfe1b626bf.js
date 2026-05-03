@@ -39,12 +39,12 @@ function TopBarV2({ dark, onDark, compact, data }) {
 function NavBarV2({ active = 'timeline' }) {
   return (
     <nav className="ob-nav">
-      <a href="/v2/cells/" className={active === 'cells' ? 'on' : ''}>记忆格 v2</a>
-      <a href="/v2/" className={active === 'timeline' ? 'on' : ''}>时间线 v2</a>
+      <a href="/v2/cells/" className={active === 'cells' ? 'on' : ''}>记忆格</a>
+      <a href="/v2/" className={active === 'timeline' ? 'on' : ''}>时间线</a>
       <a href="/v2/network/" className={active === 'network' ? 'on' : ''}>记忆星图</a>
+      <a href="/v2/console/import/">导入</a>
       <a href="/v2/console/breath/">Breath 模拟</a>
       <a href="/v2/console/config/">配置</a>
-      <a href="/v2/console/import/">导入</a>
       <a href="/v2/console/trash/">回收站</a>
     </nav>
   );
@@ -217,7 +217,7 @@ function AppV2() {
       </main>
 
       <MiniTimeline items={data} onJump={jumpToItem} />
-      <Fab onClick={() => setWriteOpen(true)} />
+      <Fab />
 
       {shortcutsHint && (
         <div className="ob-shortcuts-hint">

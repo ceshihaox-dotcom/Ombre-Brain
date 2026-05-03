@@ -194,12 +194,12 @@ function ConstellationApp() {
 
       {/* 二级导航 tab */}
       <nav className="cs-nav">
-        <a href="/v2/cells/">记忆格 v2</a>
-        <a href="/v2/">时间线 v2</a>
+        <a href="/v2/cells/">记忆格</a>
+        <a href="/v2/">时间线</a>
         <a href="/v2/network/" className="on">记忆星图</a>
+        <a href="/v2/console/import/">导入</a>
         <a href="/v2/console/breath/">Breath 模拟</a>
         <a href="/v2/console/config/">配置</a>
-        <a href="/v2/console/import/">导入</a>
         <a href="/v2/console/trash/">回收站</a>
       </nav>
 

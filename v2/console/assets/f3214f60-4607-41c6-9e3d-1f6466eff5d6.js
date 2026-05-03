@@ -40,12 +40,12 @@ function ConsoleTopBar({ stats, dark, onDark, search, setSearch }) {
 // ── 二级导航 tab ──
 function ConsoleNav({ active, trashCount = 0 }) {
   const tabs = [
-    { id: 'cells',     label: '记忆格 v2',  href: '/v2/cells/' },
-    { id: 'timeline',  label: '时间线 v2',  href: '/v2/' },
+    { id: 'cells',     label: '记忆格',     href: '/v2/cells/' },
+    { id: 'timeline',  label: '时间线',     href: '/v2/' },
     { id: 'star',      label: '记忆星图',   href: '/v2/network/' },
+    { id: 'import',    label: '导入',       href: '/v2/console/import/' },
     { id: 'breath',    label: 'Breath 模拟', href: '/v2/console/breath/' },
     { id: 'config',    label: '配置',       href: '/v2/console/config/' },
-    { id: 'import',    label: '导入',       href: '/v2/console/import/' },
     { id: 'trash',     label: '回收站',     href: '/v2/console/trash/' },
   ];
   return (

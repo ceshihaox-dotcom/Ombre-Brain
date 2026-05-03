@@ -58,23 +58,14 @@ function TodayBar({ todayItems, lastWriteDate, todayDate, focusToday, onWrite, o
         <div className="ob-today-actions">
           {todayItems.length > 0 && (
             <button
-              className={`ob-today-btn ${focusToday ? 'primary' : 'ghost'}`}
+              className="ob-today-btn primary"
               onClick={onJumpToday}
               title={focusToday ? '点击退出聚焦,恢复全部' : '聚焦今天 · 其他天减淡'}
-              style={focusToday ? {
-                background: 'color-mix(in oklab, var(--accent) 14%, var(--paper))',
-                color: 'var(--accent)',
-                borderColor: 'var(--accent)',
-                fontWeight: 500,
-                transition: 'all .2s',
-              } : {
-                transition: 'all .2s',
-              }}
+              style={{ transition: 'all .2s' }}
             >
               {focusToday ? '✕ 退出聚焦' : '只看今天 ↓'}
             </button>
           )}
-          <button className="ob-today-btn primary" onClick={onWrite}>+ 写一条</button>
         </div>
       </div>
     </div>
@@ -196,12 +187,18 @@ function MiniTimeline({ items, onJump }) {
   );
 }
 
-// ── 浮动 FAB ─────────────────────────────────────────
+// ── 浮动 FAB · 返回顶部 ─────────────────────────────
 function Fab({ onClick }) {
+  const handleClick = () => {
+    if (typeof onClick === 'function') {
+      onClick();
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
   return (
-    <button className="ob-fab" onClick={onClick} title="写一条 (⌘+N)">
-      <span className="ob-fab-plus">+</span>
-      <span className="ob-fab-hint">⌘N</span>
+    <button className="ob-fab" onClick={handleClick} title="返回顶部">
+      <span className="ob-fab-plus">↑</span>
     </button>
   );
 }

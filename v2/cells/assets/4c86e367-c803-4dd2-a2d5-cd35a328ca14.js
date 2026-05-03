@@ -57,9 +57,8 @@ function TodayBar({ todayItems, lastWriteDate, todayDate, onWrite, onJumpToday }
         <div className="ob-today-sub">{sub}</div>
         <div className="ob-today-actions">
           {todayItems.length > 0 && (
-            <button className="ob-today-btn ghost" onClick={onJumpToday}>查看今天 ↓</button>
+            <button className="ob-today-btn primary" onClick={onJumpToday}>只看今天 ↓</button>
           )}
-          <button className="ob-today-btn primary" onClick={onWrite}>+ 写一条</button>
         </div>
       </div>
     </div>
@@ -171,12 +170,18 @@ function MiniTimeline({ items, onJump }) {
   );
 }
 
-// ── 浮动 FAB ─────────────────────────────────────────
+// ── 浮动 FAB · 返回顶部 ─────────────────────────────
 function Fab({ onClick }) {
+  const handleClick = () => {
+    if (typeof onClick === 'function') {
+      onClick();
+    } else {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
   return (
-    <button className="ob-fab" onClick={onClick} title="写一条 (⌘+N)">
-      <span className="ob-fab-plus">+</span>
-      <span className="ob-fab-hint">⌘N</span>
+    <button className="ob-fab" onClick={handleClick} title="返回顶部">
+      <span className="ob-fab-plus">↑</span>
     </button>
   );
 }

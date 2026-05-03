@@ -40,12 +40,12 @@ function TopBarV2({ dark, onDark, compact, data }) {
 function NavBarV2({ active = 'timeline' }) {
   return (
     <nav className="ob-nav">
-      <a href="/v2/cells/" className={active === 'cells' ? 'on' : ''}>记忆格 v2</a>
-      <a href="/v2/" className={active === 'timeline' ? 'on' : ''}>时间线 v2</a>
+      <a href="/v2/cells/" className={active === 'cells' ? 'on' : ''}>记忆格</a>
+      <a href="/v2/" className={active === 'timeline' ? 'on' : ''}>时间线</a>
       <a href="/v2/network/" className={active === 'network' ? 'on' : ''}>记忆星图</a>
+      <a href="/v2/console/import/">导入</a>
       <a href="/v2/console/breath/">Breath 模拟</a>
       <a href="/v2/console/config/">配置</a>
-      <a href="/v2/console/import/">导入</a>
       <a href="/v2/console/trash/">回收站</a>
     </nav>
   );
@@ -283,15 +283,15 @@ function AppV2() {
             active={!filters.importantOnly && !filters.feelOnly && !filters.protectedOnly && !filters.noiseOnly}
             onClick={() => setFilters({ importantOnly: false, feelOnly: false, protectedOnly: false, noiseOnly: false })}
           >全部</FilterChipV2>
-          <FilterChipV2 tone="gold" active={filters.importantOnly}
-            onClick={() => setFilters(f => ({ ...f, importantOnly: !f.importantOnly }))}
-          >★ 重要 (≥8)</FilterChipV2>
-          <FilterChipV2 tone="rose" active={filters.feelOnly}
-            onClick={() => setFilters(f => ({ ...f, feelOnly: !f.feelOnly }))}
-          >❀ feel</FilterChipV2>
           <FilterChipV2 tone="amber" active={filters.protectedOnly}
             onClick={() => setFilters(f => ({ ...f, protectedOnly: !f.protectedOnly }))}
-          >⛨ 已保护</FilterChipV2>
+          >★ 钉决</FilterChipV2>
+          <FilterChipV2 tone="gold" active={filters.importantOnly}
+            onClick={() => setFilters(f => ({ ...f, importantOnly: !f.importantOnly }))}
+          >✦ 重要</FilterChipV2>
+          <FilterChipV2 tone="rose" active={filters.feelOnly}
+            onClick={() => setFilters(f => ({ ...f, feelOnly: !f.feelOnly }))}
+          >❀ Feel</FilterChipV2>
           <FilterChipV2 active={filters.noiseOnly}
             onClick={() => setFilters(f => ({ ...f, noiseOnly: !f.noiseOnly }))}
           >⌀ 噪声</FilterChipV2>
@@ -349,7 +349,7 @@ function AppV2() {
       </main>
 
       <MiniTimeline items={data} onJump={jumpToItem} />
-      <Fab onClick={() => setWriteOpen(true)} />
+      <Fab />
 
       {shortcutsHint && (
         <div className="ob-shortcuts-hint">

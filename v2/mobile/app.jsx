@@ -214,18 +214,12 @@ function HomeScreen() {
     let result = filters.has('noise')
       ? buckets.filter(b => isNoise(b))
       : buckets.filter(b => !isNoise(b));
-    if (filters.has('hi'))      result = result.filter(b => b.highlight);
-    if (filters.has('pin'))     result = result.filter(b => b.protected || b.pinned);
-    if (filters.has('feel'))    result = result.filter(b => isFeel(b));
-    if (filters.has('recent7')) {
-      const cutoff = Date.now() - 7 * 86400000;
-      result = result.filter(b => {
-        const dt = bucketDate(b);
-        return dt && dt.getTime() >= cutoff;
-      });
-    }
-    if (filters.has('imp7')) result = result.filter(b => (b.importance || 5) >= 7);
-    if (filters.has('ai'))   result = result.filter(b => b.created_by === 'ai');
+    if (filters.has('pin'))      result = result.filter(b => b.protected || b.pinned);
+    if (filters.has('fresh'))    result = result.filter(b => b.highlight || (b.importance || 5) >= 8);
+    if (filters.has('feel'))     result = result.filter(b => isFeel(b));
+    if (filters.has('internal')) result = result.filter(b => b.internalized || b.digested);
+    if (filters.has('cold'))     result = result.filter(b => (b.importance || 5) < 2);
+    if (filters.has('mine'))     result = result.filter(b => b.created_by === 'user');
     if (domainFilters.length > 0) {
       result = result.filter(b => domainFilters.every(d => (b.domain || []).includes(d)));
     }
@@ -371,25 +365,25 @@ function HomeScreen() {
             onClick={() => toggleFilter('pin')}
           >★ 钉决</span>
           <span
-            className={'home-chip hi' + (filters.has('hi') ? ' on' : '')}
-            onClick={() => toggleFilter('hi')}
-          >✦ highlight</span>
+            className={'home-chip' + (filters.has('fresh') ? ' on' : '')}
+            onClick={() => toggleFilter('fresh')}
+          >✦ 重要</span>
           <span
             className={'home-chip feel' + (filters.has('feel') ? ' on' : '')}
             onClick={() => toggleFilter('feel')}
-          >feel</span>
+          >❀ Feel</span>
           <span
-            className={'home-chip' + (filters.has('recent7') ? ' on' : '')}
-            onClick={() => toggleFilter('recent7')}
-          >近 7 天</span>
+            className={'home-chip' + (filters.has('internal') ? ' on' : '')}
+            onClick={() => toggleFilter('internal')}
+          >已内化</span>
           <span
-            className={'home-chip' + (filters.has('imp7') ? ' on' : '')}
-            onClick={() => toggleFilter('imp7')}
-          >imp ≥ 7</span>
+            className={'home-chip' + (filters.has('cold') ? ' on' : '')}
+            onClick={() => toggleFilter('cold')}
+          >待消化</span>
           <span
-            className={'home-chip' + (filters.has('ai') ? ' on' : '')}
-            onClick={() => toggleFilter('ai')}
-          >AI 写入</span>
+            className={'home-chip' + (filters.has('mine') ? ' on' : '')}
+            onClick={() => toggleFilter('mine')}
+          >我写的</span>
           <span
             className={'home-chip noise' + (filters.has('noise') ? ' on' : '')}
             onClick={() => toggleFilter('noise')}
