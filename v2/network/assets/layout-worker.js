@@ -14,28 +14,45 @@ function inferType(item) {
   return 'dynamic';
 }
 
+// 排除桥接层自动注入的状态标签 (跟主版同步)
+const AUTO_TAGS = new Set([
+  '亲手写', 'AI 写入', '已内化', '保护', '重要', 'feel(柔软)',
+]);
+function _isTopicalTag(t) {
+  if (!t) return false;
+  const s = String(t);
+  if (s.startsWith('__')) return false;
+  if (AUTO_TAGS.has(s)) return false;
+  return true;
+}
+
 function buildLinks(items) {
   const links = [];
-  // 性能优化: 内层循环外预 build a 的 tag set, 避免 N² 次创建
   for (let i = 0; i < items.length; i++) {
     const a = items[i];
-    const aTagSet = new Set(a.tags || []);
-    if (aTagSet.size === 0) continue;
+    const aTopical = (a.tags || []).filter(_isTopicalTag);
+    if (aTopical.length === 0) continue;
+    const aSet = new Set(aTopical);
     for (let j = i + 1; j < items.length; j++) {
       const b = items[j];
       const bTags = b.tags || [];
-      let shared = 0;
       const sharedArr = [];
       for (const t of bTags) {
-        if (aTagSet.has(t)) { shared++; sharedArr.push(t); }
+        if (_isTopicalTag(t) && aSet.has(t)) sharedArr.push(t);
       }
-      if (shared === 0) continue;
-      let w = shared;
+      if (sharedArr.length === 0) continue;
+      let w = sharedArr.length;
       if (a.date === b.date) w += 0.6;
       if ((a.importance >= 7) && (b.importance >= 7)) w += 0.3;
       if (a.feel && b.feel) w += 0.3;
       links.push({ source: a.id, target: b.id, weight: w, shared: sharedArr });
     }
+  }
+  // 保险: 边数过多时只留 top-N
+  const MAX_LINKS = 600;
+  if (links.length > MAX_LINKS) {
+    links.sort((a, b) => b.weight - a.weight);
+    return links.slice(0, MAX_LINKS);
   }
   return links;
 }

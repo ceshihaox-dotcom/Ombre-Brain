@@ -32,23 +32,57 @@ function activityOf(item, now) {
 }
 window.activityOf = activityOf;
 
+// ──────────────────────────────────────────────────────────
 // 基于 tag 共现 + 时间邻近 计算边
+//
+// 关键: 排除 ombre-bridge 桥接层自动注入的 "状态标签", 它们不是主题标签,
+// 不应该让所有节点之间都因为共享 "亲手写/AI 写入" 等系统标签而产生连线.
+// 没排除时 200 节点会产生 ~20000 条连线, 渲染卡死.
+// ──────────────────────────────────────────────────────────
+const AUTO_TAGS = new Set([
+  '亲手写', 'AI 写入',          // created_by 派生
+  '已内化',                       // internalized 派生
+  '保护',                         // protected 派生
+  '重要',                         // importance >= 8 派生
+  'feel(柔软)',                   // type=feel 派生
+]);
+
+function _isTopicalTag(t) {
+  if (!t) return false;
+  const s = String(t);
+  if (s.startsWith('__')) return false;  // __import_* 等隐藏 tag
+  if (AUTO_TAGS.has(s)) return false;     // 桥接层自动标签
+  return true;
+}
+
 function buildLinks(items) {
   const links = [];
+  // 内层循环外预 build a 的 tag set, 避免 N² 次创建
   for (let i = 0; i < items.length; i++) {
+    const a = items[i];
+    const aTopical = (a.tags || []).filter(_isTopicalTag);
+    if (aTopical.length === 0) continue;
+    const aSet = new Set(aTopical);
     for (let j = i + 1; j < items.length; j++) {
-      const a = items[i], b = items[j];
-      const aTags = new Set(a.tags || []);
-      const sharedTags = (b.tags || []).filter(t => aTags.has(t));
+      const b = items[j];
+      const bTags = b.tags || [];
+      const sharedTags = [];
+      for (const t of bTags) {
+        if (_isTopicalTag(t) && aSet.has(t)) sharedTags.push(t);
+      }
       let w = sharedTags.length;
       if (w === 0) continue;
-      // 同日 +0.5；importance 都高 +0.3
       if (a.date === b.date) w += 0.6;
       if ((a.importance >= 7) && (b.importance >= 7)) w += 0.3;
-      // feel ↔ feel 加权
       if (a.feel && b.feel) w += 0.3;
       links.push({ source: a.id, target: b.id, weight: w, shared: sharedTags });
     }
+  }
+  // 保险: 边数过多时只留 top-N (按权重) — SVG 1000+ line 渲染太重
+  const MAX_LINKS = 600;
+  if (links.length > MAX_LINKS) {
+    links.sort((a, b) => b.weight - a.weight);
+    return links.slice(0, MAX_LINKS);
   }
   return links;
 }
