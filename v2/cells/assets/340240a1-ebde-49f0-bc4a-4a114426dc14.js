@@ -613,7 +613,7 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
         </div>
         {/* 第二行: 主题域 — 独占整行, chips 铺到末尾 */}
         {allDomains.length > 0 && (() => {
-          const DOMAIN_TOP_N = 8;
+          const DOMAIN_TOP_N = 20;
           const selectedSet = new Set(domainFilters);
           const top = allDomains.slice(0, DOMAIN_TOP_N);
           const topIds = new Set(top.map(d => d.domain));
