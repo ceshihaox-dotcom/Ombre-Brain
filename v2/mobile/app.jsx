@@ -1382,14 +1382,23 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
     }
   };
 
-  // 入口:打开弹窗,让用户选要不要顺带重写正文
+  // 重新脱水: preview / commit 两步
+  const [redehyPreview, setRedehyPreview] = useState(null);  // null = options 阶段; obj = preview 阶段
+
   const openRedehydrate = () => {
     if (redehydrating || saving) return;
+    setRedehyPreview(null);
     setRedehyOpen(true);
   };
 
-  // 弹窗确认后真正执行
-  const doRedehydrate = async ({ regenerate_content }) => {
+  const closeRedehydrate = () => {
+    if (redehydrating) return;
+    setRedehyOpen(false);
+    setRedehyPreview(null);
+  };
+
+  // 跑预览 (不写盘)
+  const runRedehyPreview = async ({ regenerate_content }) => {
     if (redehydrating || saving) return;
     setRedehydrating(true);
     setError(null);
@@ -1401,8 +1410,28 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
       });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      setRedehyPreview(d);
+    } catch (e) {
+      setError(e.message || String(e));
+    } finally {
+      setRedehydrating(false);
+    }
+  };
+
+  // commit: 用户在预览界面点接受 → 写入 + 回填表单
+  const commitRedehy = async (finalDraft) => {
+    if (redehydrating || saving) return;
+    setRedehydrating(true);
+    setError(null);
+    try {
+      const r = await fetch('/api/bucket/' + encodeURIComponent(bucketId) + '/redehydrate-commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(finalDraft),
+      });
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
       const m = d.metadata || {};
-      // 用新元数据回填表单
       setName(m.name || '');
       setSummary(m.summary || '');
       setImp(m.importance || imp);
@@ -1411,16 +1440,10 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
       setNoise(newNoise);
       originalNoiseRef.current = newNoise;
       setTags(m.tags || []);
-      // 正文若被重写,刷新表单 content
-      if (d.regenerated_content && d.new_content) {
-        setContent(d.new_content);
-      } else if (d.content) {
-        // 后端始终回传 fresh content, 兜底也同步一下
-        setContent(d.content);
-      }
-      // 同步给父级状态
+      if (d.content !== undefined) setContent(d.content);
       if (onSaved) onSaved(m);
       setRedehyOpen(false);
+      setRedehyPreview(null);
     } catch (e) {
       setError(e.message || String(e));
     } finally {
@@ -1489,62 +1512,205 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
         title={name}
         hasRawSource={hasRawSource}
         busy={redehydrating}
-        onCancel={() => { if (!redehydrating) setRedehyOpen(false); }}
-        onConfirm={doRedehydrate}
+        preview={redehyPreview}
+        onCancel={closeRedehydrate}
+        onPreview={runRedehyPreview}
+        onReroll={runRedehyPreview}
+        onCommit={commitRedehy}
       />
     </div>
   );
 }
 
 // ─────────────────────────────────────────
-// RedehydrateSheet — 手机端重新脱水弹窗
-// 含「同时重新提炼正文」勾选项;无 raw_source 时置灰
+// RedehydrateSheet — 手机端重新脱水抽屉 (两阶段)
+// Phase 1 (options): 选项 + 「同时重新提炼正文」勾选
+// Phase 2 (preview): 旧/新 上下堆叠对比 + 可编辑新值 + 重做/接受/取消
 // ─────────────────────────────────────────
-function RedehydrateSheet({ open, title, hasRawSource, busy, onCancel, onConfirm }) {
+function RedehydrateSheet({ open, title, hasRawSource, busy, preview, onCancel, onPreview, onReroll, onCommit }) {
   const [regen, setRegen] = useState(false);
-  useEffect(() => { if (!open) setRegen(false); }, [open]);
+  const [draftContent, setDraftContent] = useState('');
+  const [draftName, setDraftName] = useState('');
+  const [draftSummary, setDraftSummary] = useState('');
+  const [draftTags, setDraftTags] = useState([]);
+  const [tagInput, setTagInput] = useState('');
+
+  useEffect(() => {
+    if (!open) {
+      setRegen(false);
+      setDraftContent(''); setDraftName(''); setDraftSummary('');
+      setDraftTags([]); setTagInput('');
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (preview && preview.new) {
+      setDraftContent(preview.new.content || '');
+      setDraftName(preview.new.name || '');
+      setDraftSummary(preview.new.summary || '');
+      setDraftTags(Array.isArray(preview.new.tags) ? preview.new.tags : []);
+    }
+  }, [preview]);
+
   if (!open) return null;
+  const isPreview = !!preview;
   const allowRegen = hasRawSource && !busy;
+
+  const addTag = () => {
+    const t = tagInput.trim();
+    if (!t) return;
+    if (!draftTags.includes(t)) setDraftTags([...draftTags, t]);
+    setTagInput('');
+  };
+  const rmTag = (t) => setDraftTags(draftTags.filter(x => x !== t));
+
+  // ─── Phase 1: 选项 ───
+  if (!isPreview) {
+    return (
+      <div className="redehy-sheet-mask" onClick={busy ? undefined : onCancel}>
+        <div className="redehy-sheet" onClick={e => e.stopPropagation()}>
+          <div className="redehy-sheet-grip"/>
+          <div className="redehy-sheet-hd">
+            <div className="redehy-sheet-icon">↻</div>
+            <div className="redehy-sheet-title">重新脱水</div>
+          </div>
+          <div className="redehy-sheet-target">「{title || '当前记忆'}」</div>
+          <div className="redehy-sheet-desc">
+            让 LLM 重新生成这条记忆的<b>标题 / 摘要 / 标签 / 情感</b>。<br/>
+            预览界面会展示新旧对比, 你确认后才会写入。
+          </div>
+
+          <label className={'redehy-opt' + (hasRawSource ? '' : ' is-disabled')}>
+            <input
+              type="checkbox"
+              checked={regen && hasRawSource}
+              disabled={!allowRegen}
+              onChange={e => setRegen(e.target.checked)}
+            />
+            <div className="redehy-opt-text">
+              <div className="redehy-opt-ttl">同时重新提炼正文</div>
+              <div className="redehy-opt-sub">
+                {hasRawSource
+                  ? '基于原文 + 主题锚点重写正文, 聚焦当前主题, 不会扩到其他主题。多耗一次 LLM 调用。'
+                  : '此条无原文 (raw_source 为空), 无法重新提炼正文。'}
+              </div>
+            </div>
+          </label>
+
+          <div className="redehy-sheet-foot">
+            <button className="redehy-btn" onClick={onCancel} disabled={busy}>取消</button>
+            <button
+              className="redehy-btn is-primary"
+              onClick={() => onPreview({ regenerate_content: regen && hasRawSource })}
+              disabled={busy}
+            >
+              {busy ? '生成中…' : '生成预览'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Phase 2: 预览对比 ───
+  const old = preview.old || {};
+  const showContentDiff = preview.regenerated_content;
+
   return (
     <div className="redehy-sheet-mask" onClick={busy ? undefined : onCancel}>
-      <div className="redehy-sheet" onClick={e => e.stopPropagation()}>
+      <div className="redehy-sheet redehy-sheet-preview" onClick={e => e.stopPropagation()}>
         <div className="redehy-sheet-grip"/>
         <div className="redehy-sheet-hd">
           <div className="redehy-sheet-icon">↻</div>
-          <div className="redehy-sheet-title">重新脱水</div>
+          <div className="redehy-sheet-title">预览 · 重新脱水</div>
+          {preview.cost && preview.cost.known && (
+            <div className="redehy-preview-cost">
+              ${preview.cost.usd.toFixed(4)} · ¥{preview.cost.cny.toFixed(2)}
+            </div>
+          )}
         </div>
         <div className="redehy-sheet-target">「{title || '当前记忆'}」</div>
-        <div className="redehy-sheet-desc">
-          让 LLM 重新生成这条记忆的<b>标题 / 摘要 / 标签 / 情感</b>。<br/>
-          重要度 / 状态 / 事件时间会保留。
+
+        {showContentDiff && (
+          <>
+            <div className="redehy-stack-lbl redehy-stack-lbl-old">旧正文</div>
+            <div className="redehy-stack-readonly">{old.content || '(空)'}</div>
+            <div className="redehy-stack-lbl redehy-stack-lbl-new">新正文 · 可编辑</div>
+            <textarea
+              className="redehy-stack-edit"
+              value={draftContent}
+              onChange={e => setDraftContent(e.target.value)}
+              rows={6}
+              disabled={busy}
+            />
+          </>
+        )}
+
+        <div className="redehy-stack-lbl redehy-stack-lbl-old">旧 · 标题 / 摘要</div>
+        <div className="redehy-stack-readonly redehy-stack-line">{old.name || '(空)'}</div>
+        <div className="redehy-stack-readonly">{old.summary || '(空)'}</div>
+
+        <div className="redehy-stack-lbl redehy-stack-lbl-new">新 · 标题 · 可编辑</div>
+        <input
+          className="redehy-stack-edit redehy-stack-edit-line"
+          value={draftName}
+          onChange={e => setDraftName(e.target.value)}
+          disabled={busy}
+        />
+        <div className="redehy-stack-lbl redehy-stack-lbl-new">新 · 摘要 · 可编辑</div>
+        <textarea
+          className="redehy-stack-edit"
+          value={draftSummary}
+          onChange={e => setDraftSummary(e.target.value)}
+          rows={2}
+          disabled={busy}
+        />
+
+        <div className="redehy-stack-lbl redehy-stack-lbl-old">旧 · 标签</div>
+        <div className="redehy-stack-tags">
+          {(old.tags || []).filter(t => !String(t).startsWith('__')).map((t, i) => (
+            <span key={i} className="redehy-tag-chip">{t}</span>
+          ))}
+          {(!old.tags || old.tags.length === 0) && <span className="redehy-stack-empty">(无)</span>}
+        </div>
+        <div className="redehy-stack-lbl redehy-stack-lbl-new">新 · 标签 · 可编辑</div>
+        <div className="redehy-stack-tags-edit">
+          {draftTags.map((t, i) => (
+            <span key={i} className="redehy-tag-chip is-new">
+              {t}<span className="x" onClick={() => !busy && rmTag(t)}>×</span>
+            </span>
+          ))}
+          <input
+            className="redehy-tag-input"
+            value={tagInput}
+            onChange={e => setTagInput(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
+            onBlur={addTag}
+            placeholder="+ 加标签"
+            disabled={busy}
+          />
         </div>
 
-        <label className={'redehy-opt' + (hasRawSource ? '' : ' is-disabled')}>
-          <input
-            type="checkbox"
-            checked={regen && hasRawSource}
-            disabled={!allowRegen}
-            onChange={e => setRegen(e.target.checked)}
-          />
-          <div className="redehy-opt-text">
-            <div className="redehy-opt-ttl">同时重新提炼正文</div>
-            <div className="redehy-opt-sub">
-              {hasRawSource
-                ? '基于原文 (raw_source) 让 LLM 重写正文,会刷新 embedding。多耗一次 LLM 调用。'
-                : '此条无原文 (raw_source 为空),无法重新提炼正文。'}
-            </div>
-          </div>
-        </label>
-
-        <div className="redehy-sheet-foot">
+        <div className="redehy-sheet-foot redehy-sheet-foot-preview">
           <button className="redehy-btn" onClick={onCancel} disabled={busy}>取消</button>
           <button
-            className="redehy-btn is-primary"
-            onClick={() => onConfirm({ regenerate_content: regen && hasRawSource })}
+            className="redehy-btn"
+            onClick={() => onReroll({ regenerate_content: showContentDiff })}
             disabled={busy}
-          >
-            {busy ? '处理中…' : (regen && hasRawSource ? '重新脱水(含正文)' : '开始重新脱水')}
-          </button>
+          >{busy ? '…' : '↻ 重做'}</button>
+          <button
+            className="redehy-btn is-primary"
+            onClick={() => onCommit({
+              content: showContentDiff ? draftContent : undefined,
+              name: draftName,
+              summary: draftSummary,
+              tags: draftTags,
+              domain: preview.new.domain,
+              valence: preview.new.valence,
+              arousal: preview.new.arousal,
+            })}
+            disabled={busy}
+          >{busy ? '…' : '✓ 接受'}</button>
         </div>
       </div>
     </div>

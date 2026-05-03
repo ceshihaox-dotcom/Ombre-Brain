@@ -73,59 +73,219 @@ function sameBatchSimilar(target, queue, topN) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// RedehydrateModal — 重新脱水弹窗(替代 window.confirm)
-// 含「同时重新提炼正文」勾选项;无 raw_source 时勾选项置灰
+// RedehydrateModal — 重新脱水弹窗 (两阶段: options → preview)
+// Phase 1 (options): 选项 + 「同时重新提炼正文」勾选
+// Phase 2 (preview): 旧/新 双栏对比 + 可编辑新值 + 重做/接受/取消
 // ─────────────────────────────────────────────────────────────────────────
-function RedehydrateModal({ open, item, onCancel, onConfirm, busy }) {
+function RedehydrateModal({ open, item, busy, preview, onCancel, onPreview, onReroll, onCommit }) {
   const [regenContent, setRegenContent] = iwS(false);
-  iwE(() => { if (!open) setRegenContent(false); }, [open]);
+  // 编辑态:进入 preview 时拷贝 new 字段,允许用户改
+  const [draftContent, setDraftContent] = iwS('');
+  const [draftName, setDraftName]     = iwS('');
+  const [draftSummary, setDraftSummary] = iwS('');
+  const [draftTags, setDraftTags]     = iwS([]);
+  const [tagInput, setTagInput]       = iwS('');
+
+  // 关闭时重置
+  iwE(() => {
+    if (!open) {
+      setRegenContent(false);
+      setDraftContent(''); setDraftName(''); setDraftSummary('');
+      setDraftTags([]); setTagInput('');
+    }
+  }, [open]);
+
+  // preview 切换 → 把 new 同步到 draft (允许后续编辑)
+  iwE(() => {
+    if (preview && preview.new) {
+      setDraftContent(preview.new.content || '');
+      setDraftName(preview.new.name || '');
+      setDraftSummary(preview.new.summary || '');
+      setDraftTags(Array.isArray(preview.new.tags) ? preview.new.tags : []);
+    }
+  }, [preview]);
+
   if (!open || !item) return null;
   const hasSource = !!(item.rawSource && String(item.rawSource).trim());
   const onKey = (e) => { if (e.key === 'Escape' && !busy) onCancel(); };
+
+  const isPreview = !!preview;
+
+  // ─── tag 编辑辅助 ───
+  const addTag = () => {
+    const t = tagInput.trim();
+    if (!t) return;
+    if (!draftTags.includes(t)) setDraftTags([...draftTags, t]);
+    setTagInput('');
+  };
+  const rmTag = (t) => setDraftTags(draftTags.filter(x => x !== t));
+
+  // ─── Phase 1: 选项 ───
+  if (!isPreview) {
+    return (
+      <div className="redehy-modal-mask" onClick={busy ? undefined : onCancel} onKeyDown={onKey}>
+        <div className="redehy-modal" onClick={e => e.stopPropagation()}>
+          <div className="redehy-modal-hd">
+            <div className="redehy-modal-icon">↻</div>
+            <div className="redehy-modal-title">重新脱水</div>
+          </div>
+          <div className="redehy-modal-target">「{item.title || '未命名'}」</div>
+          <div className="redehy-modal-desc">
+            让 LLM 重新生成这条记忆的<b>标题 / 摘要 / 标签 / 情感坐标</b>。<br/>
+            预览界面会显示新旧对比, 你确认后才会写入。
+          </div>
+
+          <label className={'redehy-opt' + (hasSource ? '' : ' is-disabled')}>
+            <input
+              type="checkbox"
+              checked={regenContent && hasSource}
+              disabled={!hasSource || busy}
+              onChange={e => setRegenContent(e.target.checked)}
+            />
+            <div className="redehy-opt-text">
+              <div className="redehy-opt-ttl">同时重新提炼正文</div>
+              <div className="redehy-opt-sub">
+                {hasSource
+                  ? '基于原文 (raw_source) + 主题锚点重写正文 (聚焦当前主题, 不会扩到原文其他主题)。多耗一次 LLM 调用。'
+                  : '此条无原文 (raw_source 为空), 无法重新提炼正文。'}
+              </div>
+            </div>
+          </label>
+
+          <div className="redehy-modal-foot">
+            <button className="redehy-btn" onClick={onCancel} disabled={busy}>取消</button>
+            <button
+              className="redehy-btn is-primary"
+              onClick={() => onPreview({ regenerate_content: regenContent && hasSource })}
+              disabled={busy}
+            >
+              {busy ? '生成预览中…' : '生成预览'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ─── Phase 2: 预览 + 对比 + 可编辑 ───
+  const old = preview.old || {};
+  const newM = preview.new || {};
+  const showContentDiff = preview.regenerated_content;
+
   return (
-    <div className="redehy-modal-mask" onClick={busy ? undefined : onCancel} onKeyDown={onKey}>
-      <div className="redehy-modal" onClick={e => e.stopPropagation()}>
+    <div className="redehy-modal-mask redehy-modal-mask-wide" onClick={busy ? undefined : onCancel} onKeyDown={onKey}>
+      <div className="redehy-modal redehy-modal-preview" onClick={e => e.stopPropagation()}>
         <div className="redehy-modal-hd">
           <div className="redehy-modal-icon">↻</div>
-          <div className="redehy-modal-title">重新脱水</div>
+          <div className="redehy-modal-title">重新脱水 · 预览</div>
+          <div className="redehy-preview-cost">
+            {preview.cost && preview.cost.known
+              ? `约 $${preview.cost.usd.toFixed(4)} (¥${preview.cost.cny.toFixed(2)})`
+              : ''}
+          </div>
         </div>
-        <div className="redehy-modal-target">
-          「{item.title || '未命名'}」
-        </div>
-        <div className="redehy-modal-desc">
-          让 LLM 重新生成这条记忆的<b>标题 / 摘要 / 标签 / 情感坐标</b>。<br/>
-          重要度 / 状态标记 / 事件时间会保留。
-        </div>
+        <div className="redehy-modal-target">「{item.title || '未命名'}」</div>
 
-        <label className={'redehy-opt' + (hasSource ? '' : ' is-disabled')}>
-          <input
-            type="checkbox"
-            checked={regenContent && hasSource}
-            disabled={!hasSource || busy}
-            onChange={e => setRegenContent(e.target.checked)}
-          />
-          <div className="redehy-opt-text">
-            <div className="redehy-opt-ttl">同时重新提炼正文</div>
-            <div className="redehy-opt-sub">
-              {hasSource
-                ? '基于「原文」(raw_source) 让 LLM 重写一遍正文,会刷新 embedding。多耗一次 LLM 调用。'
-                : '此条无原文(raw_source 为空),无法重新提炼正文。'}
+        {/* 正文对比(若有重写) */}
+        {showContentDiff && (
+          <div className="redehy-diff-block">
+            <div className="redehy-diff-row">
+              <div className="redehy-diff-col">
+                <div className="redehy-diff-lbl redehy-diff-lbl-old">旧正文</div>
+                <div className="redehy-diff-readonly">{old.content || '(空)'}</div>
+              </div>
+              <div className="redehy-diff-col">
+                <div className="redehy-diff-lbl redehy-diff-lbl-new">新正文 · 可编辑</div>
+                <textarea
+                  className="redehy-diff-edit"
+                  value={draftContent}
+                  onChange={e => setDraftContent(e.target.value)}
+                  rows={Math.min(20, Math.max(6, draftContent.split('\n').length + 1))}
+                  disabled={busy}
+                />
+              </div>
             </div>
           </div>
-        </label>
+        )}
 
-        <div className="redehy-modal-foot">
+        {/* 元数据对比 */}
+        <div className="redehy-diff-block">
+          <div className="redehy-diff-row">
+            <div className="redehy-diff-col">
+              <div className="redehy-diff-lbl redehy-diff-lbl-old">旧 · 标题</div>
+              <div className="redehy-diff-readonly redehy-diff-line">{old.name || '(空)'}</div>
+              <div className="redehy-diff-lbl redehy-diff-lbl-old">旧 · 摘要</div>
+              <div className="redehy-diff-readonly">{old.summary || '(空)'}</div>
+              <div className="redehy-diff-lbl redehy-diff-lbl-old">旧 · 标签</div>
+              <div className="redehy-diff-tags">
+                {(old.tags || []).filter(t => !String(t).startsWith('__')).map((t, i) => (
+                  <span key={i} className="redehy-tag-chip">{t}</span>
+                ))}
+                {(!old.tags || old.tags.length === 0) && <span className="redehy-diff-empty">(无)</span>}
+              </div>
+            </div>
+            <div className="redehy-diff-col">
+              <div className="redehy-diff-lbl redehy-diff-lbl-new">新 · 标题 · 可编辑</div>
+              <input
+                className="redehy-diff-edit redehy-diff-edit-line"
+                value={draftName}
+                onChange={e => setDraftName(e.target.value)}
+                disabled={busy}
+              />
+              <div className="redehy-diff-lbl redehy-diff-lbl-new">新 · 摘要 · 可编辑</div>
+              <textarea
+                className="redehy-diff-edit"
+                value={draftSummary}
+                onChange={e => setDraftSummary(e.target.value)}
+                rows={2}
+                disabled={busy}
+              />
+              <div className="redehy-diff-lbl redehy-diff-lbl-new">新 · 标签 · 可编辑</div>
+              <div className="redehy-diff-tags-edit">
+                {draftTags.map((t, i) => (
+                  <span key={i} className="redehy-tag-chip is-new">
+                    {t}<span className="x" onClick={() => !busy && rmTag(t)}>×</span>
+                  </span>
+                ))}
+                <input
+                  className="redehy-tag-input"
+                  value={tagInput}
+                  onChange={e => setTagInput(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
+                  onBlur={addTag}
+                  placeholder="+ 加标签"
+                  disabled={busy}
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="redehy-modal-foot redehy-modal-foot-preview">
+          <button className="redehy-btn" onClick={onCancel} disabled={busy}>取消 (不写入)</button>
+          <div style={{ flex: 1 }} />
           <button
             className="redehy-btn"
-            onClick={onCancel}
+            onClick={() => onReroll({ regenerate_content: showContentDiff })}
             disabled={busy}
-          >取消</button>
+            title="再让 LLM 跑一次, 当前编辑会丢失"
+          >
+            {busy ? '生成中…' : '↻ 重做'}
+          </button>
           <button
             className="redehy-btn is-primary"
-            onClick={() => onConfirm({ regenerate_content: regenContent && hasSource })}
+            onClick={() => onCommit({
+              content: showContentDiff ? draftContent : undefined,
+              name: draftName,
+              summary: draftSummary,
+              tags: draftTags,
+              domain: newM.domain,
+              valence: newM.valence,
+              arousal: newM.arousal,
+            })}
             disabled={busy}
           >
-            {busy ? '处理中…' : (regenContent && hasSource ? '重新脱水(含正文)' : '开始重新脱水')}
+            {busy ? '写入中…' : '✓ 接受并写入'}
           </button>
         </div>
       </div>
@@ -167,8 +327,9 @@ function ImportWorkbench() {
 
   // 重新脱水中的 bucket id(避免重复点)
   const [redehydrating, setRedehydrating] = iwS(null);
-  // 重新脱水弹窗(替代旧的 window.confirm)
+  // 重新脱水弹窗 + 预览态
   const [redehyModalOpen, setRedehyModalOpen] = iwS(false);
+  const [redehyPreview, setRedehyPreview] = iwS(null);  // null = options 阶段; obj = preview 阶段
 
   // 会话开销累计 — { usd, cny, count, lastLabel, lastUsd }
   const [sessionCost, setSessionCost] = iwS({ usd: 0, cny: 0, count: 0, lastLabel: '', lastUsd: 0 });
@@ -341,19 +502,26 @@ function ImportWorkbench() {
     }
   };
 
-  // ---------- 重新脱水(单条 LLM 重做 name/summary/tags/domain/情感[可选 + 正文]) ----------
-  // 入口:打开弹窗,让用户选要不要顺带重写正文
+  // ---------- 重新脱水: 两步 — preview (生成预览) → commit (确认写入) ----------
+  // 入口:打开弹窗 (Phase 1 选项)
   const openRedehydrateModal = () => {
     if (!active || redehydrating) return;
+    setRedehyPreview(null);
     setRedehyModalOpen(true);
   };
 
-  // 弹窗里点确认后真正执行
-  const confirmRedehydrate = async ({ regenerate_content }) => {
+  const closeRedehydrateModal = () => {
+    if (redehydrating) return;
+    setRedehyModalOpen(false);
+    setRedehyPreview(null);
+  };
+
+  // 跑预览 (调 /redehydrate, 不写盘)
+  const runRedehydratePreview = async ({ regenerate_content }) => {
     if (!active || redehydrating) return;
     setRedehydrating(active.id);
-    const label = regenerate_content ? '正在重新脱水(含正文)…' : '正在重新脱水…';
-    setToast({ msg: label + '(等几秒)' });
+    const label = regenerate_content ? '正在生成预览(含正文)…' : '正在生成预览…';
+    setToast({ msg: label });
     try {
       const r = await fetch('/api/bucket/' + encodeURIComponent(active.id) + '/redehydrate', {
         method: 'POST',
@@ -362,48 +530,67 @@ function ImportWorkbench() {
       });
       const data = await r.json();
       if (!r.ok) {
-        if (data.raw_output) {
-          console.warn('[redehydrate] LLM 原始输出:', data.raw_output);
-        }
+        if (data.raw_output) console.warn('[redehydrate] LLM 原始输出:', data.raw_output);
         const snippet = data.raw_output ? '\n\nLLM 原文片段(已打到 console):\n' + String(data.raw_output).slice(0, 200) : '';
         throw new Error((data.error || ('HTTP ' + r.status)) + snippet);
       }
-      // 把新元数据 (+ 可选新正文) 合到本地 queue,隐藏状态 tag 保留
-      setQueue(qs => qs.map(q => q.id === active.id ? {
-        ...q,
-        title: data.new_meta.name || q.title,
-        summary: data.new_meta.summary || q.summary,
-        tags: data.new_meta.tags && data.new_meta.tags.length
-          ? data.new_meta.tags.concat((q.tags || []).filter(t => String(t).startsWith('__')))
-          : q.tags,
-        body: data.regenerated_content && data.new_content ? data.new_content : q.body,
-      } : q));
-      const applied = (data.applied || []).join('/');
-      let costStr = '';
+      setRedehyPreview(data);
       if (data.cost && data.cost.known) {
-        const c = data.cost;
-        costStr = ` · 约 $${c.usd.toFixed(4)} (¥${c.cny.toFixed(2)})`;
-        addSessionCost(c, regenerate_content ? '重新脱水(含正文)' : '重新脱水');
+        addSessionCost(data.cost, regenerate_content ? '重新脱水预览(含正文)' : '重新脱水预览');
       }
-      setToast({ msg: `重新脱水完成 · 已更新: ${applied || '无字段'}${costStr}` });
-      setTimeout(() => setToast(null), 4500);
-      setRedehyModalOpen(false);
+      setToast(null);
     } catch (e) {
-      console.error('[redehydrate] failed', e);
+      console.error('[redehydrate preview] failed', e);
       const msg = e.message || String(e);
       let friendly = msg;
       if (/503|UNAVAILABLE|high demand|overloaded/i.test(msg)) {
-        friendly = '当前模型暂时过载(503),等几分钟再试。\n或在 /v2/console/config/ 切换到另一个 profile(如 Claude → Gemini)。\n\n原始错误:\n' + msg;
+        friendly = '当前模型暂时过载(503),等几分钟再试。\n或在 /v2/console/config/ 切换到另一个 profile。\n\n原始错误:\n' + msg;
       } else if (/429|rate|quota/i.test(msg)) {
-        friendly = '触发 API 速率限制(429)。等一会儿再试,或者切换到别的 profile。\n\n原始错误:\n' + msg;
+        friendly = '触发 API 速率限制(429)。等一会儿再试。\n\n原始错误:\n' + msg;
       } else if (/401|403|invalid.*key|authentication/i.test(msg)) {
-        friendly = 'API key 验证失败 — 去 /v2/console/config/ 检查激活的 profile 是否填对了 key。\n\n原始错误:\n' + msg;
+        friendly = 'API key 验证失败 — 去 /v2/console/config/ 检查 profile。\n\n原始错误:\n' + msg;
       } else if (/无法解析|parse|JSON/i.test(msg)) {
-        friendly = 'LLM 输出无法解析(可能截断或非 JSON)。这一条记忆原文可能太长或太特殊,LLM 没产生合法 JSON。\n建议:\n· 切换到能力更强的 profile(如 Claude Sonnet) 再试\n· 或先手动编辑这条把内容缩短\n\n原始错误:\n' + msg;
+        friendly = 'LLM 输出无法解析(可能截断或非 JSON)。建议换个能力更强的 profile 重试。\n\n原始错误:\n' + msg;
       } else if (/无原文|raw_source/i.test(msg)) {
-        friendly = '此条没有保存原文(raw_source),无法重新提炼正文。请取消勾选「同时重新提炼正文」后再试。\n\n原始错误:\n' + msg;
+        friendly = '此条没有保存原文(raw_source),无法重新提炼正文。请取消勾选后再试。\n\n原始错误:\n' + msg;
       }
-      alert('重新脱水失败:\n\n' + friendly);
+      alert('生成预览失败:\n\n' + friendly);
+      setToast(null);
+    } finally {
+      setRedehydrating(null);
+    }
+  };
+
+  // 用户在预览界面点"接受" → commit (调 /redehydrate-commit, 写入)
+  const commitRedehydrate = async (finalDraft) => {
+    if (!active || redehydrating) return;
+    setRedehydrating(active.id);
+    setToast({ msg: '正在写入…' });
+    try {
+      const r = await fetch('/api/bucket/' + encodeURIComponent(active.id) + '/redehydrate-commit', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(finalDraft),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+      // 同步本地 queue
+      const visibleTagsArr = (finalDraft.tags || []).filter(t => !String(t).startsWith('__'));
+      setQueue(qs => qs.map(q => q.id === active.id ? {
+        ...q,
+        title: finalDraft.name || q.title,
+        summary: finalDraft.summary || q.summary,
+        tags: visibleTagsArr.concat((q.tags || []).filter(t => String(t).startsWith('__'))),
+        body: finalDraft.content !== undefined ? finalDraft.content : q.body,
+      } : q));
+      const applied = (data.applied || []).join('/');
+      setToast({ msg: `已写入 · 更新: ${applied || '无字段'}` });
+      setTimeout(() => setToast(null), 3500);
+      setRedehyModalOpen(false);
+      setRedehyPreview(null);
+    } catch (e) {
+      console.error('[redehydrate commit] failed', e);
+      alert('写入失败:\n' + (e.message || String(e)));
       setToast(null);
     } finally {
       setRedehydrating(null);
@@ -1457,13 +1644,16 @@ function ImportWorkbench() {
         </div>
       )}
 
-      {/* 重新脱水弹窗 */}
+      {/* 重新脱水弹窗 — 两阶段 (options → preview) */}
       <RedehydrateModal
         open={redehyModalOpen}
         item={active}
         busy={redehydrating === (active && active.id)}
-        onCancel={() => setRedehyModalOpen(false)}
-        onConfirm={confirmRedehydrate}
+        preview={redehyPreview}
+        onCancel={closeRedehydrateModal}
+        onPreview={runRedehydratePreview}
+        onReroll={runRedehydratePreview}
+        onCommit={commitRedehydrate}
       />
 
       {/* 全库相似 → 查看:复用 ItemModal,跟时间线/记忆格里同款 */}
