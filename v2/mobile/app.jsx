@@ -327,7 +327,7 @@ function HomeScreen() {
               <span className="home-page-mark"/>
               Ombre Brain
             </h1>
-            <p className="home-page-sub">按事件时间倒序 · 点天卡看当日全部</p>
+            <p className="home-page-sub">按事件时间正序 · 点天卡看当日全部</p>
           </div>
           <div className="home-page-stat">
             <b>{buckets.length}</b> 条<br/>
@@ -519,14 +519,6 @@ function HomeScreen() {
           </>
         ) : (
           <>
-            <div className="home-mood-row" role="button" onClick={() => setMoodOpen(true)}>
-              <div className="home-mood-pad"/>
-              <div className="home-mood-text">
-                <b>情感唤起</b> · 选一个情绪坐标, 看 AI 用这个心情串相关记忆
-              </div>
-              <span className="home-mood-arrow">›</span>
-            </div>
-
             {days.length === 0 && (
               <div style={{ textAlign: 'center', color: 'var(--ink-4)', padding: '40px 0', fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '0.1em' }}>
                 没有记忆 — 先去后端导入或手动加几条
@@ -1222,12 +1214,12 @@ function EventTimeField({ value, onChange }) {
         className="dt-trigger"
         onClick={() => setOpen(true)}
       >
-        <span className="dt-trigger-ic">⌘</span>
         {value ? (
           <span className="dt-trigger-value">{formatLocalDateTimeForDisplay(value)}</span>
         ) : (
-          <span className="dt-trigger-value empty">点击选择时间 · 留空则用创建时间</span>
+          <span className="dt-trigger-value empty">点击选择 · 留空用创建时间</span>
         )}
+        <span className="dt-trigger-arrow" aria-hidden="true">{value ? '✎' : '›'}</span>
         {value && (
           <span
             className="dt-trigger-clear"
@@ -1370,7 +1362,7 @@ function FormFields({
             onChange={e => setTagInput(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addTag(); } }}
             onBlur={() => addTag()}
-            placeholder="+ 加标签(回车 / 失焦自动加)"
+            placeholder="+ 加标签(点输入框外自动加)"
           />
         </div>
       </div>

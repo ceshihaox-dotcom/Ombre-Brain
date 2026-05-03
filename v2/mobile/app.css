@@ -1754,45 +1754,46 @@ input, textarea { font: inherit; color: inherit; }
 }
 .setting-row-toggle.on .knob { transform: translateX(16px); }
 
-/* 事件时间触发器(替代 input datetime-local) */
+/* 事件时间触发器(替代 input datetime-local) — 秀气版 */
 .dt-trigger {
   appearance: none;
   border: 0.5px solid var(--line-2);
   background: var(--paper);
   border-radius: 10px;
-  padding: 11px 14px;
+  padding: 12px 14px;
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 8px;
   color: var(--ink);
-  font-family: var(--mono);
-  font-size: 13px;
-  letter-spacing: 0.04em;
+  font-family: var(--serif, serif);
+  font-size: 15px;
+  letter-spacing: 0.005em;
   text-align: left;
   cursor: pointer;
+  transition: border-color .15s, background .15s;
 }
 .dt-trigger:active { background: var(--bg-2); }
-.dt-trigger-ic {
-  font-family: var(--serif); font-style: italic;
-  color: var(--accent);
-  font-size: 16px;
-  flex-shrink: 0;
-  font-weight: 500;
-}
+.dt-trigger:hover { border-color: var(--ink-3); }
 .dt-trigger-value {
   flex: 1;
   color: var(--ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  font-style: italic;
 }
 .dt-trigger-value.empty {
   color: var(--ink-4);
-  font-style: italic;
-  font-family: var(--serif);
   font-size: 14px;
   letter-spacing: 0;
+}
+.dt-trigger-arrow {
+  color: var(--ink-4);
+  font-size: 14px;
+  flex-shrink: 0;
+  font-style: normal;
+  opacity: 0.7;
 }
 .dt-trigger-clear {
   width: 22px; height: 22px;
