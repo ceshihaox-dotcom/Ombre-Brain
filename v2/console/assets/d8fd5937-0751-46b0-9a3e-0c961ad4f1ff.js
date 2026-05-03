@@ -552,8 +552,8 @@ function ConfigPage() {
         </div>
       </ConsoleCard>
 
-      {/* 回忆 / 合并策略 — 真接通 */}
-      <ConsoleCard label="回忆 / 合并策略" sub={<>合并阈值 / Max Recall 即时生效 · 其余暂未实装 {strategySaving && <span style={{ color: 'var(--accent)', fontFamily: 'var(--mono)' }}>· 保存中…</span>}</>}>
+      {/* 回忆 / 合并策略 */}
+      <ConsoleCard label="回忆 / 合并策略" sub={<>合并阈值 / Max Recall · 即时生效 {strategySaving && <span style={{ color: 'var(--accent)', fontFamily: 'var(--mono)' }}>· 保存中…</span>}</>}>
         <div className="oc-field">
           <div className="oc-field-label">合并阈值</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -579,14 +579,6 @@ function ConfigPage() {
         </div>
 
         <div className="oc-field">
-          <div className="oc-field-label">夜间合并窗口</div>
-          <input className="oc-input oc-input-mono" value="02:00–04:00" disabled />
-        </div>
-        <div className="oc-field-help" style={{ paddingLeft: 126, marginTop: -6, color: 'var(--ink-4)' }}>
-          暂未实装 · 后续接调度器
-        </div>
-
-        <div className="oc-field">
           <div className="oc-field-label">Max Recall</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <input
@@ -599,24 +591,6 @@ function ConfigPage() {
         </div>
         <div className="oc-field-help" style={{ paddingLeft: 126, marginTop: -6 }}>
           1–50 · bucket_mgr.search 默认返回数;breath 工具 max_results 兜底
-        </div>
-
-        <div className="oc-field">
-          <div className="oc-field-label">钉决策略</div>
-          <select className="oc-select" value="manual" disabled>
-            <option value="manual">仅手动钉决</option>
-          </select>
-        </div>
-        <div className="oc-field-help" style={{ paddingLeft: 126, marginTop: -6, color: 'var(--ink-4)' }}>
-          暂未实装 · 自动钉决/AI 推荐后续做
-        </div>
-
-        <div className="oc-field">
-          <div className="oc-field-label">自动内化</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <div className="oc-switch on" />
-            <span style={{ fontSize: 12, color: 'var(--ink-4)', fontFamily: 'var(--mono)' }}>暂未实装 · 后续按重复唤起 + 激活强度自动标记</span>
-          </div>
         </div>
       </ConsoleCard>
 
