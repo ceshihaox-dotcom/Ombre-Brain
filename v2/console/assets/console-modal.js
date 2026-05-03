@@ -229,7 +229,7 @@ function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate, mode,
             )}
             {!editing && isHi && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--accent)' }}>★ 重要</span></>}
             {!editing && view.feel && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--rose-deep)' }}>❀ feel</span></>}
-            {!editing && view.protected && <><span style={{ opacity: 0.5 }}>/</span><span>⛨ 已保护</span></>}
+            {!editing && view.protected && <><span style={{ opacity: 0.5 }}>/</span><span>★ 钉决</span></>}
             {!editing && view.internalized && <><span style={{ opacity: 0.5 }}>/</span><span>◐ 已内化</span></>}
           </div>
 
@@ -455,7 +455,7 @@ function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate, mode,
                 <button
                   className={`ob-modal-btn ${view.protected ? 'on' : ''}`}
                   onClick={() => toggleField('protected')}
-                >⛨ {view.protected ? '已保护' : '保护'}</button>
+                >★ {view.protected ? '已钉决' : '钉决'}</button>
                 <button
                   className={`ob-modal-btn ${view.highlight ? 'on' : ''}`}
                   onClick={() => toggleField('highlight')}

@@ -187,8 +187,16 @@ function MiniTimeline({ items, onJump }) {
   );
 }
 
-// ── 浮动 FAB · 返回顶部 ─────────────────────────────
+// ── 浮动 FAB · 返回顶部 (在顶部时隐藏) ──────────────
 function Fab({ onClick }) {
+  const [show, setShow] = uS(false);
+  uE(() => {
+    const onScroll = () => setShow(window.scrollY > 200);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+  if (!show) return null;
   const handleClick = () => {
     if (typeof onClick === 'function') {
       onClick();
@@ -198,7 +206,7 @@ function Fab({ onClick }) {
   };
   return (
     <button className="ob-fab" onClick={handleClick} title="返回顶部">
-      <span className="ob-fab-plus">↑</span>
+      <span className="ob-fab-arrow">↑</span>
     </button>
   );
 }

@@ -26,10 +26,6 @@ function TopBarV2({ dark, onDark, compact, data }) {
         )}
       </div>
       <div className="ob-topbar-actions">
-        <div className="ob-search">
-          <span style={{ opacity: 0.5 }}>⌕</span>
-          <input placeholder="搜索记忆…  /" />
-        </div>
         <DarkToggle dark={dark} onChange={onDark} />
       </div>
     </div>
@@ -194,15 +190,15 @@ function AppV2() {
             active={!filters.importantOnly && !filters.feelOnly && !filters.protectedOnly}
             onClick={() => setFilters({ importantOnly: false, feelOnly: false, protectedOnly: false })}
           >全部</FilterChipV2>
-          <FilterChipV2 tone="gold" active={filters.importantOnly}
-            onClick={() => setFilters(f => ({ ...f, importantOnly: !f.importantOnly }))}
-          >★ 重要 (≥8)</FilterChipV2>
-          <FilterChipV2 tone="rose" active={filters.feelOnly}
-            onClick={() => setFilters(f => ({ ...f, feelOnly: !f.feelOnly }))}
-          >❀ feel</FilterChipV2>
           <FilterChipV2 tone="amber" active={filters.protectedOnly}
             onClick={() => setFilters(f => ({ ...f, protectedOnly: !f.protectedOnly }))}
-          >⛨ 已保护</FilterChipV2>
+          >★ 钉决</FilterChipV2>
+          <FilterChipV2 tone="gold" active={filters.importantOnly}
+            onClick={() => setFilters(f => ({ ...f, importantOnly: !f.importantOnly }))}
+          >✦ 重要</FilterChipV2>
+          <FilterChipV2 tone="rose" active={filters.feelOnly}
+            onClick={() => setFilters(f => ({ ...f, feelOnly: !f.feelOnly }))}
+          >❀ Feel</FilterChipV2>
         </div>
 
         <TimelineV2

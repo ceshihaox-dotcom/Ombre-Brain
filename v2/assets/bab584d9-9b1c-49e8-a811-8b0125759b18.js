@@ -27,10 +27,6 @@ function TopBarV2({ dark, onDark, compact, data }) {
         )}
       </div>
       <div className="ob-topbar-actions">
-        <div className="ob-search">
-          <span style={{ opacity: 0.5 }}>⌕</span>
-          <input placeholder="搜索记忆…  /" />
-        </div>
         <DarkToggle dark={dark} onChange={onDark} />
       </div>
     </div>
