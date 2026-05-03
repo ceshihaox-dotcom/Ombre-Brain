@@ -3088,3 +3088,125 @@ input, textarea { font: inherit; color: inherit; }
   line-height: 1.7;
 }
 
+/* ─────────────────────────────────────────
+   RedehydrateSheet — 重新脱水弹窗(手机端)
+   ───────────────────────────────────────── */
+.redehy-sheet-mask {
+  position: fixed; inset: 0;
+  background: rgba(26, 25, 34, 0.5);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 250;  /* 高于 edit-sheet (100) */
+  display: flex; align-items: flex-end;
+  animation: redehyFadeIn .18s ease;
+}
+@keyframes redehyFadeIn { from { opacity: 0; } to { opacity: 1; } }
+.redehy-sheet {
+  width: 100%;
+  background: var(--bg);
+  border-radius: 22px 22px 0 0;
+  padding: 14px 22px calc(28px + env(safe-area-inset-bottom));
+  max-height: 88%;
+  overflow-y: auto;
+  animation: redehySlideUp .26s cubic-bezier(.2,.8,.2,1);
+  box-shadow: 0 -16px 40px -10px rgba(26,25,34,0.32);
+}
+@keyframes redehySlideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+.redehy-sheet-grip {
+  width: 38px; height: 4px;
+  background: var(--ink-4);
+  border-radius: 999px;
+  margin: 0 auto 14px;
+  opacity: 0.5;
+}
+.redehy-sheet-hd {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 6px;
+}
+.redehy-sheet-icon {
+  width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--accent-3, rgba(160,130,230,0.14));
+  color: var(--accent);
+  font-size: 15px;
+  font-style: normal;
+}
+.redehy-sheet-title {
+  font-family: var(--serif); font-style: italic;
+  font-size: 19px;
+  color: var(--ink);
+  letter-spacing: 0.005em;
+}
+.redehy-sheet-target {
+  font-family: var(--serif);
+  font-size: 14px;
+  color: var(--ink-2);
+  margin: 6px 0 14px;
+  padding: 8px 12px;
+  background: var(--paper);
+  border-left: 2px solid var(--accent);
+  border-radius: 0 6px 6px 0;
+  word-break: break-all;
+}
+.redehy-sheet-desc {
+  font-family: var(--sans, sans-serif);
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--ink-2);
+  margin-bottom: 18px;
+}
+.redehy-sheet-desc b { color: var(--ink); font-weight: 600; }
+.redehy-sheet .redehy-opt {
+  display: flex; gap: 12px;
+  align-items: flex-start;
+  padding: 14px 14px;
+  border: 0.5px solid var(--line-2);
+  border-radius: 12px;
+  background: var(--paper);
+  margin-bottom: 22px;
+  -webkit-tap-highlight-color: transparent;
+}
+.redehy-sheet .redehy-opt input[type="checkbox"] {
+  margin-top: 3px;
+  width: 18px; height: 18px;
+  accent-color: var(--accent);
+  flex: 0 0 auto;
+}
+.redehy-sheet .redehy-opt.is-disabled {
+  opacity: 0.55;
+}
+.redehy-sheet .redehy-opt-text { flex: 1; }
+.redehy-sheet .redehy-opt-ttl {
+  font: 600 14px var(--sans, sans-serif);
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+.redehy-sheet .redehy-opt-sub {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--ink-3);
+}
+.redehy-sheet-foot {
+  display: flex; gap: 10px;
+}
+.redehy-sheet .redehy-btn {
+  flex: 1;
+  appearance: none;
+  border: 0.5px solid var(--line-2);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 12px 18px;
+  border-radius: 12px;
+  font: 500 14px var(--sans, sans-serif);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.redehy-sheet .redehy-btn:disabled { opacity: 0.45; }
+.redehy-sheet .redehy-btn.is-primary {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+  font-weight: 600;
+}
+

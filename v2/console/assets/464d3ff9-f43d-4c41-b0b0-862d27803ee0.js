@@ -72,6 +72,67 @@ function sameBatchSimilar(target, queue, topN) {
   return out.slice(0, topN || 3);
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// RedehydrateModal — 重新脱水弹窗(替代 window.confirm)
+// 含「同时重新提炼正文」勾选项;无 raw_source 时勾选项置灰
+// ─────────────────────────────────────────────────────────────────────────
+function RedehydrateModal({ open, item, onCancel, onConfirm, busy }) {
+  const [regenContent, setRegenContent] = iwS(false);
+  iwE(() => { if (!open) setRegenContent(false); }, [open]);
+  if (!open || !item) return null;
+  const hasSource = !!(item.rawSource && String(item.rawSource).trim());
+  const onKey = (e) => { if (e.key === 'Escape' && !busy) onCancel(); };
+  return (
+    <div className="redehy-modal-mask" onClick={busy ? undefined : onCancel} onKeyDown={onKey}>
+      <div className="redehy-modal" onClick={e => e.stopPropagation()}>
+        <div className="redehy-modal-hd">
+          <div className="redehy-modal-icon">↻</div>
+          <div className="redehy-modal-title">重新脱水</div>
+        </div>
+        <div className="redehy-modal-target">
+          「{item.title || '未命名'}」
+        </div>
+        <div className="redehy-modal-desc">
+          让 LLM 重新生成这条记忆的<b>标题 / 摘要 / 标签 / 情感坐标</b>。<br/>
+          重要度 / 状态标记 / 事件时间会保留。
+        </div>
+
+        <label className={'redehy-opt' + (hasSource ? '' : ' is-disabled')}>
+          <input
+            type="checkbox"
+            checked={regenContent && hasSource}
+            disabled={!hasSource || busy}
+            onChange={e => setRegenContent(e.target.checked)}
+          />
+          <div className="redehy-opt-text">
+            <div className="redehy-opt-ttl">同时重新提炼正文</div>
+            <div className="redehy-opt-sub">
+              {hasSource
+                ? '基于「原文」(raw_source) 让 LLM 重写一遍正文,会刷新 embedding。多耗一次 LLM 调用。'
+                : '此条无原文(raw_source 为空),无法重新提炼正文。'}
+            </div>
+          </div>
+        </label>
+
+        <div className="redehy-modal-foot">
+          <button
+            className="redehy-btn"
+            onClick={onCancel}
+            disabled={busy}
+          >取消</button>
+          <button
+            className="redehy-btn is-primary"
+            onClick={() => onConfirm({ regenerate_content: regenContent && hasSource })}
+            disabled={busy}
+          >
+            {busy ? '处理中…' : (regenContent && hasSource ? '重新脱水(含正文)' : '开始重新脱水')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ImportWorkbench() {
   const [queue, setQueue] = iwS([]);
   const [loading, setLoading] = iwS(true);
@@ -106,6 +167,8 @@ function ImportWorkbench() {
 
   // 重新脱水中的 bucket id(避免重复点)
   const [redehydrating, setRedehydrating] = iwS(null);
+  // 重新脱水弹窗(替代旧的 window.confirm)
+  const [redehyModalOpen, setRedehyModalOpen] = iwS(false);
 
   // 会话开销累计 — { usd, cny, count, lastLabel, lastUsd }
   const [sessionCost, setSessionCost] = iwS({ usd: 0, cny: 0, count: 0, lastLabel: '', lastUsd: 0 });
@@ -278,24 +341,34 @@ function ImportWorkbench() {
     }
   };
 
-  // ---------- 重新脱水(单条 LLM 重做 name/summary/tags/domain/情感) ----------
-  const redehydrateActive = async () => {
+  // ---------- 重新脱水(单条 LLM 重做 name/summary/tags/domain/情感[可选 + 正文]) ----------
+  // 入口:打开弹窗,让用户选要不要顺带重写正文
+  const openRedehydrateModal = () => {
     if (!active || redehydrating) return;
-    if (!window.confirm(`重新脱水会让 LLM 重新生成「${active.title || '这条'}」的标题、一句话摘要、标签和情感参数。\n正文不变,重要度也保留。继续?`)) return;
+    setRedehyModalOpen(true);
+  };
+
+  // 弹窗里点确认后真正执行
+  const confirmRedehydrate = async ({ regenerate_content }) => {
+    if (!active || redehydrating) return;
     setRedehydrating(active.id);
-    setToast({ msg: '正在重新脱水…(等几秒)' });
+    const label = regenerate_content ? '正在重新脱水(含正文)…' : '正在重新脱水…';
+    setToast({ msg: label + '(等几秒)' });
     try {
-      const r = await fetch('/api/bucket/' + encodeURIComponent(active.id) + '/redehydrate', { method: 'POST' });
+      const r = await fetch('/api/bucket/' + encodeURIComponent(active.id) + '/redehydrate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ regenerate_content: !!regenerate_content }),
+      });
       const data = await r.json();
       if (!r.ok) {
-        // 422 通常是 LLM 输出解析失败 —— 把原文打到 console 方便排查
         if (data.raw_output) {
           console.warn('[redehydrate] LLM 原始输出:', data.raw_output);
         }
         const snippet = data.raw_output ? '\n\nLLM 原文片段(已打到 console):\n' + String(data.raw_output).slice(0, 200) : '';
         throw new Error((data.error || ('HTTP ' + r.status)) + snippet);
       }
-      // 把新元数据合到本地 queue,隐藏状态 tag 保留
+      // 把新元数据 (+ 可选新正文) 合到本地 queue,隐藏状态 tag 保留
       setQueue(qs => qs.map(q => q.id === active.id ? {
         ...q,
         title: data.new_meta.name || q.title,
@@ -303,22 +376,21 @@ function ImportWorkbench() {
         tags: data.new_meta.tags && data.new_meta.tags.length
           ? data.new_meta.tags.concat((q.tags || []).filter(t => String(t).startsWith('__')))
           : q.tags,
+        body: data.regenerated_content && data.new_content ? data.new_content : q.body,
       } : q));
       const applied = (data.applied || []).join('/');
-      // 开销显示
       let costStr = '';
       if (data.cost && data.cost.known) {
         const c = data.cost;
         costStr = ` · 约 $${c.usd.toFixed(4)} (¥${c.cny.toFixed(2)})`;
-        // 累计到 sessionCost
-        addSessionCost(c, '重新脱水');
+        addSessionCost(c, regenerate_content ? '重新脱水(含正文)' : '重新脱水');
       }
       setToast({ msg: `重新脱水完成 · 已更新: ${applied || '无字段'}${costStr}` });
       setTimeout(() => setToast(null), 4500);
+      setRedehyModalOpen(false);
     } catch (e) {
       console.error('[redehydrate] failed', e);
       const msg = e.message || String(e);
-      // 识别常见错误类型给更友好提示
       let friendly = msg;
       if (/503|UNAVAILABLE|high demand|overloaded/i.test(msg)) {
         friendly = '当前模型暂时过载(503),等几分钟再试。\n或在 /v2/console/config/ 切换到另一个 profile(如 Claude → Gemini)。\n\n原始错误:\n' + msg;
@@ -328,6 +400,8 @@ function ImportWorkbench() {
         friendly = 'API key 验证失败 — 去 /v2/console/config/ 检查激活的 profile 是否填对了 key。\n\n原始错误:\n' + msg;
       } else if (/无法解析|parse|JSON/i.test(msg)) {
         friendly = 'LLM 输出无法解析(可能截断或非 JSON)。这一条记忆原文可能太长或太特殊,LLM 没产生合法 JSON。\n建议:\n· 切换到能力更强的 profile(如 Claude Sonnet) 再试\n· 或先手动编辑这条把内容缩短\n\n原始错误:\n' + msg;
+      } else if (/无原文|raw_source/i.test(msg)) {
+        friendly = '此条没有保存原文(raw_source),无法重新提炼正文。请取消勾选「同时重新提炼正文」后再试。\n\n原始错误:\n' + msg;
       }
       alert('重新脱水失败:\n\n' + friendly);
       setToast(null);
@@ -1155,9 +1229,9 @@ function ImportWorkbench() {
                 </button>
                 <button
                   className="imp-act"
-                  onClick={redehydrateActive}
+                  onClick={openRedehydrateModal}
                   disabled={redehydrating === active.id}
-                  title="LLM 重新生成标题/摘要/标签/情感(正文和重要度保留)"
+                  title="LLM 重新生成标题/摘要/标签/情感(可选同时重写正文)"
                 >
                   {redehydrating === active.id ? '⌛ 提炼中…' : '↻ 重新脱水'}
                 </button>
@@ -1382,6 +1456,15 @@ function ImportWorkbench() {
           )}
         </div>
       )}
+
+      {/* 重新脱水弹窗 */}
+      <RedehydrateModal
+        open={redehyModalOpen}
+        item={active}
+        busy={redehydrating === (active && active.id)}
+        onCancel={() => setRedehyModalOpen(false)}
+        onConfirm={confirmRedehydrate}
+      />
 
       {/* 全库相似 → 查看:复用 ItemModal,跟时间线/记忆格里同款 */}
       {previewItem && window.ConsoleItemModal && React.createElement(window.ConsoleItemModal, {

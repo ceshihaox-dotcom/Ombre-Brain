@@ -1469,28 +1469,73 @@ async def api_bucket_update(request):
 @mcp.custom_route("/api/bucket/{bucket_id}/redehydrate", methods=["POST"])
 async def api_bucket_redehydrate(request):
     """对单条记忆重新提炼:LLM 跑一遍 content,生成新的 name/summary/tags/domain/valence/arousal。
-    工作台"↻ 重新脱水"按钮调用。protected 桶 importance 不动(锁 10)。"""
+    工作台"↻ 重新脱水"按钮调用。protected 桶 importance 不动(锁 10)。
+
+    可选 JSON body: {"regenerate_content": bool}
+      true → 先用 metadata.raw_source 走一遍 LLM 重写正文, 再跑 metadata 提炼
+             (要求 raw_source 非空, 否则 422)
+      false / 缺省 → 旧行为, 仅刷 metadata
+    """
     from starlette.responses import JSONResponse
+    from utils import estimate_llm_cost
     bucket_id = request.path_params["bucket_id"]
     bucket = await bucket_mgr.get(bucket_id)
     if not bucket:
         return JSONResponse({"error": "not found"}, status_code=404)
-    content = bucket.get("content", "")
-    if not content.strip():
-        return JSONResponse({"error": "正文为空,无可提炼内容"}, status_code=400)
+
+    # 解析 body(允许空 body 兼容旧调用)
+    regenerate_content = False
     try:
-        new_meta = await dehydrator.redehydrate(content)
+        body = await request.json()
+        if isinstance(body, dict):
+            regenerate_content = bool(body.get("regenerate_content", False))
+    except Exception:
+        pass
+
+    raw_source = (bucket.get("metadata") or {}).get("raw_source", "") or ""
+    content = bucket.get("content", "")
+
+    # 累计开销 + 用过的诊断字段
+    total_in_tok = 0
+    total_out_tok = 0
+    model_used = dehydrator.model
+    new_content = None  # 若重写了, 后面要写回 + 重算 embedding
+
+    # ---- Step 1 (可选): 重写正文 ----
+    if regenerate_content:
+        if not raw_source.strip():
+            return JSONResponse({
+                "error": "此条无原文(metadata.raw_source 为空), 无法重新提炼正文",
+            }, status_code=422)
+        try:
+            regen = await dehydrator.regenerate_content_from_source(raw_source)
+        except RuntimeError as e:
+            return JSONResponse({"error": str(e)}, status_code=500)
+        new_content = regen.get("content", "")
+        total_in_tok += regen.get("_prompt_tokens", 0)
+        total_out_tok += regen.get("_completion_tokens", 0)
+        model_used = regen.get("_model_used", model_used)
+        # metadata 提炼喂新正文
+        content_for_meta = new_content
+    else:
+        content_for_meta = content
+
+    if not content_for_meta.strip():
+        return JSONResponse({"error": "正文为空,无可提炼内容"}, status_code=400)
+
+    # ---- Step 2: metadata 提炼 ----
+    try:
+        new_meta = await dehydrator.redehydrate(content_for_meta)
     except RuntimeError as e:
         return JSONResponse({"error": str(e)}, status_code=500)
-    # 抠出诊断字段
+
     raw_output = new_meta.pop("_raw_output", "")
     parse_ok = new_meta.pop("_parse_ok", True)
-    in_tok = new_meta.pop("_prompt_tokens", 0)
-    out_tok = new_meta.pop("_completion_tokens", 0)
-    model_used = new_meta.pop("_model_used", dehydrator.model)
-    from utils import estimate_llm_cost
-    cost = estimate_llm_cost(model_used, in_tok, out_tok)
-    # parse 失败或 LLM 没产出关键字段 → 不写盘,把原始输出回传让前端能看到 LLM 到底说了什么
+    total_in_tok += new_meta.pop("_prompt_tokens", 0)
+    total_out_tok += new_meta.pop("_completion_tokens", 0)
+    model_used = new_meta.pop("_model_used", model_used)
+    cost = estimate_llm_cost(model_used, total_in_tok, total_out_tok)
+
     has_meaningful = bool(new_meta.get("name") or new_meta.get("summary") or new_meta.get("tags"))
     if not parse_ok or not has_meaningful:
         return JSONResponse({
@@ -1499,21 +1544,33 @@ async def api_bucket_redehydrate(request):
             "parse_ok": parse_ok,
             "new_meta": new_meta,
         }, status_code=422)
-    # 写回 bucket(只覆盖这次产出的字段;importance/event_time/状态 flag 全保留)
+
+    # ---- Step 3: 写回 ----
     update_kwargs = {k: v for k, v in new_meta.items() if v not in (None, "", [])}
+    if new_content is not None:
+        update_kwargs["content"] = new_content  # 一并写正文
     if update_kwargs:
         success = await bucket_mgr.update(bucket_id, **update_kwargs)
         if not success:
             return JSONResponse({"error": "写回失败"}, status_code=500)
-        # content 没变,embedding 不用重算
+        # 正文变了 → 刷 embedding
+        if new_content is not None and embedding_engine and embedding_engine.enabled:
+            try:
+                await embedding_engine.generate_and_store(bucket_id, new_content)
+            except Exception:
+                pass
+
     fresh = await bucket_mgr.get(bucket_id)
     return JSONResponse({
         "ok": True,
         "id": bucket_id,
         "applied": sorted(update_kwargs.keys()),
         "new_meta": new_meta,
-        "raw_output": raw_output[:500],  # 成功时也带上,前端可选展示
+        "new_content": new_content,  # null 表示没重写
+        "regenerated_content": new_content is not None,
+        "raw_output": raw_output[:500],
         "metadata": fresh.get("metadata", {}) if fresh else {},
+        "content": fresh.get("content", "") if fresh else "",
         "cost": cost,
     })
 
