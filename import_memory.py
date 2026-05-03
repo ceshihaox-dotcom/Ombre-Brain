@@ -877,11 +877,17 @@ class ImportEngine:
             summary=summary or None,
             event_time=event_time,
         )
-        # 普通模式也存 raw_source(如 LLM 给了精准片段) — 让"查看原文"对每条 bucket 显示真相关的对话
+        # LLM 提取的"原文最关键一两句"片段 — 同时写两个字段:
+        #   source_excerpt: 给"重新脱水含正文"主题锚点法 + 未来精确锚定功能用 (核心字段)
+        #   raw_source:     给"查看原文"按钮用 (历史行为, 保留兼容)
         src_excerpt = item.get("source_excerpt")
         if bucket_id and src_excerpt:
             try:
-                await self.bucket_mgr.update(bucket_id, raw_source=src_excerpt)
+                await self.bucket_mgr.update(
+                    bucket_id,
+                    source_excerpt=src_excerpt,
+                    raw_source=src_excerpt,
+                )
             except Exception:
                 pass
         if self.embedding_engine:

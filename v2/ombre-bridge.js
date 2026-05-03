@@ -2,13 +2,13 @@
 // 在 babel 脚本之前加载,提供全局 helper
 
 (function () {
-  // ISO 字符串 → 本地 date/time 字符串。无时区标记的当 UTC(后端 datetime.utcnow + Z 写,
-  // 老数据 naive 但事实也是 UTC,所以兜底当 UTC)。
+  // ISO 字符串 → 本地 date/time 字符串
+  //   带 Z / 时区偏移: 浏览器按 UTC/指定时区解析, 自动转本地显示 (created 字段, 后端写)
+  //   无时区标记:   浏览器按本地时区解析, 直接用 (event_time 字段, LLM 从原文文本推断, 无时区)
+  //   旧版本曾给 naive 时间补 Z 当 UTC, 导致 LLM 写的本地时间被错移 9 小时, 已废弃此行为
   function isoToLocal(s) {
     if (!s) return { date: '', time: '' };
     var iso = String(s);
-    // 已经带 Z 或 ±HH:MM 偏移就不动;否则补 Z
-    if (!/Z$|[+\-]\d{2}:?\d{2}$/.test(iso)) iso = iso + 'Z';
     var d = new Date(iso);
     if (isNaN(d.getTime())) {
       // 解析失败退回字符串切片

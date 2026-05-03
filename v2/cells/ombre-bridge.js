@@ -2,11 +2,12 @@
 // 在 babel 脚本之前加载,提供全局 helper
 
 (function () {
-  // ISO(UTC) → 本地 date/time;无时区标记的当 UTC 兜底
+  // ISO → 本地 date/time
+  //   带 Z / 时区偏移: 按 UTC 解析转本地 (created)
+  //   无时区: 按本地解析 (event_time, LLM 从原文文本推断, 无时区)
   function isoToLocal(s) {
     if (!s) return { date: '', time: '' };
     var iso = String(s);
-    if (!/Z$|[+\-]\d{2}:?\d{2}$/.test(iso)) iso = iso + 'Z';
     var d = new Date(iso);
     if (isNaN(d.getTime())) {
       var raw = String(s);

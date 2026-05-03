@@ -353,6 +353,14 @@ class BucketManager:
                 _drop("raw_source")
             else:
                 post["raw_source"] = str(rs)[:8000]  # 截到 8KB 避免 metadata 爆炸
+        # source_excerpt(LLM 从原文提取的"最关键一两句对话原话")
+        # 用于"重新脱水含正文"的主题锚点法 + 导入工作台"查看原文"按钮
+        if "source_excerpt" in kwargs:
+            se = kwargs["source_excerpt"]
+            if se is None or se == "":
+                _drop("source_excerpt")
+            else:
+                post["source_excerpt"] = str(se)[:600]  # 50-150 字, 600 留余量
         # summary(用户可编辑的摘要,优先于自动 content_preview 显示)
         # 传 None / 空字符串 → 清掉,回退到 content 自动截前 200 字
         if "summary" in kwargs:
