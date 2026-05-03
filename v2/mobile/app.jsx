@@ -2541,6 +2541,11 @@ function SettingScreen() {
   const [dark, setDark] = useState(() =>
     document.documentElement.getAttribute('data-theme') === 'dark'
   );
+  // 主题色 (跟桌面同套, window.OB_THEME)
+  const [themeState, setThemeState] = useState(() =>
+    (window.OB_THEME && window.OB_THEME.loadTheme()) || { preset: 'moonlight-purple' }
+  );
+  const [customOpen, setCustomOpen] = useState(false);
 
   useEffect(() => {
     api('/api/trash')
@@ -2559,6 +2564,23 @@ function SettingScreen() {
       localStorage.setItem('mobile-theme', 'light');
     }
   };
+
+  const choosePreset = (preset) => {
+    if (!window.OB_THEME) return;
+    const next = { preset: preset.id };
+    window.OB_THEME.applyTheme(preset.colors);
+    window.OB_THEME.saveTheme(next);
+    setThemeState(next);
+  };
+  const applyCustomTheme = (custom) => {
+    if (!window.OB_THEME) return;
+    const next = { preset: 'custom', custom };
+    window.OB_THEME.applyTheme(custom);
+    window.OB_THEME.saveTheme(next);
+    setThemeState(next);
+    setCustomOpen(false);
+  };
+  const PRESETS = (window.OB_THEME && window.OB_THEME.PRESETS) || [];
 
   return (
     <div className="setting">
@@ -2583,6 +2605,39 @@ function SettingScreen() {
               <span className="knob"/>
             </span>
           </div>
+          {PRESETS.length > 0 && (
+            <div className="setting-row setting-row-theme">
+              <div className="setting-row-ic">
+                <span className="setting-theme-mark"/>
+              </div>
+              <div className="setting-row-mid">
+                <div className="setting-row-title">主题色</div>
+                <div className="setting-theme-chips">
+                  {PRESETS.map(p => (
+                    <button
+                      key={p.id}
+                      className={'setting-theme-chip' + (themeState.preset === p.id ? ' on' : '')}
+                      onClick={() => choosePreset(p)}
+                      title={p.desc}
+                    >
+                      <span className="setting-theme-chip-dot" style={{ background: p.colors.accent }}/>
+                      <span>{p.name}</span>
+                    </button>
+                  ))}
+                  <button
+                    className={'setting-theme-chip' + (themeState.preset === 'custom' ? ' on' : '')}
+                    onClick={() => setCustomOpen(true)}
+                  >
+                    <span
+                      className="setting-theme-chip-dot"
+                      style={{ background: 'conic-gradient(from 0deg, #6e4f9a, #d291b3, #d4a85f, #6e4f9a)' }}
+                    />
+                    <span>自定义</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
           <div className="setting-row" onClick={() => navigate('/setting/api')}>
             <div className="setting-row-ic">≡</div>
             <div className="setting-row-mid">
@@ -2629,6 +2684,11 @@ function SettingScreen() {
         </div>
       </div>
       <TabBar active="setting"/>
+      {customOpen && window.ThemeCustomModal && React.createElement(window.ThemeCustomModal, {
+        initial: window.OB_THEME.getCurrentColors(themeState),
+        onClose: () => setCustomOpen(false),
+        onApply: applyCustomTheme,
+      })}
     </div>
   );
 }

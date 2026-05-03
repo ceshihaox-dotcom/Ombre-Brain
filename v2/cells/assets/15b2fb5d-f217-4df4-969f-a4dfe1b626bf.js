@@ -26,6 +26,7 @@ function TopBarV2({ dark, onDark, compact, data }) {
         )}
       </div>
       <div className="ob-topbar-actions">
+        {window.ThemeToggle && <window.ThemeToggle />}
         <DarkToggle dark={dark} onChange={onDark} />
       </div>
     </div>
