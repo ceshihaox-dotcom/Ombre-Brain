@@ -596,7 +596,7 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
         />
       </div>
 
-      {/* 筛选区: 状态 + 主题域同行 + 标签独立行 */}
+      {/* 筛选区: 状态行 + 主题域行 + 标签行 */}
       <div className="ob-cells-filters">
         <div className="ob-cells-frow">
           <span className="ob-cells-frow-lab">状态</span>
@@ -610,49 +610,48 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
               <span className="ob-cells-chip-count">{f.count}</span>
             </button>
           ))}
-          {/* 主题域 chips 接在状态行末尾 — 视觉小竖线分隔 */}
-          {allDomains.length > 0 && (() => {
-            const DOMAIN_TOP_N = 8;
-            const selectedSet = new Set(domainFilters);
-            const top = allDomains.slice(0, DOMAIN_TOP_N);
-            const topIds = new Set(top.map(d => d.domain));
-            const extraSelected = allDomains
-              .filter(d => selectedSet.has(d.domain) && !topIds.has(d.domain));
-            const visibleDomains = domainExpanded ? allDomains : [...extraSelected, ...top];
-            const hiddenCount = allDomains.length - visibleDomains.length;
-            return (
-              <>
-                <span className="ob-cells-frow-divider" aria-hidden="true" />
-                <span className="ob-cells-frow-sub-lab">主题域</span>
-                {visibleDomains.map(({ domain: dm, count }) => (
-                  <button
-                    key={dm}
-                    className={`ob-cells-chip ${domainFilters.includes(dm) ? 'on' : ''}`}
-                    onClick={() => toggleDomain(dm)}
-                  >
-                    <span>{dm}</span>
-                    <span className="ob-cells-chip-count">{count}</span>
-                  </button>
-                ))}
-                {hiddenCount > 0 && !domainExpanded && (
-                  <button className="ob-cells-frow-more" onClick={() => setDomainExpanded(true)}>
-                    +{hiddenCount} 更多
-                  </button>
-                )}
-                {domainExpanded && allDomains.length > DOMAIN_TOP_N && (
-                  <button className="ob-cells-frow-more" onClick={() => setDomainExpanded(false)}>
-                    收起
-                  </button>
-                )}
-                {domainFilters.length > 0 && (
-                  <button className="ob-cells-frow-more" onClick={() => setDomainFilters([])} style={{color: 'var(--accent)'}}>
-                    清空
-                  </button>
-                )}
-              </>
-            );
-          })()}
         </div>
+        {/* 第二行: 主题域 — 独占整行, chips 铺到末尾 */}
+        {allDomains.length > 0 && (() => {
+          const DOMAIN_TOP_N = 8;
+          const selectedSet = new Set(domainFilters);
+          const top = allDomains.slice(0, DOMAIN_TOP_N);
+          const topIds = new Set(top.map(d => d.domain));
+          const extraSelected = allDomains
+            .filter(d => selectedSet.has(d.domain) && !topIds.has(d.domain));
+          const visibleDomains = domainExpanded ? allDomains : [...extraSelected, ...top];
+          const hiddenCount = allDomains.length - visibleDomains.length;
+          return (
+            <div className="ob-cells-frow">
+              <span className="ob-cells-frow-lab">主题域</span>
+              {visibleDomains.map(({ domain: dm, count }) => (
+                <button
+                  key={dm}
+                  className={`ob-cells-chip ${domainFilters.includes(dm) ? 'on' : ''}`}
+                  onClick={() => toggleDomain(dm)}
+                >
+                  <span>{dm}</span>
+                  <span className="ob-cells-chip-count">{count}</span>
+                </button>
+              ))}
+              {hiddenCount > 0 && !domainExpanded && (
+                <button className="ob-cells-frow-more" onClick={() => setDomainExpanded(true)}>
+                  +{hiddenCount} 更多
+                </button>
+              )}
+              {domainExpanded && allDomains.length > DOMAIN_TOP_N && (
+                <button className="ob-cells-frow-more" onClick={() => setDomainExpanded(false)}>
+                  收起
+                </button>
+              )}
+              {domainFilters.length > 0 && (
+                <button className="ob-cells-frow-more" onClick={() => setDomainFilters([])} style={{color: 'var(--accent)'}}>
+                  清空
+                </button>
+              )}
+            </div>
+          );
+        })()}
         <div className="ob-cells-frow">
           <button
             className={`ob-cells-frow-toggle ${tagFilters.length > 0 ? 'has-active' : ''}`}
