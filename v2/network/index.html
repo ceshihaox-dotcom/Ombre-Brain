@@ -3562,6 +3562,54 @@ body {
 .cs-tag-more:hover { color: var(--c-accent); text-decoration: underline; }
 .cs-tag-more.clear { color: var(--c-rose); }
 
+/* 标签搜索框 */
+.cs-tag-search {
+  position: relative;
+  margin-bottom: 8px;
+}
+.cs-tag-search input {
+  width: 100%;
+  box-sizing: border-box;
+  appearance: none;
+  border: 1px solid var(--c-line-2);
+  background: rgba(255,255,255,0.03);
+  color: var(--c-ink-2);
+  font: 11.5px var(--sans);
+  padding: 6px 26px 6px 10px;
+  border-radius: 6px;
+  outline: none;
+  transition: border-color .12s, background .12s;
+}
+.cs-tag-search input:focus {
+  border-color: var(--c-accent-2);
+  background: rgba(255,255,255,0.05);
+  color: var(--c-ink);
+}
+.cs-tag-search input::placeholder {
+  color: var(--c-ink-3);
+  opacity: 0.7;
+}
+.cs-tag-search-clear {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  appearance: none; border: 0;
+  background: transparent;
+  color: var(--c-ink-3);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 6px;
+}
+.cs-tag-search-clear:hover { color: var(--c-ink); }
+.cs-tag-empty {
+  font: 11px var(--sans);
+  color: var(--c-ink-3);
+  font-style: italic;
+  padding: 6px 0;
+}
+
 /* importance 阈值 slider */
 .cs-imp-slider {
   display: flex; align-items: center; gap: 10px;

@@ -53,15 +53,25 @@ function LeftPanel({
   }, [items]);
 
   const [tagsExpanded, setTagsExpanded] = cpS(false);
+  const [tagSearch, setTagSearch] = cpS('');
   const TAG_TOP_N = 30;
-  const visibleTags = tagsExpanded ? sortedTags : sortedTags.slice(0, TAG_TOP_N);
 
-  // 孤岛：没有任何边的节点
-  const islands = cpM(() => {
-    const conn = new Set();
-    links.forEach(l => { conn.add(l.source); conn.add(l.target); });
-    return items.filter(it => !conn.has(it.id));
-  }, [items, links]);
+  // 标签搜索 + top N + 已选保留
+  const visibleTags = cpM(() => {
+    const q = tagSearch.trim().toLowerCase();
+    let pool = sortedTags;
+    if (q) {
+      pool = sortedTags.filter(({ tag }) => String(tag).toLowerCase().includes(q));
+    }
+    const limit = (q || tagsExpanded) ? pool.length : Math.min(TAG_TOP_N, pool.length);
+    const sliced = pool.slice(0, limit);
+    // 已选 tag 即使不在 top N / 搜索结果里也保留
+    const shownIds = new Set(sliced.map(x => x.tag));
+    const extras = Array.from(tagFilters)
+      .filter(t => !shownIds.has(t))
+      .map(t => ({ tag: t, count: (sortedTags.find(x => x.tag === t) || {}).count || 0 }));
+    return [...extras, ...sliced];
+  }, [sortedTags, tagSearch, tagsExpanded, tagFilters]);
 
   return (
     <aside className="cs-left">
@@ -140,6 +150,17 @@ function LeftPanel({
             <span>标签 · 点选筛选</span>
             <b>{tagFilters.size > 0 ? `${tagFilters.size}/` : ''}{sortedTags.length}</b>
           </div>
+          <div className="cs-tag-search">
+            <input
+              type="text"
+              value={tagSearch}
+              onChange={(e) => setTagSearch(e.target.value)}
+              placeholder={`搜 ${sortedTags.length} 个标签…`}
+            />
+            {tagSearch && (
+              <button className="cs-tag-search-clear" onClick={() => setTagSearch('')}>×</button>
+            )}
+          </div>
           <div className="cs-tag-filters">
             {visibleTags.map(({ tag, count }) => (
               <button
@@ -149,11 +170,14 @@ function LeftPanel({
                 title={`${count} 条记忆`}
               >{tag} <span className="cs-tag-count">{count}</span></button>
             ))}
-            {sortedTags.length > TAG_TOP_N && (
+            {!tagSearch && sortedTags.length > TAG_TOP_N && (
               <button
                 className="cs-tag-more"
                 onClick={() => setTagsExpanded(v => !v)}
               >{tagsExpanded ? '收起' : `+${sortedTags.length - TAG_TOP_N} 全部`}</button>
+            )}
+            {tagSearch && visibleTags.length === 0 && (
+              <span className="cs-tag-empty">无匹配标签</span>
             )}
             {tagFilters.size > 0 && (
               <button
@@ -161,15 +185,6 @@ function LeftPanel({
                 onClick={() => Array.from(tagFilters).forEach(t => toggleTag(t))}
               >清空 {tagFilters.size}</button>
             )}
-          </div>
-        </div>
-      )}
-
-      {islands.length > 0 && (
-        <div className="cs-section">
-          <div className="cs-island">
-            <b>{islands.length} 颗孤星</b> 还没有任何关联。
-            {' '}<a onClick={() => onFocusIsland(islands)}>查看 →</a>
           </div>
         </div>
       )}
