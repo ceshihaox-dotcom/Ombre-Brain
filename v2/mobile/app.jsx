@@ -2185,6 +2185,8 @@ function ReviewScreen() {
   const [busy, setBusy] = useState(false);
   // 全文缓存(/api/buckets 只回 200 字预览,审阅长文要拉单条全文)
   const [fullById, setFullById] = useState({});
+  // 左右滑翻页状态(放在早 return 之前,避免 hook 顺序错乱)
+  const swipeRef = useRef({ x: 0, y: 0, t: 0, active: false });
 
   useEffect(() => {
     let cancel = false;
@@ -2289,7 +2291,6 @@ function ReviewScreen() {
   };
 
   // 左右滑翻页 — 在 rv-main 上听 touch
-  const swipeRef = useRef({ x: 0, y: 0, t: 0, active: false });
   const navInQueue = (dir) => {
     if (queue.length <= 1) return;
     const idx = queue.findIndex(b => b.id === curId);
