@@ -1003,7 +1003,7 @@ function MemFullScreen({ id }) {
 
       <div className="mem-full-body">
         <div className="mem-full-tags">
-          {m.highlight && <span className="mem-full-tag hi">★ highlight</span>}
+          {m.highlight && <span className="mem-full-tag hi">★ 重要</span>}
           {feel && <span className="mem-full-tag feel">feel</span>}
           {isNoise(m) && <span className="mem-full-tag noise">⌀ 噪声</span>}
           {tags.map((t, i) => <span key={i} className="mem-full-tag">{t}</span>)}
@@ -1219,14 +1219,7 @@ function EventTimeField({ value, onChange }) {
         ) : (
           <span className="dt-trigger-value empty">点击选择 · 留空用创建时间</span>
         )}
-        <span className="dt-trigger-arrow" aria-hidden="true">{value ? '✎' : '›'}</span>
-        {value && (
-          <span
-            className="dt-trigger-clear"
-            onClick={(e) => { e.stopPropagation(); onChange(''); }}
-            title="清空"
-          >×</span>
-        )}
+        <span className="dt-trigger-arrow" aria-hidden="true">✎</span>
       </button>
       {open && (
         <DateTimePicker
@@ -1269,7 +1262,7 @@ function FormFields({
           className="edit-input"
           value={name}
           onChange={e => setName(e.target.value)}
-          placeholder={contentRequired ? '(留空 AI 起一个)' : '(留空则用 ID)'}
+          placeholder={contentRequired ? '(留空由 AI 拟定)' : '(留空则用 ID)'}
         />
       </div>
 
@@ -1280,7 +1273,7 @@ function FormFields({
             className="edit-input"
             value={summary}
             onChange={e => setSummary(e.target.value)}
-            placeholder="(留空就行 · 没摘要时直接展示正文)"
+            placeholder="(可留空 · 无摘要时展示正文)"
           />
         </div>
       )}
@@ -2094,7 +2087,7 @@ function CalScreen() {
         </div>
         <div className="cal-title-row">
           <h1 className="cal-title">
-            {yearLabel} · {mode === 'show' ? '记忆密度' : '审阅地图'}
+            {yearLabel} · {mode === 'show' ? '记忆密度' : '审阅'}
           </h1>
           <div className="cal-mode">
             <button
@@ -2111,7 +2104,7 @@ function CalScreen() {
           <span><b>{data.stats.days}</b> 天</span>
           <span><b>{data.stats.total}</b> 条</span>
           {mode === 'review' ? (
-            <span><b>{data.stats.pendingDays}</b> 待审天 · <b>{data.stats.hi}</b> highlight</span>
+            <span><b>{data.stats.pendingDays}</b> 待审天 · <b>{data.stats.hi}</b> 重要</span>
           ) : (
             <span><b>{data.stats.peak}</b> 单日峰值 · <b>{data.stats.avg}</b> 日均</span>
           )}
@@ -2131,7 +2124,7 @@ function CalScreen() {
           <>
             <div className="cal-legend-item"><span className="cal-swatch read"/>已审</div>
             <div className="cal-legend-item"><span className="cal-swatch unread"/>有遗漏</div>
-            <div className="cal-legend-item"><span className="cal-swatch hi"/>highlight</div>
+            <div className="cal-legend-item"><span className="cal-swatch hi"/>重要</div>
             <div className="cal-legend-item"><span className="cal-swatch empty"/>无记忆</div>
           </>
         )}
@@ -2387,7 +2380,7 @@ function ReviewScreen() {
               <span className="rv-main-meta-pos"><b>{curIdx >= 0 ? curIdx + 1 : '—'}</b>/{queue.length}</span>
             </div>
             <div className="rv-main-tags">
-              {cur.highlight && <span className="rv-main-tag hi">★ highlight</span>}
+              {cur.highlight && <span className="rv-main-tag hi">★ 重要</span>}
               {(cur.tags || []).filter(t => !String(t).startsWith('__')).map((t, i) => (
                 <span key={i} className={'rv-main-tag' + (/feel/i.test(String(t)) ? ' feel' : '')}>{t}</span>
               ))}
