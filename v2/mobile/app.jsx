@@ -277,7 +277,7 @@ function HomeScreen() {
       grouped.get(k).items.push({ b, dt });
     }
     const arr = Array.from(grouped.entries()).map(([k, { dt, items }]) => {
-      items.sort((a, b) => a.dt - b.dt);  // 当日内正序: 早→晚
+      items.sort((a, b) => b.dt - a.dt);  // 当日内倒序: 晚→早
       const peakImp = items.reduce((m, it) => Math.max(m, it.b.importance || 5), 0);
       const dots = new Set();
       let hasHi = false;
@@ -327,7 +327,7 @@ function HomeScreen() {
               <span className="home-page-mark"/>
               Ombre Brain
             </h1>
-            <p className="home-page-sub">按事件时间正序 · 点天卡看当日全部</p>
+            <p className="home-page-sub">按事件时间倒序 · 点天卡看当日全部</p>
           </div>
           <div className="home-page-stat">
             <b>{buckets.length}</b> 条<br/>
@@ -843,8 +843,8 @@ function DayDetailScreen({ dayKey }) {
       if (!dt) continue;
       if (dayKeyOf(dt) === dayKey) items.push({ b, dt });
     }
-    items.sort((a, b) => a.dt - b.dt);  // 当日内正序: 早→晚
-    const refDt = (items[items.length - 1] && items[items.length - 1].dt) || new Date(dayKey + 'T12:00:00');
+    items.sort((a, b) => b.dt - a.dt);  // 当日内倒序: 晚→早
+    const refDt = (items[0] && items[0].dt) || new Date(dayKey + 'T12:00:00');
     return {
       items,
       dayFmt: fmtDay(refDt),
@@ -887,8 +887,7 @@ function DayDetailScreen({ dayKey }) {
         <div className="day-detail-stats">
           <span><b>{dayInfo.stats.total}</b> 条</span>
           {dayInfo.stats.feel > 0 && <span><b>{dayInfo.stats.feel}</b> feel</span>}
-          {dayInfo.stats.hi > 0 && <span><b>{dayInfo.stats.hi}</b> hi</span>}
-          {dayInfo.stats.ai > 0 && <span><b>{dayInfo.stats.ai}</b> AI</span>}
+          {dayInfo.stats.hi > 0 && <span><b>{dayInfo.stats.hi}</b> 重要</span>}
         </div>
       </div>
 
@@ -2289,6 +2288,34 @@ function ReviewScreen() {
     return queue[(oldIdx + 1) % queue.length];
   };
 
+  // 左右滑翻页 — 在 rv-main 上听 touch
+  const swipeRef = useRef({ x: 0, y: 0, t: 0, active: false });
+  const navInQueue = (dir) => {
+    if (queue.length <= 1) return;
+    const idx = queue.findIndex(b => b.id === curId);
+    if (idx < 0) { setCurId(queue[0].id); return; }
+    const ni = (idx + dir + queue.length) % queue.length;
+    setCurId(queue[ni].id);
+  };
+  const onSwipeStart = (e) => {
+    const t = e.touches[0]; if (!t) return;
+    swipeRef.current = { x: t.clientX, y: t.clientY, t: Date.now(), active: true };
+  };
+  const onSwipeEnd = (e) => {
+    const s = swipeRef.current;
+    if (!s.active) return;
+    swipeRef.current.active = false;
+    const t = e.changedTouches[0]; if (!t) return;
+    const dx = t.clientX - s.x;
+    const dy = t.clientY - s.y;
+    const dt = Date.now() - s.t;
+    // 阈值: 横向位移 > 60px, 横向是纵向的 1.5 倍以上, 时长 < 600ms
+    if (Math.abs(dx) < 60) return;
+    if (Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (dt > 600) return;
+    navInQueue(dx < 0 ? 1 : -1); // 左滑→下一条, 右滑→上一条
+  };
+
   const markStatus = async (action) => {
     if (!cur || busy) return;
     setBusy(true);
@@ -2372,7 +2399,11 @@ function ReviewScreen() {
 
       <div className="review-body">
         {cur ? (
-          <div className="rv-main">
+          <div
+            className="rv-main"
+            onTouchStart={onSwipeStart}
+            onTouchEnd={onSwipeEnd}
+          >
             <div className="rv-main-meta">
               {curDt && <span className="rv-main-meta-time">{fmtDay(curDt).num} {fmtDay(curDt).mo} · {fmtTime(curDt)}</span>}
               <span>·</span>

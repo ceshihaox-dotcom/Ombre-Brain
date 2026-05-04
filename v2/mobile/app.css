@@ -336,10 +336,11 @@ input, textarea { font: inherit; color: inherit; }
   border-radius: 999px;
   border: 0.5px solid var(--line-2);
   background: transparent;
-  font-family: var(--mono);
-  font-size: 10px;
+  font-family: var(--sans, system-ui, sans-serif);
+  font-size: 12px;
+  font-weight: 500;
   color: var(--ink-3);
-  letter-spacing: 0.05em;
+  letter-spacing: 0.01em;
 }
 .home-chip.on {
   background: var(--ink); color: var(--paper);
@@ -715,9 +716,12 @@ input, textarea { font: inherit; color: inherit; }
   color: var(--paper);
   border: 0;
   display: flex; align-items: center; justify-content: center;
-  font-family: var(--serif); font-style: italic;
-  font-size: 24px; line-height: 1;
-  font-weight: 500;
+  font-family: var(--sans, system-ui, sans-serif);
+  font-style: normal;
+  font-size: 26px;
+  font-weight: 300;
+  line-height: 1;
+  padding: 0 0 2px 0;  /* '+' 在多数字体里 baseline 偏下,小幅向上抵消 */
   box-shadow: 0 14px 28px -10px rgba(26,25,34,0.5);
   z-index: 15;
 }
@@ -1788,6 +1792,10 @@ input, textarea { font: inherit; color: inherit; }
   border-radius: 50%;
   border: 0.5px solid rgba(0,0,0,0.2);
   flex-shrink: 0;
+}
+.setting-theme-chip.on .setting-theme-chip-dot {
+  border-color: var(--paper);
+  box-shadow: 0 0 0 1.5px var(--paper);
 }
 
 /* 自定义弹窗 — 跟桌面同款样式 (window.ThemeCustomModal 渲染) */
