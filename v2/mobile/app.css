@@ -463,11 +463,13 @@ input, textarea { font: inherit; color: inherit; }
 }
 .tag-sheet-chip {
   flex-shrink: 0;
-  padding: 6px 12px;
+  padding: 6px 13px;
   border-radius: 999px;
   border: 0.5px solid var(--line-2);
   background: var(--paper);
-  font: 500 13px var(--sans, system-ui, sans-serif);
+  font-family: var(--serif, serif);
+  font-size: 14.5px;
+  font-weight: 400;
   letter-spacing: 0.01em;
   color: var(--ink-2);
 }
@@ -1759,7 +1761,7 @@ input, textarea { font: inherit; color: inherit; }
 .setting-row-toggle.on .knob { transform: translateX(16px); }
 
 /* ── 主题色切换 (手机端在设置页) ── */
-.setting-row-theme { align-items: flex-start; padding: 14px 0; }
+.setting-row-theme { align-items: flex-start; padding: 13px 14px; }
 .setting-theme-mark {
   width: 18px; height: 18px;
   border-radius: 50%;
@@ -1767,37 +1769,28 @@ input, textarea { font: inherit; color: inherit; }
   border: 0.5px solid var(--ink-4);
   display: inline-block;
 }
-.setting-theme-chips {
-  display: flex; gap: 6px;
-  flex-wrap: wrap;
+/* 主题色 — 简约纯色样片 (单行 / 无文字 / 点击切换) */
+.setting-theme-swatches {
+  display: flex;
+  gap: 12px;
+  align-items: center;
   margin-top: 8px;
+  flex-wrap: nowrap;
 }
-.setting-theme-chip {
-  appearance: none; border: 0;
-  background: var(--bg-2);
-  padding: 6px 10px;
-  border-radius: 999px;
-  display: inline-flex; align-items: center; gap: 6px;
-  font: 500 12px var(--sans, sans-serif);
-  color: var(--ink-2);
+.setting-theme-swatch {
+  appearance: none;
+  width: 22px; height: 22px;
+  padding: 0;
+  border-radius: 50%;
+  border: 0.5px solid rgba(0, 0, 0, 0.18);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+  transition: transform .12s, box-shadow .12s;
 }
-.setting-theme-chip.on {
-  background: var(--accent);
-  color: var(--paper);
-}
-.setting-theme-chip-dot {
-  width: 12px; height: 12px;
-  border-radius: 50%;
-  border: 0.5px solid rgba(0,0,0,0.2);
-  flex-shrink: 0;
-}
-/* 选中时 chip 背景已是该色,小圆点改成纯白指示点更干净(覆盖 inline bg) */
-.setting-theme-chip.on .setting-theme-chip-dot {
-  background: var(--paper) !important;
+.setting-theme-swatch:active { transform: scale(0.92); }
+.setting-theme-swatch.on {
+  box-shadow: 0 0 0 1.5px var(--paper), 0 0 0 3px var(--ink);
   border-color: transparent;
-  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.6);
 }
 
 /* 自定义弹窗 — 跟桌面同款样式 (window.ThemeCustomModal 渲染) */
