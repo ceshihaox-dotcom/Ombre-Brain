@@ -2637,28 +2637,26 @@ function SettingScreen() {
               </div>
               <div className="setting-row-mid">
                 <div className="setting-row-title">主题色</div>
-                <div className="setting-theme-chips">
+                <div className="setting-theme-swatches">
                   {PRESETS.map(p => (
                     <button
                       key={p.id}
-                      className={'setting-theme-chip' + (themeState.preset === p.id ? ' on' : '')}
+                      type="button"
+                      aria-label={p.name}
+                      title={p.name}
+                      className={'setting-theme-swatch' + (themeState.preset === p.id ? ' on' : '')}
+                      style={{ background: p.colors.accent }}
                       onClick={() => choosePreset(p)}
-                      title={p.desc}
-                    >
-                      <span className="setting-theme-chip-dot" style={{ background: p.colors.accent }}/>
-                      <span>{p.name}</span>
-                    </button>
+                    />
                   ))}
                   <button
-                    className={'setting-theme-chip' + (themeState.preset === 'custom' ? ' on' : '')}
+                    type="button"
+                    aria-label="自定义"
+                    title="自定义"
+                    className={'setting-theme-swatch custom' + (themeState.preset === 'custom' ? ' on' : '')}
+                    style={{ background: 'conic-gradient(from 0deg, #6e4f9a, #d291b3, #d4a85f, #6e4f9a)' }}
                     onClick={() => setCustomOpen(true)}
-                  >
-                    <span
-                      className="setting-theme-chip-dot"
-                      style={{ background: 'conic-gradient(from 0deg, #6e4f9a, #d291b3, #d4a85f, #6e4f9a)' }}
-                    />
-                    <span>自定义</span>
-                  </button>
+                  />
                 </div>
               </div>
             </div>

@@ -197,25 +197,22 @@
             {window.OB_THEME.PRESETS.map(p => (
               <button
                 key={p.id}
-                className={`ob-theme-chip ${state.preset === p.id ? 'on' : ''}`}
+                type="button"
+                aria-label={p.name}
+                title={p.name}
+                className={`ob-theme-swatch ${state.preset === p.id ? 'on' : ''}`}
+                style={{ background: p.colors.accent }}
                 onClick={() => choose(p)}
-                title={p.desc}
-              >
-                <span className="ob-theme-chip-dot" style={{ background: p.colors.accent }}/>
-                <span>{p.name}</span>
-              </button>
+              />
             ))}
             <button
-              className={`ob-theme-chip ${state.preset === 'custom' ? 'on' : ''}`}
+              type="button"
+              aria-label="自定义"
+              title="自定义"
+              className={`ob-theme-swatch custom ${state.preset === 'custom' ? 'on' : ''}`}
+              style={{ background: 'conic-gradient(from 0deg, #6e4f9a, #d291b3, #d4a85f, #6e4f9a)' }}
               onClick={() => setCustomOpen(true)}
-              title="自由调底色 + 三主色"
-            >
-              <span
-                className="ob-theme-chip-dot"
-                style={{ background: 'conic-gradient(from 0deg, #6e4f9a, #d291b3, #d4a85f, #6e4f9a)' }}
-              />
-              <span>自定义</span>
-            </button>
+            />
           </div>
         )}
         {customOpen && (
