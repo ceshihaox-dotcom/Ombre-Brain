@@ -336,11 +336,10 @@ input, textarea { font: inherit; color: inherit; }
   border-radius: 999px;
   border: 0.5px solid var(--line-2);
   background: transparent;
-  font-family: var(--sans, system-ui, sans-serif);
-  font-size: 12px;
-  font-weight: 500;
+  font-family: var(--mono);
+  font-size: 10px;
   color: var(--ink-3);
-  letter-spacing: 0.01em;
+  letter-spacing: 0.05em;
 }
 .home-chip.on {
   background: var(--ink); color: var(--paper);
@@ -468,7 +467,8 @@ input, textarea { font: inherit; color: inherit; }
   border-radius: 999px;
   border: 0.5px solid var(--line-2);
   background: var(--paper);
-  font: 12.5px var(--sans, sans-serif);
+  font: 500 13px var(--sans, system-ui, sans-serif);
+  letter-spacing: 0.01em;
   color: var(--ink-2);
 }
 .tag-sheet-chip.on {
@@ -1793,9 +1793,11 @@ input, textarea { font: inherit; color: inherit; }
   border: 0.5px solid rgba(0,0,0,0.2);
   flex-shrink: 0;
 }
+/* 选中时 chip 背景已是该色,小圆点改成纯白指示点更干净(覆盖 inline bg) */
 .setting-theme-chip.on .setting-theme-chip-dot {
-  border-color: var(--paper);
-  box-shadow: 0 0 0 1.5px var(--paper);
+  background: var(--paper) !important;
+  border-color: transparent;
+  box-shadow: 0 0 0 0.5px rgba(255, 255, 255, 0.6);
 }
 
 /* 自定义弹窗 — 跟桌面同款样式 (window.ThemeCustomModal 渲染) */
