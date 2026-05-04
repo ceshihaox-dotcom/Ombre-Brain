@@ -468,7 +468,7 @@ input, textarea { font: inherit; color: inherit; }
   border: 0.5px solid var(--line-2);
   background: var(--paper);
   font-family: var(--serif, serif);
-  font-size: 14.5px;
+  font-size: 13px;
   font-weight: 400;
   letter-spacing: 0.01em;
   color: var(--ink-2);
