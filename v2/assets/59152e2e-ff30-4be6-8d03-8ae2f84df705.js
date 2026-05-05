@@ -133,6 +133,7 @@ function DateModuleV2({ date, items, onOpenItem, onOpenDay, density, query, isTo
   const maxImp = Math.max(...items.map(i => i.importance));
   const nodeSize = Math.max(8, Math.min(20, 7 + items.length * 1.1));
   const heatLevel = maxImp >= 9 ? 'l9' : maxImp >= 8 ? 'l8' : maxImp >= 6 ? 'l6' : maxImp >= 4 ? 'l4' : 'l2';
+  const feelDominant = feels > 0 && feels > hi && feels > noises;
 
   let cardKind = '';
   if (hi > 0) cardKind = 'ob-card-hi';
@@ -200,7 +201,7 @@ function DateModuleV2({ date, items, onOpenItem, onOpenDay, density, query, isTo
           <div className="ob-axis-wk">{f.wk}</div>
         </div>
         <div
-          className={`ob-axis-node ob-heat-${heatLevel} ${hi > 0 ? 'ob-axis-node-hi' : ''} ${isToday ? 'ob-axis-node-today' : ''}`}
+          className={`ob-axis-node ob-heat-${heatLevel} ${hi > 0 ? 'ob-axis-node-hi' : ''} ${feelDominant ? 'ob-axis-node-feel' : ''} ${isToday ? 'ob-axis-node-today' : ''}`}
           style={{ width: nodeSize, height: nodeSize, marginTop: -nodeSize / 2 + 6.5 }}
           title={`${items.length} 条 · 最高 importance ${maxImp}`}
         />
