@@ -8,7 +8,12 @@ const TODAY = (() => {
   const pad = n => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 })();
-const NOW = '23:30';
+// NOW 也曾写死 '23:30', 写入抽屉永远填错时间, 改成实时取
+function getNow() {
+  const d = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 
 function TopBarV2({ dark, onDark, compact, data }) {
   const stats = data || [];
@@ -417,7 +422,7 @@ function AppV2() {
         onClose={() => setWriteOpen(false)}
         onSave={handleSave}
         defaultDate={TODAY}
-        defaultTime={NOW}
+        defaultTime={getNow()}
       />
 
       <TweaksPanel>
