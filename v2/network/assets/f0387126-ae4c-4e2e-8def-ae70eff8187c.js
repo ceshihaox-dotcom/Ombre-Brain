@@ -303,7 +303,7 @@ function ConstellationApp() {
         <div className="cs-page-hd-l">
           <h1 className="cs-page-title">记忆星图</h1>
           <p className="cs-page-sub">
-            按 tag 共现与时间邻近自动连结 —— 拖拽 pan，滚轮 zoom，按 <kbd>/</kbd> 聚焦搜索，<kbd>0</kbd> 重置视图。
+            记忆在这里自由连结，形成只属于你的星空。
           </p>
         </div>
         <div className="cs-page-hd-r">
