@@ -82,11 +82,33 @@
       root.setProperty('--accent-2', _shift(colors.accent, 30));
       root.setProperty('--c-accent-2', _shift(colors.accent, 30));
       root.setProperty('--accent-3', _hexToRgba(colors.accent, 0.10));
+      // 多档透明度 (供光晕 / 阴影用), CSS 用 var(--accent-a15) 替代硬编码 rgba
+      root.setProperty('--accent-a06', _hexToRgba(colors.accent, 0.06));
+      root.setProperty('--accent-a08', _hexToRgba(colors.accent, 0.08));
+      root.setProperty('--accent-a10', _hexToRgba(colors.accent, 0.10));
+      root.setProperty('--accent-a15', _hexToRgba(colors.accent, 0.15));
+      root.setProperty('--accent-a20', _hexToRgba(colors.accent, 0.20));
+      root.setProperty('--accent-a25', _hexToRgba(colors.accent, 0.25));
+      root.setProperty('--accent-a30', _hexToRgba(colors.accent, 0.30));
+      root.setProperty('--accent-a40', _hexToRgba(colors.accent, 0.40));
+      root.setProperty('--accent-a45', _hexToRgba(colors.accent, 0.45));
+      root.setProperty('--accent-a55', _hexToRgba(colors.accent, 0.55));
+      root.setProperty('--accent-a60', _hexToRgba(colors.accent, 0.60));
     }
     if (colors.rose) {
       root.setProperty('--rose', colors.rose);
       root.setProperty('--c-rose', colors.rose);
       root.setProperty('--rose-deep', _shift(colors.rose, -30));
+      root.setProperty('--rose-a08', _hexToRgba(colors.rose, 0.08));
+      root.setProperty('--rose-a10', _hexToRgba(colors.rose, 0.10));
+      root.setProperty('--rose-a12', _hexToRgba(colors.rose, 0.12));
+      root.setProperty('--rose-a18', _hexToRgba(colors.rose, 0.18));
+      root.setProperty('--rose-a25', _hexToRgba(colors.rose, 0.25));
+      root.setProperty('--rose-a28', _hexToRgba(colors.rose, 0.28));
+      root.setProperty('--rose-a30', _hexToRgba(colors.rose, 0.30));
+      root.setProperty('--rose-a45', _hexToRgba(colors.rose, 0.45));
+      root.setProperty('--rose-a55', _hexToRgba(colors.rose, 0.55));
+      root.setProperty('--rose-a80', _hexToRgba(colors.rose, 0.80));
     }
     if (colors.gold) {
       root.setProperty('--gold', colors.gold);
@@ -138,6 +160,8 @@
   }
 
   // 启动应用 (防 React 渲染前闪)
+  // 先跑一遍 FALLBACK, 让 --accent-aXX / --rose-aXX 派生变量在所有情况下都有值
+  applyTheme(FALLBACK);
   const stored = loadTheme();
   if (stored) {
     if (stored.preset === 'custom' && stored.custom) applyTheme(stored.custom);

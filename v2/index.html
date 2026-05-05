@@ -3095,7 +3095,7 @@
   /* 强调 */
   --accent:    #6e4f9a;       /* 墨紫 */
   --accent-2:  #8265b3;
-  --accent-3:  rgba(110, 79, 154, 0.10);
+  --accent-3:  var(--accent-a10);
 
   /* 情感色 */
   --gold:      #6e4f9a;       /* 重要也用紫 */
@@ -3123,7 +3123,7 @@ html, body { margin: 0; padding: 0; }
 body {
   background:
     radial-gradient(1200px 700px at 90% -10%, rgba(176, 120, 200, 0.10), transparent 60%),
-    radial-gradient(900px 700px at -10% 110%, rgba(210, 145, 179, 0.08), transparent 60%),
+    radial-gradient(900px 700px at -10% 110%, var(--rose-a08), transparent 60%),
     var(--bg);
   color: var(--ink);
   font-family: var(--sans);
@@ -3424,17 +3424,29 @@ body {
   transform: translate(50%, -50%);
   width: 13px; height: 13px;
   border-radius: 50%;
-  background: transparent;
+  /* 用 bg 实心覆盖, 让背后的时间线被节点切断 (普通节点视觉上仍是空圈, 因为 bg=页面背景) */
+  background: var(--bg);
   border: 1.5px solid var(--ink-4);
   box-shadow: 0 0 0 4px var(--bg);
 }
 .ob-axis-node-hi {
   background: var(--accent);
   border-color: var(--accent);
-  box-shadow:
-    0 0 0 4px var(--bg),
-    0 0 0 8px rgba(110, 79, 154, 0.15),
-    0 0 16px rgba(110, 79, 154, 0.45);
+  animation: ob-accent-pulse 2.4s ease-in-out infinite;
+}
+@keyframes ob-accent-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 4px var(--bg),
+      0 0 0 8px var(--accent-a25),
+      0 0 16px var(--accent-a55);
+  }
+  50% {
+    box-shadow:
+      0 0 0 4px var(--bg),
+      0 0 0 11px var(--accent-a08),
+      0 0 22px var(--accent-a30);
+  }
 }
 
 /* 卡片 */
@@ -3469,7 +3481,7 @@ body {
   border-color: var(--line-2);
   box-shadow:
     0 1px 0 rgba(255, 255, 255, 0.9) inset,
-    0 16px 36px -18px rgba(110, 79, 154, 0.35);
+    0 16px 36px -18px var(--accent-a40);
 }
 .ob-card-hd {
   display: flex; align-items: center; justify-content: space-between;
@@ -3496,7 +3508,7 @@ body {
   font-family: var(--mono);
 }
 .ob-card-hi-badge { color: var(--accent); background: var(--accent-3); }
-.ob-card-feel-badge { color: var(--rose-deep); background: rgba(210, 145, 179, 0.10); }
+.ob-card-feel-badge { color: var(--rose-deep); background: var(--rose-a10); }
 .ob-card-noise-badge { color: var(--ink-4); background: rgba(120, 120, 130, 0.06); }
 .ob-card-open {
   font-size: 11px;
@@ -3572,14 +3584,14 @@ body {
 .ob-dot-hi {
   background: var(--accent);
   box-shadow:
-    0 0 0 2px rgba(110, 79, 154, 0.20),
-    0 0 0 4px rgba(110, 79, 154, 0.08);
+    0 0 0 2px var(--accent-a20),
+    0 0 0 4px var(--accent-a08);
 }
 .ob-dot-hi.ob-dot-feel {
   background: var(--rose-deep);
   box-shadow:
-    0 0 0 2px rgba(210, 145, 179, 0.25),
-    0 0 0 4px rgba(210, 145, 179, 0.10);
+    0 0 0 2px var(--rose-a25),
+    0 0 0 4px var(--rose-a10);
 }
 .ob-dot-pulse {
   position: absolute; inset: -2px;
@@ -3613,7 +3625,7 @@ body {
 .ob-tag-i { font-size: 10px; opacity: 0.85; }
 .ob-tag-sage  { color: var(--sage); background: rgba(138, 136, 152, 0.08); }
 .ob-tag-amber { color: var(--accent); background: var(--accent-3); }
-.ob-tag-rose  { color: var(--rose-deep); background: rgba(210, 145, 179, 0.10); }
+.ob-tag-rose  { color: var(--rose-deep); background: var(--rose-a10); }
 
 /* 终点 */
 .ob-timeline-end {
@@ -3745,7 +3757,7 @@ body {
   box-shadow: 0 0 0 4px var(--bg), 0 0 0 5px var(--line-2);
 }
 .ob-detail-axis .ob-dot.ob-dot-hi {
-  box-shadow: 0 0 0 4px var(--bg), 0 0 0 6px rgba(110, 79, 154, 0.30);
+  box-shadow: 0 0 0 4px var(--bg), 0 0 0 6px var(--accent-a30);
 }
 .ob-detail-time {
   font-family: var(--mono);
@@ -3763,7 +3775,7 @@ body {
 }
 .ob-detail-card:hover {
   border-color: var(--accent);
-  box-shadow: 0 8px 20px -12px rgba(110, 79, 154, 0.35);
+  box-shadow: 0 8px 20px -12px var(--accent-a40);
 }
 .ob-detail-hd {
   display: flex; justify-content: space-between; align-items: baseline;
@@ -3883,7 +3895,7 @@ body {
   top: 0; right: 0; left: 0; height: 160px;
   background:
     radial-gradient(600px 200px at 100% 0%, rgba(176, 120, 200, 0.18), transparent 60%),
-    radial-gradient(500px 180px at 0% 0%, rgba(210, 145, 179, 0.12), transparent 60%);
+    radial-gradient(500px 180px at 0% 0%, var(--rose-a12), transparent 60%);
   pointer-events: none;
 }
 .ob-modal-hd {
@@ -3933,7 +3945,7 @@ body {
   border-radius: 1px;
 }
 .ob-modal-imp-cell-on { background: var(--accent); }
-.ob-modal-imp-cell-on.ob-modal-imp-cell-hi { background: var(--accent); box-shadow: 0 0 6px rgba(110, 79, 154, 0.6); }
+.ob-modal-imp-cell-on.ob-modal-imp-cell-hi { background: var(--accent); box-shadow: 0 0 6px var(--accent-a60); }
 
 .ob-modal-close {
   position: absolute; top: 18px; right: 18px;
@@ -4728,7 +4740,7 @@ body {
   border-radius: 50%;
   background: var(--accent);
   transform: translateY(-50%);
-  box-shadow: 0 0 0 4px var(--bg), 0 0 16px rgba(110, 79, 154, 0.5);
+  box-shadow: 0 0 0 4px var(--bg), 0 0 16px var(--accent-a55);
 }
 .ob-month-tit {
   display: flex; align-items: baseline; gap: 10px;
@@ -4775,10 +4787,11 @@ body {
 }
 .ob-gap-line {
   position: absolute;
-  right: -1px; top: 50%;
+  right: 0; top: 50%;
   width: 1px;
   height: 100%;
-  background: repeating-linear-gradient(to bottom, var(--ink-4) 0 3px, transparent 3px 6px);
+  /* 虚线之间用 bg 不留透明, 把背后的实线主轴遮掉 */
+  background: repeating-linear-gradient(to bottom, var(--ink-4) 0 3px, var(--bg) 3px 6px);
   transform: translateY(-50%);
 }
 .ob-gap-body {
@@ -4813,21 +4826,12 @@ body {
   border-color: var(--ink-4);
   opacity: 1;
 }
-.ob-axis-node.ob-heat-l8 {
-  background: var(--accent);
-  border-color: var(--accent);
-  box-shadow:
-    0 0 0 4px var(--bg),
-    0 0 0 7px rgba(110, 79, 154, 0.15),
-    0 0 14px rgba(110, 79, 154, 0.40);
-}
+.ob-axis-node.ob-heat-l8,
 .ob-axis-node.ob-heat-l9 {
   background: var(--accent);
   border-color: var(--accent);
-  box-shadow:
-    0 0 0 4px var(--bg),
-    0 0 0 9px rgba(110, 79, 154, 0.20),
-    0 0 22px rgba(110, 79, 154, 0.55);
+  /* hi/heat 高亮日共享 ob-accent-pulse 动效, 颜色随 --accent */
+  animation: ob-accent-pulse 2.4s ease-in-out infinite;
 }
 /* feel 主导日：粉色 ring + core，覆盖 heat / hi 配色，带呼吸脉冲 */
 .ob-axis-node.ob-axis-node-feel {
@@ -4840,14 +4844,14 @@ body {
   0%, 100% {
     box-shadow:
       0 0 0 4px var(--bg),
-      0 0 0 8px rgba(210, 145, 179, 0.28),
-      0 0 16px rgba(210, 145, 179, 0.55);
+      0 0 0 8px var(--rose-a28),
+      0 0 16px var(--rose-a55);
   }
   50% {
     box-shadow:
       0 0 0 4px var(--bg),
-      0 0 0 11px rgba(210, 145, 179, 0.10),
-      0 0 22px rgba(210, 145, 179, 0.30);
+      0 0 0 11px var(--rose-a10),
+      0 0 22px var(--rose-a30);
   }
 }
 .ob-axis-node-today {
@@ -4856,8 +4860,8 @@ body {
   animation: ob-today-pulse 2.4s ease-in-out infinite;
 }
 @keyframes ob-today-pulse {
-  0%,100% { outline-color: rgba(210, 145, 179, 0.8); }
-  50%     { outline-color: rgba(210, 145, 179, 0.3); }
+  0%,100% { outline-color: var(--rose-a80); }
+  50%     { outline-color: var(--rose-a30); }
 }
 /* "回今天"按钮 — 用户滚到其他天时呼吸提示 */
 @keyframes ob-today-jump-pulse {
@@ -4868,15 +4872,15 @@ body {
 
 /* ── 卡片变体 ── */
 .ob-card.ob-card-hi {
-  background: linear-gradient(180deg, rgba(110, 79, 154, 0.04), var(--paper) 60%);
+  background: linear-gradient(180deg, var(--accent-a06), var(--paper) 60%);
   border-left: 2px solid var(--accent);
 }
 .ob-card.ob-card-feel {
-  background: linear-gradient(180deg, rgba(210, 145, 179, 0.05), var(--paper) 60%);
+  background: linear-gradient(180deg, var(--rose-a08), var(--paper) 60%);
   border-left: 2px solid var(--rose);
 }
 .ob-card.ob-card-feel.ob-card-hi {
-  background: linear-gradient(180deg, rgba(110, 79, 154, 0.04), rgba(210, 145, 179, 0.04) 50%, var(--paper) 90%);
+  background: linear-gradient(180deg, var(--accent-a06), var(--rose-a08) 50%, var(--paper) 90%);
   border-left: 2px solid var(--accent);
 }
 .ob-module-flagship .ob-card {
@@ -4889,7 +4893,7 @@ body {
   font-size: 10px; padding: 2px 8px;
   border-radius: 999px;
   color: var(--rose-deep);
-  background: rgba(210, 145, 179, 0.12);
+  background: var(--rose-a12);
   border: 0.5px solid var(--rose);
   letter-spacing: 0.06em;
   font-family: var(--mono);
@@ -4901,7 +4905,7 @@ body {
 
 /* ── 搜索高亮 ── */
 .ob-hl {
-  background: rgba(110, 79, 154, 0.18);
+  background: var(--accent-a20);
   color: var(--ink);
   padding: 0 2px;
   border-radius: 2px;
@@ -4937,7 +4941,7 @@ body {
   border-radius: inherit;
 }
 .ob-today-on::before {
-  background: linear-gradient(90deg, rgba(110, 79, 154, 0.06), transparent 60%);
+  background: linear-gradient(90deg, var(--accent-a06), transparent 60%);
 }
 .ob-today-cold::before {
   background: linear-gradient(90deg, rgba(138, 136, 152, 0.08), transparent 60%);
@@ -5013,7 +5017,7 @@ body {
 .ob-today-btn.primary {
   background: var(--accent);
   color: var(--paper);
-  box-shadow: 0 4px 12px -4px rgba(110, 79, 154, 0.5);
+  box-shadow: 0 4px 12px -4px var(--accent-a55);
 }
 .ob-today-btn.primary:hover { background: var(--accent-2); }
 [data-theme="dark"] .ob-today-btn.primary { color: #14131c; }
@@ -5109,13 +5113,13 @@ body {
   border: 0;
   cursor: pointer;
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  box-shadow: 0 12px 28px -8px rgba(110, 79, 154, 0.55);
+  box-shadow: 0 12px 28px -8px var(--accent-a55);
   transition: all .2s;
   z-index: 60;
 }
 .ob-fab:hover {
   transform: translateY(-2px) scale(1.04);
-  box-shadow: 0 18px 40px -8px rgba(110, 79, 154, 0.7);
+  box-shadow: 0 18px 40px -8px var(--accent-a60);
 }
 .ob-fab-plus {
   font-size: 26px;
@@ -5315,7 +5319,7 @@ body {
 .ob-write-body {
   appearance: none;
   border: 0;
-  background: rgba(110, 79, 154, 0.025);
+  background: var(--accent-a06);
   font-family: var(--sans);
   font-size: 14px;
   color: var(--ink-2);
@@ -5388,7 +5392,7 @@ body {
 .ob-write-imp-cell.on { background: var(--accent); }
 .ob-write-imp-cell.on.hi {
   background: var(--accent);
-  box-shadow: 0 0 8px rgba(110, 79, 154, 0.6);
+  box-shadow: 0 0 8px var(--accent-a60);
 }
 
 .ob-write-flags { display: flex; gap: 6px; }
@@ -5406,7 +5410,7 @@ body {
 .ob-write-flag .ob-write-flag-i { font-size: 13px; opacity: 0.7; }
 .ob-write-flag:hover { color: var(--ink); border-color: var(--ink-3); }
 .ob-write-flag.on.feel {
-  background: rgba(210, 145, 179, 0.12);
+  background: var(--rose-a12);
   color: var(--rose-deep);
   border-color: var(--rose);
 }
@@ -5461,7 +5465,7 @@ body {
   display: flex !important;
   align-items: center;
   justify-content: space-between;
-  background: linear-gradient(180deg, transparent, rgba(110, 79, 154, 0.025));
+  background: linear-gradient(180deg, transparent, var(--accent-a06));
   gap: 12px;
 }
 .ob-write-foot-meta {
@@ -5487,7 +5491,7 @@ body {
 .ob-write-save:hover:not(:disabled) {
   background: var(--accent);
   transform: translateY(-1px);
-  box-shadow: 0 10px 24px -4px rgba(110, 79, 154, 0.5);
+  box-shadow: 0 10px 24px -4px var(--accent-a55);
 }
 .ob-write-save:disabled { opacity: 0.35; cursor: not-allowed; }
 .ob-write-save-arrow {
@@ -5630,7 +5634,7 @@ body {
   -webkit-box-orient: vertical;
   line-height: 1.45;
 }
-.ob-sibling.related { background: rgba(210, 145, 179, 0.05); }
+.ob-sibling.related { background: var(--rose-a08); }
 
 /* ── 顶栏暗色按钮安置 ── */
 .ob-topbar-actions {
@@ -5640,7 +5644,7 @@ body {
 /* 键盘高亮的当前 focused 模块 */
 .ob-module.is-focused .ob-card {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-3), 0 12px 28px -16px rgba(110, 79, 154, 0.4);
+  box-shadow: 0 0 0 3px var(--accent-3), 0 12px 28px -16px var(--accent-a40);
 }
 
 /* 键盘提示叠层 */
