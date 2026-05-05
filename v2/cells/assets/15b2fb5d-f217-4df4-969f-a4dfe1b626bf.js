@@ -60,7 +60,8 @@ function AppV2() {
 
   // 应用暗色
   uEA(() => {
-    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    if (window.OB_THEME) window.OB_THEME.setDarkMode(dark);
+    else document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
   }, [dark]);
 
   // 提示快捷键 3 秒
