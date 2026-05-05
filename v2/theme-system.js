@@ -126,9 +126,8 @@
     }
     if (colors.ink) {
       root.setProperty('--ink', colors.ink);
-      root.setProperty('--ink-2', _shift(colors.ink, 30));
-      root.setProperty('--ink-3', _shift(colors.ink, 80));
-      root.setProperty('--ink-4', _shift(colors.ink, 140));
+      // ink-2/3/4 不再 JS 端线性 shift, 改由 :root color-mix 朝 --bg 混合
+      // 好处: 派生色随 ink 和 bg 双向自适应, 不会因 ink 偏淡导致 ink-4 看不见
     }
   }
 
