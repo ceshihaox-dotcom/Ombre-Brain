@@ -160,7 +160,148 @@
 // ── React 组件 ─────────────────────────────────────────────
 (function () {
   if (typeof React === 'undefined' || typeof ReactDOM === 'undefined') return;
-  const { useState } = React;
+  const { useState, useRef, useEffect } = React;
+
+  // ── 颜色换算 helpers ──
+  function hexToRgb(hex) {
+    const m = String(hex || '').replace('#', '');
+    if (m.length !== 6) return { r: 0, g: 0, b: 0 };
+    return {
+      r: parseInt(m.slice(0, 2), 16),
+      g: parseInt(m.slice(2, 4), 16),
+      b: parseInt(m.slice(4, 6), 16),
+    };
+  }
+  function rgbToHex({ r, g, b }) {
+    const h = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
+    return '#' + h(r) + h(g) + h(b);
+  }
+  function rgbToHsv({ r, g, b }) {
+    r /= 255; g /= 255; b /= 255;
+    const max = Math.max(r, g, b), min = Math.min(r, g, b);
+    const d = max - min;
+    let h = 0;
+    if (d !== 0) {
+      if (max === r) h = ((g - b) / d) % 6;
+      else if (max === g) h = (b - r) / d + 2;
+      else h = (r - g) / d + 4;
+      h *= 60;
+      if (h < 0) h += 360;
+    }
+    return { h, s: max === 0 ? 0 : d / max, v: max };
+  }
+  function hsvToRgb({ h, s, v }) {
+    const c = v * s;
+    const x = c * (1 - Math.abs(((h / 60) % 2) - 1));
+    const m = v - c;
+    let r = 0, g = 0, b = 0;
+    if (h < 60)       { r = c; g = x; }
+    else if (h < 120) { r = x; g = c; }
+    else if (h < 180) { g = c; b = x; }
+    else if (h < 240) { g = x; b = c; }
+    else if (h < 300) { r = x; b = c; }
+    else              { r = c; b = x; }
+    return { r: (r + m) * 255, g: (g + m) * 255, b: (b + m) * 255 };
+  }
+
+  // ── 内联 HSV 色板 (替代浏览器原生 input[type=color]) ──
+  function InlineColorPicker({ value, onChange }) {
+    const [hsv, setHsv] = useState(() => rgbToHsv(hexToRgb(value)));
+    const [hexInput, setHexInput] = useState(() => (value || '#000000').toUpperCase());
+    const areaRef = useRef(null);
+    const hueRef = useRef(null);
+
+    // 外部值变化 (重置 / 切换 row) 时同步内部状态
+    useEffect(() => {
+      const v = (value || '#000000').toUpperCase();
+      setHexInput(v);
+      const next = rgbToHsv(hexToRgb(v));
+      // 保留 hue 当 s=0 时 (避免转换丢色相)
+      setHsv(prev => (next.s === 0 ? { ...next, h: prev.h } : next));
+    }, [value]);
+
+    const emit = (newHsv) => {
+      setHsv(newHsv);
+      const rgb = hsvToRgb(newHsv);
+      const hex = rgbToHex(rgb).toUpperCase();
+      setHexInput(hex);
+      onChange(hex);
+    };
+
+    const handleArea = (e) => {
+      const rect = areaRef.current.getBoundingClientRect();
+      const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+      const y = Math.max(0, Math.min(rect.height, e.clientY - rect.top));
+      emit({ h: hsv.h, s: x / rect.width, v: 1 - y / rect.height });
+    };
+    const handleHue = (e) => {
+      const rect = hueRef.current.getBoundingClientRect();
+      const x = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+      emit({ ...hsv, h: (x / rect.width) * 360 });
+    };
+    const drag = (handler) => (e) => {
+      e.preventDefault();
+      handler(e);
+      const move = (ev) => handler(ev);
+      const up = () => {
+        document.removeEventListener('pointermove', move);
+        document.removeEventListener('pointerup', up);
+      };
+      document.addEventListener('pointermove', move);
+      document.addEventListener('pointerup', up);
+    };
+
+    const onHexBlur = () => {
+      let v = hexInput.trim();
+      if (!v.startsWith('#')) v = '#' + v;
+      if (/^#[0-9a-fA-F]{6}$/.test(v)) {
+        const up = v.toUpperCase();
+        setHexInput(up);
+        const newHsv = rgbToHsv(hexToRgb(up));
+        setHsv(prev => newHsv.s === 0 ? { ...newHsv, h: prev.h } : newHsv);
+        onChange(up);
+      } else {
+        // 输入非法回滚
+        setHexInput((value || '#000000').toUpperCase());
+      }
+    };
+
+    const hueColor = `hsl(${hsv.h}, 100%, 50%)`;
+    return (
+      <div className="ob-cp-drawer">
+        <div
+          ref={areaRef}
+          className="ob-cp-area"
+          style={{ background: `linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, ${hueColor})` }}
+          onPointerDown={drag(handleArea)}
+        >
+          <div
+            className="ob-cp-area-thumb"
+            style={{ left: `${hsv.s * 100}%`, top: `${(1 - hsv.v) * 100}%` }}
+          />
+        </div>
+        <div
+          ref={hueRef}
+          className="ob-cp-hue"
+          onPointerDown={drag(handleHue)}
+        >
+          <div className="ob-cp-hue-thumb" style={{ left: `${(hsv.h / 360) * 100}%` }} />
+        </div>
+        <div className="ob-cp-inputs">
+          <div className="ob-cp-preview" style={{ background: rgbToHex(hsvToRgb(hsv)) }} />
+          <input
+            type="text"
+            className="ob-cp-hex"
+            value={hexInput}
+            maxLength={7}
+            onChange={e => setHexInput(e.target.value)}
+            onBlur={onHexBlur}
+            onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   const CUSTOM_ROWS = [
     ['accent', '强调色', '主紫色 · 按钮 / 链接 / 重要 chip'],
@@ -178,6 +319,8 @@
     // 抽屉打开时记下原色, 用于"重置"和"取消"还原
     const [initialColors, setInitialColors] = useState(null);
     const [draftColors, setDraftColors] = useState(null);
+    // 哪一行的 picker 抽屉是打开的, null = 都收起
+    const [activePicker, setActivePicker] = useState(null);
 
     const choose = (preset) => {
       // 选预设时若抽屉开着, 顺手关掉并放弃 draft (要切换到新预设了)
@@ -200,6 +343,7 @@
         setCustomOpen(false);
         setDraftColors(null);
         setInitialColors(null);
+        setActivePicker(null);
       } else {
         const initial = window.OB_THEME.getCurrentColors(state);
         setInitialColors(initial);
@@ -229,6 +373,7 @@
       setCustomOpen(false);
       setDraftColors(null);
       setInitialColors(null);
+      setActivePicker(null);
     };
 
     return (
@@ -266,20 +411,34 @@
             {customOpen && draftColors && (
               <div className="ob-theme-drawer">
                 <div className="ob-theme-drawer-hint-top">实时预览 · 点 ⊕ 还原 · 应用保存</div>
-                {CUSTOM_ROWS.map(([key, label, hint]) => (
-                  <div key={key} className="ob-theme-drawer-row">
-                    <div className="ob-theme-drawer-row-l">
-                      <div className="ob-theme-drawer-lbl">{label}</div>
-                      <div className="ob-theme-drawer-hint">{hint}</div>
-                    </div>
-                    <input
-                      type="color"
-                      value={draftColors[key] || window.OB_THEME.FALLBACK[key]}
-                      onChange={e => tweakColor(key, e.target.value)}
-                    />
-                    <span className="ob-theme-drawer-val">{draftColors[key] || window.OB_THEME.FALLBACK[key]}</span>
-                  </div>
-                ))}
+                {CUSTOM_ROWS.map(([key, label, hint]) => {
+                  const cur = draftColors[key] || window.OB_THEME.FALLBACK[key];
+                  const isOpen = activePicker === key;
+                  return (
+                    <React.Fragment key={key}>
+                      <div className={`ob-theme-drawer-row ${isOpen ? 'is-open' : ''}`}>
+                        <div className="ob-theme-drawer-row-l">
+                          <div className="ob-theme-drawer-lbl">{label}</div>
+                          <div className="ob-theme-drawer-hint">{hint}</div>
+                        </div>
+                        <button
+                          type="button"
+                          className={`ob-theme-drawer-swatch ${isOpen ? 'is-open' : ''}`}
+                          style={{ background: cur }}
+                          onClick={() => setActivePicker(p => p === key ? null : key)}
+                          title={isOpen ? '收起' : '展开调色'}
+                        />
+                        <span className="ob-theme-drawer-val">{cur.toUpperCase()}</span>
+                      </div>
+                      {isOpen && (
+                        <InlineColorPicker
+                          value={cur}
+                          onChange={(v) => tweakColor(key, v)}
+                        />
+                      )}
+                    </React.Fragment>
+                  );
+                })}
                 <div className="ob-theme-drawer-foot">
                   <button className="ob-theme-drawer-btn ghost" onClick={resetDraft} title="恢复到打开前">⊕ 重置</button>
                   <button className="ob-theme-drawer-btn primary" onClick={applyCustom}>应用</button>
