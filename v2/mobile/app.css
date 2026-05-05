@@ -79,6 +79,8 @@ html, body {
   margin: 0; padding: 0;
   height: 100%;
 }
+/* html 也填主题底色 — PWA standalone 模式下 iOS 安全区 (notch/灵动岛下方) 显示的是 html 的底, 不是 body */
+html { background: var(--bg); }
 body {
   background: var(--bg);
   color: var(--ink);
