@@ -5,41 +5,169 @@
 (function () {
   const THEME_STORAGE_KEY = 'ob-theme-v1';
 
-  // 5 个预设主题
-  // 核心 3 色 (accent / rose / gold) + 可选 3 色 (bg / paper / ink)
-  // 留 bg/paper/ink 为 null = 用 CSS 默认值 (用户找到满意配色后再补)
+  // 预设主题 — 每套都是独立的设计语言, 用 vars 任意覆盖 CSS 变量
+  // (旧的 colors 6 色字段也兼容, 自动 enter-custom 时回退使用)
   const PRESETS = [
     {
-      id: 'moonlight-purple',
-      name: '月光紫',
-      desc: '默认 · 冷紫调, 略带粉气',
-      colors: { accent: '#6e4f9a', rose: '#d291b3', gold: '#d4a85f', bg: null, paper: null, ink: null },
+      id: 'mist-paper',
+      name: '晨雾纸本',
+      desc: '暖米白 · 旧紫 · 干玫瑰',
+      vars: {
+        '--bg': '#f6f1e9',
+        '--bg-2': '#efe8dc',
+        '--paper': '#fbf7ef',
+        '--paper-2': '#efe8dc',
+        '--ink': '#2a2530',
+        '--ink-3': '#8a8294',
+        '--line': 'rgba(42,37,48,0.08)',
+        '--line-2': 'rgba(42,37,48,0.18)',
+        '--accent': '#6b5a8a',
+        '--rose': '#c98a92',
+        '--rose-deep': '#8a4f57',
+        '--gold': '#b8893a',
+      },
     },
     {
-      id: 'sand-gold',
-      name: '沙金',
-      desc: '温暖大地, 沙漠日落',
-      colors: { accent: '#8b6f47', rose: '#c8a785', gold: '#d4a85f', bg: null, paper: null, ink: null },
+      id: 'etching',
+      name: '铜版画',
+      desc: '米黄底 · 墨绿 · 赭石',
+      vars: {
+        '--bg': '#efe6cf',
+        '--bg-2': '#e6dcc1',
+        '--paper': '#f6efdb',
+        '--paper-2': '#e6dcc1',
+        '--ink': '#2b2a1f',
+        '--ink-3': '#7a7559',
+        '--line': 'rgba(43,42,31,0.10)',
+        '--line-2': 'rgba(43,42,31,0.22)',
+        '--accent': '#4d6b3e',
+        '--rose': '#b86a3d',
+        '--rose-deep': '#864818',
+        '--gold': '#a47a28',
+      },
     },
     {
-      id: 'ink-mono',
-      name: '淡墨',
-      desc: '黑白灰 · 沉静',
-      colors: { accent: '#3a3445', rose: '#7d7a8c', gold: '#5a5565', bg: null, paper: null, ink: null },
+      id: 'mauve-afternoon',
+      name: '黛紫午后',
+      desc: '灰紫底 · 雾粉 · 暖金',
+      vars: {
+        '--bg': '#d8cfd9',
+        '--bg-2': '#cdc4cf',
+        '--paper': '#e6dee6',
+        '--paper-2': '#cdc4cf',
+        '--ink': '#322a3a',
+        '--ink-3': '#7e7286',
+        '--line': 'rgba(50,42,58,0.10)',
+        '--line-2': 'rgba(50,42,58,0.22)',
+        '--accent': '#5b4a72',
+        '--rose': '#d4a5b0',
+        '--rose-deep': '#93606e',
+        '--gold': '#b89366',
+      },
     },
     {
-      id: 'cedar-sage',
-      name: '雪松',
-      desc: '自然鼠尾草, 林间晨光',
-      colors: { accent: '#4a7556', rose: '#a8b896', gold: '#9b8b5e', bg: null, paper: null, ink: null },
+      id: 'rose-metal',
+      name: '玫瑰金属',
+      desc: '浅玫粉 · 玫瑰金 · 深紫',
+      vars: {
+        '--bg': '#f4e4e1',
+        '--bg-2': '#ead5d1',
+        '--paper': '#faeeea',
+        '--paper-2': '#ead5d1',
+        '--ink': '#3a2530',
+        '--ink-3': '#8a6d76',
+        '--line': 'rgba(58,37,48,0.08)',
+        '--line-2': 'rgba(58,37,48,0.20)',
+        '--accent': '#5a3a52',
+        '--rose': '#c98a85',
+        '--rose-deep': '#8e544f',
+        '--gold': '#b87a6a',
+      },
     },
     {
-      id: 'rose-warm',
-      name: '玫瑰灰',
-      desc: '柔暖玫瑰, 黄昏微温',
-      colors: { accent: '#b06998', rose: '#d291b3', gold: '#c896b3', bg: null, paper: null, ink: null },
+      id: 'moss-study',
+      name: '苔藓书房',
+      desc: '深墨绿 · 米白 · 姜黄',
+      vars: {
+        '--bg': '#1d2a22',
+        '--bg-2': '#25342c',
+        '--paper': '#28382f',
+        '--paper-2': '#2f4137',
+        '--ink': '#ece4d2',
+        '--ink-3': '#8a9a8c',
+        '--line': 'rgba(236,228,210,0.08)',
+        '--line-2': 'rgba(236,228,210,0.20)',
+        '--accent': '#c8a96a',
+        '--rose': '#d5b59a',
+        '--rose-deep': '#a07f5e',
+        '--gold': '#e0a23a',
+      },
+    },
+    {
+      id: 'fairy-candy',
+      name: '童话糖纸',
+      desc: '奶油底 · 粉紫 · 天青',
+      vars: {
+        '--bg': '#fffeec',
+        '--bg-2': '#fbf6df',
+        '--paper': '#ffffff',
+        '--paper-2': '#f8efe6',
+        '--ink': '#4e416f',
+        '--ink-2': '#6b5d8e',
+        '--ink-3': '#8e82ad',
+        '--ink-4': '#b8aecf',
+        '--line': 'rgba(78,65,111,0.10)',
+        '--line-2': 'rgba(78,65,111,0.22)',
+        '--accent': '#c7bce6',
+        '--accent-2': '#eec9ea',
+        '--rose': '#eec9ea',
+        '--rose-deep': '#b07ab0',
+        '--gold': '#b0e8f9',
+      },
+    },
+    {
+      id: 'mist-isle',
+      name: '雾屿低语',
+      desc: '极浅雾蓝 · 烟蓝 ink',
+      vars: {
+        '--bg': '#f9fafd',
+        '--bg-2': '#eef4ff',
+        '--paper': '#eef4ff',
+        '--paper-2': '#e2ebf8',
+        '--ink': '#3d4a6b',
+        '--ink-2': '#5a6a8e',
+        '--ink-3': '#8696bc',
+        '--ink-4': '#b7c7e1',
+        '--line': 'rgba(61,74,107,0.08)',
+        '--line-2': 'rgba(61,74,107,0.18)',
+        '--accent': '#8696bc',
+        '--accent-2': '#b7c7e1',
+        '--rose': '#b7c7e1',
+        '--rose-deep': '#6b7ea3',
+        '--gold': '#c8b89a',
+      },
     },
   ];
+
+  // 哪些 CSS 变量由 theme-system 管理 — 切预设时先全清, 防止上一套的
+  // 显式覆盖 (如 ink-3 / line) 残留在 inline 里污染下一套
+  const MANAGED_VARS = [
+    '--bg', '--bg-2', '--paper', '--paper-2',
+    '--ink', '--ink-2', '--ink-3', '--ink-4',
+    '--line', '--line-2',
+    '--accent', '--accent-2', '--accent-3',
+    '--c-accent', '--c-accent-2',
+    '--accent-a06','--accent-a08','--accent-a10','--accent-a15','--accent-a20',
+    '--accent-a25','--accent-a30','--accent-a40','--accent-a45','--accent-a55','--accent-a60',
+    '--rose', '--rose-deep', '--c-rose',
+    '--rose-a08','--rose-a10','--rose-a12','--rose-a18','--rose-a25',
+    '--rose-a28','--rose-a30','--rose-a45','--rose-a55','--rose-a80',
+    '--gold', '--gold-soft', '--c-gold',
+  ];
+  function clearManagedVars() {
+    const root = document.documentElement.style;
+    MANAGED_VARS.forEach(k => root.removeProperty(k));
+  }
 
   // 默认 (CSS 已定义) 的 5 个底层色 — modal 打开时用作 fallback
   const FALLBACK = {
@@ -88,6 +216,9 @@
     if (!colors) return;
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
     if (isDark) colors = DARK_FALLBACK;
+    // 先清掉所有 MANAGED_VARS, 再写新值, 防止上一套 (尤其 vars 预设)
+    // 显式覆盖的 --ink-3 / --line 等遗留在 inline 污染下一套
+    if (typeof clearManagedVars === 'function') clearManagedVars();
     const root = document.documentElement.style;
     // 强调色三色组
     if (colors.accent) {
@@ -145,6 +276,65 @@
     }
   }
 
+  // 应用一个新格式预设 (含任意 CSS 变量覆盖)
+  // 流程: 先清掉所有 MANAGED_VARS inline → 写入 preset.vars → 把 accent/rose
+  //       的 alpha 派生重新算 (除非 preset 显式覆盖了那一档)
+  function applyPreset(preset) {
+    if (!preset || !preset.vars) return;
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    if (isDark) {
+      // 暗夜模式忽略 preset, 走 DARK_FALLBACK
+      applyTheme(DARK_FALLBACK);
+      return;
+    }
+    clearManagedVars();
+    const root = document.documentElement.style;
+    // 1. 写入 preset 显式定义的变量
+    Object.entries(preset.vars).forEach(([k, v]) => root.setProperty(k, v));
+    // 2. 派生 alpha 变体 (除非 preset 自己已经覆盖)
+    const accent = preset.vars['--accent'];
+    if (accent) {
+      const alphaSpecs = [
+        ['--accent-a06', 0.06], ['--accent-a08', 0.08], ['--accent-a10', 0.10],
+        ['--accent-a15', 0.15], ['--accent-a20', 0.20], ['--accent-a25', 0.25],
+        ['--accent-a30', 0.30], ['--accent-a40', 0.40], ['--accent-a45', 0.45],
+        ['--accent-a55', 0.55], ['--accent-a60', 0.60], ['--accent-3', 0.10],
+      ];
+      alphaSpecs.forEach(([k, a]) => {
+        if (preset.vars[k] === undefined) root.setProperty(k, _hexToRgba(accent, a));
+      });
+      if (preset.vars['--accent-2'] === undefined) root.setProperty('--accent-2', _shift(accent, 30));
+      root.setProperty('--c-accent', accent);
+      if (preset.vars['--c-accent-2'] === undefined) root.setProperty('--c-accent-2', _shift(accent, 30));
+    }
+    const rose = preset.vars['--rose'];
+    if (rose) {
+      const roseSpecs = [
+        ['--rose-a08', 0.08], ['--rose-a10', 0.10], ['--rose-a12', 0.12],
+        ['--rose-a18', 0.18], ['--rose-a25', 0.25], ['--rose-a28', 0.28],
+        ['--rose-a30', 0.30], ['--rose-a45', 0.45], ['--rose-a55', 0.55],
+        ['--rose-a80', 0.80],
+      ];
+      roseSpecs.forEach(([k, a]) => {
+        if (preset.vars[k] === undefined) root.setProperty(k, _hexToRgba(rose, a));
+      });
+      if (preset.vars['--rose-deep'] === undefined) root.setProperty('--rose-deep', _shift(rose, -30));
+      root.setProperty('--c-rose', rose);
+    }
+    const gold = preset.vars['--gold'];
+    if (gold) {
+      if (preset.vars['--gold-soft'] === undefined) root.setProperty('--gold-soft', _shift(gold, 40));
+      root.setProperty('--c-gold', gold);
+    }
+    // 3. bg-2 / paper-2 派生 (除非 preset 自己定了)
+    if (preset.vars['--bg'] && preset.vars['--bg-2'] === undefined) {
+      root.setProperty('--bg-2', _shift(preset.vars['--bg'], -8));
+    }
+    if (preset.vars['--paper'] && preset.vars['--paper-2'] === undefined) {
+      root.setProperty('--paper-2', _shift(preset.vars['--paper'], -8));
+    }
+  }
+
   function loadTheme() {
     try {
       const raw = localStorage.getItem(THEME_STORAGE_KEY);
@@ -159,38 +349,57 @@
   }
 
   function getCurrentColors(state) {
-    if (!state) return PRESETS[0].colors;
+    if (!state) return { ...FALLBACK };
     if (state.preset === 'custom' && state.custom) {
-      // 合并 fallback 让 modal 总能显示有效值
       return { ...FALLBACK, ...state.custom };
     }
     const p = PRESETS.find(x => x.id === state.preset);
     if (!p) return { ...FALLBACK };
-    // 预设的 null 字段用 fallback
-    return Object.fromEntries(
-      Object.entries({ ...FALLBACK, ...p.colors }).map(([k, v]) => [k, v == null ? FALLBACK[k] : v])
-    );
+    // 新格式 vars: 从 CSS 变量提取 6 色 (用户进自定义抽屉时回退到这套)
+    if (p.vars) {
+      return {
+        accent: p.vars['--accent'] || FALLBACK.accent,
+        rose:   p.vars['--rose']   || FALLBACK.rose,
+        gold:   p.vars['--gold']   || FALLBACK.gold,
+        bg:     p.vars['--bg']     || FALLBACK.bg,
+        paper:  p.vars['--paper']  || FALLBACK.paper,
+        ink:    p.vars['--ink']    || FALLBACK.ink,
+      };
+    }
+    // 旧格式 colors (向后兼容)
+    if (p.colors) {
+      return Object.fromEntries(
+        Object.entries({ ...FALLBACK, ...p.colors }).map(([k, v]) => [k, v == null ? FALLBACK[k] : v])
+      );
+    }
+    return { ...FALLBACK };
+  }
+
+  // 统一入口: 根据 state 决定走 vars / colors / fallback / dark 哪条路径
+  // (applyTheme / applyPreset 内部都已 clearManagedVars, 这里只负责分流)
+  function applyCurrent(state) {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    if (isDark) { applyTheme(DARK_FALLBACK); return; }
+    if (!state) { applyTheme(FALLBACK); return; }
+    if (state.preset === 'custom' && state.custom) {
+      applyTheme(state.custom);
+      return;
+    }
+    const p = PRESETS.find(x => x.id === state.preset);
+    if (!p) { applyTheme(FALLBACK); return; }
+    if (p.vars) { applyPreset(p); return; }
+    if (p.colors) { applyTheme(p.colors); }
   }
 
   // 启动应用 (防 React 渲染前闪)
-  // 先跑一遍 FALLBACK, 让 --accent-aXX / --rose-aXX 派生变量在所有情况下都有值
-  applyTheme(FALLBACK);
-  const stored = loadTheme();
-  if (stored) {
-    if (stored.preset === 'custom' && stored.custom) applyTheme(stored.custom);
-    else {
-      const p = PRESETS.find(x => x.id === stored.preset);
-      if (p) applyTheme(p.colors);
-    }
-  }
+  // applyCurrent 会处理 vars / colors / dark / no-state 全部 case
+  applyTheme(FALLBACK);  // 先打底, 让 :root 默认 + alpha 派生有值
+  applyCurrent(loadTheme());
 
-  // 切换暗夜模式: 设 data-theme + 重跑 applyTheme 让派生色重算
-  // 4 个 app (timeline/cells/cells-app/console) 切换暗夜都该走这个, 替代裸 setAttribute
+  // 切换暗夜模式: 设 data-theme + 重跑 applyCurrent 让派生色重算
   function setDarkMode(dark) {
     document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-    const stored = loadTheme();
-    const colors = getCurrentColors(stored);
-    applyTheme(colors);
+    applyCurrent(loadTheme());
   }
 
   window.OB_THEME = {
@@ -198,6 +407,8 @@
     FALLBACK,
     DARK_FALLBACK,
     applyTheme,
+    applyPreset,
+    applyCurrent,
     loadTheme,
     saveTheme,
     getCurrentColors,
@@ -378,8 +589,9 @@
         setInitialColors(null);
       }
       const next = { preset: preset.id };
-      window.OB_THEME.applyTheme(preset.colors);
+      // 用 applyCurrent 统一入口 — 自动判断走 vars / colors 路径
       window.OB_THEME.saveTheme(next);
+      window.OB_THEME.applyCurrent(next);
       setState(next);
       setOpen(false);
     };
@@ -452,9 +664,9 @@
                   key={p.id}
                   type="button"
                   aria-label={p.name}
-                  title={p.name}
+                  title={`${p.name} — ${p.desc || ''}`}
                   className={`ob-theme-swatch ${state.preset === p.id ? 'on' : ''}`}
-                  style={{ background: p.colors.accent }}
+                  style={{ background: (p.vars && p.vars['--accent']) || (p.colors && p.colors.accent) || '#888' }}
                   onClick={() => choose(p)}
                 />
               ))}
