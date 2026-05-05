@@ -254,7 +254,7 @@ function LineRow({ it, query, onOpenItem, dense }) {
       <span className="ob-line-time">{it.time}</span>
       <span className="ob-line-title" title={it.title}><Highlight text={cleanTitle(it.title)} query={query} kind="title" /></span>
       <span className="ob-line-sep">·</span>
-      <span className="ob-line-sum"><Highlight text={it.summary} query={query} kind="body" /></span>
+      <span className="ob-line-sum"><Highlight text={it.summary || it.preview || ''} query={query} kind="body" /></span>
     </div>
   );
 }

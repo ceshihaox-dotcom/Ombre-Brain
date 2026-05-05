@@ -263,6 +263,7 @@ function AppV2() {
           lastWriteDate={lastWriteDate}
           todayDate={TODAY}
           focusToday={focusToday}
+          totalDays={new Set(data.map(i => i.date)).size}
           onWrite={() => setWriteOpen(true)}
           onJumpToday={jumpToToday}
         />
