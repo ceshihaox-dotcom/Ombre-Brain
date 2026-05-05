@@ -28,7 +28,7 @@ function TopBarV2({ dark, onDark, compact, data }) {
       </div>
       <div className="ob-topbar-actions">
         {window.ThemeToggle && <window.ThemeToggle />}
-        <DarkToggle dark={dark} onChange={onDark} />
+        {/* DarkToggle 暂隐, 等以后做"暗夜模式自动从主色派生"功能 */}
       </div>
     </div>
   );

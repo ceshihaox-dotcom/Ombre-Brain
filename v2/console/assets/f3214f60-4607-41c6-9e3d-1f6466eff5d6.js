@@ -19,13 +19,7 @@ function ConsoleTopBar({ stats, dark, onDark }) {
       </div>
       <div className="ob-topbar-actions">
         {window.ThemeToggle && <window.ThemeToggle />}
-        <button
-          className={`ob-dark-btn${dark ? ' on' : ''}`}
-          onClick={() => onDark && onDark(!dark)}
-          title="切换暗夜模式"
-        >
-          {dark ? '☀' : '☾'}
-        </button>
+        {/* DarkToggle 暂隐, 等以后做"暗夜模式自动从主色派生"功能 */}
       </div>
     </div>
   );

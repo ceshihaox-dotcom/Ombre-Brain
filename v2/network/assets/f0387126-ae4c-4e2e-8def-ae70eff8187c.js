@@ -283,7 +283,7 @@ function ConstellationApp() {
           </div>
         </div>
         <div className="cs-topbar-actions">
-          <button className="cs-dark-toggle" title="切换昼夜（星图固定夜幕）">☾</button>
+          {/* DarkToggle 暂隐, 等以后做"暗夜模式自动从主色派生"功能 (星图固定夜幕, 切换无意义) */}
         </div>
       </header>
 
