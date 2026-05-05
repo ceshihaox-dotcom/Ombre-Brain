@@ -76,20 +76,6 @@ function LeftPanel({
   return (
     <aside className="cs-left">
       <div className="cs-section">
-        <div className="cs-section-hd"><span>视图模式</span></div>
-        <div className="cs-modes">
-          {[
-            ['constellation', '星图'],
-            ['cluster', '聚类'],
-            ['time', '时间'],
-            ['type', '类型']
-          ].map(([k, name]) => (
-            <button key={k} className={`cs-mode ${mode === k ? 'on' : ''}`} onClick={() => setMode(k)}>{name}</button>
-          ))}
-        </div>
-      </div>
-
-      <div className="cs-section">
         <div className="cs-section-hd"><span>记忆类型 · 点选筛选</span><b>记忆 ({items.length})</b></div>
         <div className="cs-legend">
           {/* 原 4 视觉类 (mutually exclusive) */}
