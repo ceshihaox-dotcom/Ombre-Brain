@@ -281,6 +281,10 @@ function WriteDrawer({ open, onClose, onSave, defaultDate, defaultTime, defaultT
             placeholder="标题——这一刻是什么？"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
+            autoCorrect="off"
+            autoCapitalize="off"
+            autoComplete="off"
+            spellCheck={false}
           />
 
           {/* 摘要 */}
