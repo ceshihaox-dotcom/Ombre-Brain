@@ -54,14 +54,24 @@ function ConstellationApp() {
   const [size, setSize] = caS({ width: 1400, height: 800 });
 
   caE(() => {
-    const update = () => {
+    let timer = null;
+    // 首次同步, 拿到初始尺寸不延迟
+    const updateNow = () => {
       if (!containerRef.current) return;
       const r = containerRef.current.getBoundingClientRect();
       setSize({ width: r.width, height: r.height });
     };
-    update();
-    window.addEventListener('resize', update);
-    return () => window.removeEventListener('resize', update);
+    // resize 时 debounce 250ms, 用户拖动期间不反复重算布局
+    const updateDebounced = () => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(updateNow, 250);
+    };
+    updateNow();
+    window.addEventListener('resize', updateDebounced);
+    return () => {
+      window.removeEventListener('resize', updateDebounced);
+      if (timer) clearTimeout(timer);
+    };
   }, []);
 
   // 时间回放过滤：仅显示前 timeIdx+1 条（按时间）

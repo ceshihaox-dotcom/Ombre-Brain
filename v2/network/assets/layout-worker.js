@@ -133,6 +133,18 @@ function _qtApplyRepulsion(node, p, theta) {
 
 // ── 布局函数 ──
 
+// id 哈希成 [0,1) 的伪随机, 同样 id 永远拿到同样的"随机数"
+// 让 simulateLayout 的初始 jitter 在多次调用 (resize) 之间保持一致
+function _seedRand(id, salt) {
+  const s = String(id) + (salt || '');
+  let h = 0x811c9dc5;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 0x01000193);
+  }
+  return ((h >>> 0) % 10000) / 10000;
+}
+
 function simulateLayout(nodes, links, width, height, iters = 220) {
   const N = nodes.length;
   if (N === 0) return [];
@@ -142,10 +154,11 @@ function simulateLayout(nodes, links, width, height, iters = 220) {
   const positions = nodes.map((n, i) => {
     const a = (i / N) * Math.PI * 2;
     const importance = n.importance || 5;
-    const r = ringR * (1.05 - importance * 0.04) + (Math.random() - 0.5) * 30;
+    // 用 id 哈希代替 Math.random, resize 后初始位置仍稳定
+    const r = ringR * (1.05 - importance * 0.04) + (_seedRand(n.id, 'r') - 0.5) * 30;
     return {
-      x: cx + Math.cos(a) * r + (Math.random() - 0.5) * 40,
-      y: cy + Math.sin(a) * r + (Math.random() - 0.5) * 40,
+      x: cx + Math.cos(a) * r + (_seedRand(n.id, 'x') - 0.5) * 40,
+      y: cy + Math.sin(a) * r + (_seedRand(n.id, 'y') - 0.5) * 40,
       vx: 0, vy: 0,
       r: n.r || 5,
     };
