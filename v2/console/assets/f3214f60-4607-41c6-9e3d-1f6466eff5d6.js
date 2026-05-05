@@ -3,7 +3,8 @@
 const { useState: csS, useEffect: csE, useMemo: csM, useRef: csR } = React;
 
 // ── 顶栏 ──
-function ConsoleTopBar({ stats, dark, onDark, search, setSearch }) {
+// search/setSearch 仅为兼容旧调用方保留, 顶栏不再渲染搜索框
+function ConsoleTopBar({ stats, dark, onDark }) {
   return (
     <div className="ob-topbar">
       <div className="ob-brand">
@@ -17,14 +18,7 @@ function ConsoleTopBar({ stats, dark, onDark, search, setSearch }) {
         </div>
       </div>
       <div className="ob-topbar-actions">
-        <div className="ob-search">
-          <span style={{ opacity: 0.5 }}>⌕</span>
-          <input
-            placeholder="搜索记忆…  /"
-            value={search || ''}
-            onChange={(e) => setSearch && setSearch(e.target.value)}
-          />
-        </div>
+        {window.ThemeToggle && <window.ThemeToggle />}
         <button
           className={`ob-dark-btn${dark ? ' on' : ''}`}
           onClick={() => onDark && onDark(!dark)}
