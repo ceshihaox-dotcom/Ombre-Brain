@@ -11,9 +11,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Call /api/backup
+        env:
+          BACKUP_URL: ${{ vars.OMBRE_BACKUP_URL }}
         run: |
+          # 备份目标 URL 从 repo Variable 读, fork 用户必须自己在
+          # Settings > Secrets and variables > Actions > Variables
+          # 里设 OMBRE_BACKUP_URL = https://你的部署域名 (不带尾斜杠, 不带 /api/backup)
+          # 没设就跳过, 避免 fork 误备份到原作者实例
+          if [ -z "$BACKUP_URL" ]; then
+            echo "::notice::OMBRE_BACKUP_URL not set; skipping backup."
+            echo "::notice::To enable: repo Settings > Variables > Actions > add OMBRE_BACKUP_URL"
+            exit 0
+          fi
           response=$(curl -sS -w "\n__HTTP_STATUS__:%{http_code}" \
-            "https://ombre-brain-40jf.onrender.com/api/backup" \
+            "${BACKUP_URL%/}/api/backup" \
             --max-time 120 \
             --retry 2 \
             --retry-delay 30)
