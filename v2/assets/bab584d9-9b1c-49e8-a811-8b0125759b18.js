@@ -269,6 +269,7 @@ function AppV2() {
             return dayDiff(TODAY, earliest) + 1;
           })()}
           totalHi={data.filter(i => i.importance >= 8 || i.highlight).length}
+          totalCount={data.length}
           onWrite={() => setWriteOpen(true)}
           onJumpToday={jumpToToday}
         />

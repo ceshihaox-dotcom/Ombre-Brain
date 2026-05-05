@@ -16,11 +16,11 @@ function DarkToggle({ dark, onChange }) {
 }
 
 // ── 今天状态条 ────────────────────────────────────────
-function TodayBar({ todayItems, lastWriteDate, todayDate, focusToday, totalDays, totalHi, onWrite, onJumpToday }) {
+function TodayBar({ todayItems, lastWriteDate, todayDate, focusToday, totalDays, totalHi, totalCount, onWrite, onJumpToday }) {
   let state, label, sub;
   if (todayItems.length > 0) {
     state = 'on';
-    label = `第 ${totalDays || 1} 天 · ${todayItems.length} 段记忆沉淀于此`;
+    label = `第 ${totalDays || 1} 天 · ${totalCount || todayItems.length} 段记忆沉淀于此`;
     sub = totalHi > 0 ? `${totalHi} 条值得被反复想起` : '继续记录这一天';
   } else if (lastWriteDate) {
     const d = dayDiff(todayDate, lastWriteDate);
