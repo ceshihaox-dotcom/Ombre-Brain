@@ -5998,16 +5998,22 @@ body {
   font-weight: 600;
 }
 
-/* ── 卡片视图（横向填充网格） ── */
+/* ── 卡片视图（masonry 横向不规则贴合, 多列瀑布流） ── */
 .ob-cells-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 14px;
-  align-items: start;
+  column-count: 3;
+  column-gap: 14px;
 }
-@media (max-width: 1180px) { .ob-cells-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
-@media (max-width: 960px)  { .ob-cells-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@media (max-width: 640px)  { .ob-cells-grid { grid-template-columns: 1fr; } }
+.ob-cells-grid > * {
+  break-inside: avoid;
+  -webkit-column-break-inside: avoid;
+  page-break-inside: avoid;
+  display: block;
+  width: 100%;
+  margin-bottom: 14px;
+}
+@media (max-width: 1180px) { .ob-cells-grid { column-count: 3; } }
+@media (max-width: 960px)  { .ob-cells-grid { column-count: 2; } }
+@media (max-width: 640px)  { .ob-cells-grid { column-count: 1; } }
 .ob-card-cell {
   display: block;
   background: var(--paper);
