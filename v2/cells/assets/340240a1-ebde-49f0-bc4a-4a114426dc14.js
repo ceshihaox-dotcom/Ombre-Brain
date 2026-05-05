@@ -259,6 +259,30 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
   const [flashId, setFlashId] = cuS(null);
   const [showKbdHint, setShowKbdHint] = cuS(false);
 
+  // 行序 masonry: 测每张卡 scrollHeight, 写 grid-row: span N
+  // 配合 cells.css 里 grid-auto-rows: 4px + row-gap: 0
+  // 14 = 视觉留白 (写进 span, 让卡末尾留出空挡当 gap)
+  const gridRef = cuR(null);
+  cuE(() => {
+    const grid = gridRef.current;
+    if (!grid) return;
+    const ROW = 4, GAP = 14;
+    const layout = () => {
+      for (const el of grid.children) {
+        const h = el.scrollHeight;
+        if (!h) continue;
+        const span = Math.max(1, Math.ceil((h + GAP) / ROW));
+        el.style.gridRowEnd = 'span ' + span;
+      }
+    };
+    layout();
+    requestAnimationFrame(layout);
+    const obs = new ResizeObserver(layout);
+    for (const el of grid.children) obs.observe(el);
+    window.addEventListener('resize', layout);
+    return () => { obs.disconnect(); window.removeEventListener('resize', layout); };
+  });
+
   // 显示快捷键提示
   cuE(() => {
     const t1 = setTimeout(() => setShowKbdHint(true), 800);
@@ -778,7 +802,7 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
           })}
         </div>
       ) : (
-        <div className="ob-cells-grid">
+        <div className="ob-cells-grid" ref={gridRef}>
           {filtered.map(it => (
             <CardCell
               key={it.id}
