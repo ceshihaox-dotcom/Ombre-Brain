@@ -49,7 +49,8 @@ function ConsoleApp() {
 
 
   cAE(() => {
-    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    if (window.OB_THEME) window.OB_THEME.setDarkMode(dark);
+    else document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
     setTweak('dark', dark);
   }, [dark]);
 

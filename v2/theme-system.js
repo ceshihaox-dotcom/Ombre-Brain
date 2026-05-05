@@ -51,6 +51,17 @@
     ink:    '#1a1922',   // 近黑墨紫
   };
 
+  // 暗夜模式默认色板 (跟 [data-theme="dark"] CSS 一致)
+  // applyTheme 检测到 data-theme=dark 时强制走这套, 用户自定义色暂不参与暗夜
+  const DARK_FALLBACK = {
+    accent: '#a78bd0',
+    rose:   '#e0a3c4',
+    gold:   '#a78bd0',
+    bg:     '#14131c',
+    paper:  '#1d1c27',
+    ink:    '#ece9f2',
+  };
+
   function _hexToRgba(hex, alpha) {
     const m = String(hex || '').replace('#', '');
     if (m.length !== 6) return `rgba(110, 79, 154, ${alpha})`;
@@ -72,8 +83,11 @@
 
   // 应用主题色
   // null/undefined 字段不动 (保留 CSS 默认)
+  // 暗夜模式下用户自定义色不写, 一律走 DARK_FALLBACK 让 [data-theme="dark"] 生效
   function applyTheme(colors) {
     if (!colors) return;
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    if (isDark) colors = DARK_FALLBACK;
     const root = document.documentElement.style;
     // 强调色三色组
     if (colors.accent) {
@@ -170,13 +184,24 @@
     }
   }
 
+  // 切换暗夜模式: 设 data-theme + 重跑 applyTheme 让派生色重算
+  // 4 个 app (timeline/cells/cells-app/console) 切换暗夜都该走这个, 替代裸 setAttribute
+  function setDarkMode(dark) {
+    document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
+    const stored = loadTheme();
+    const colors = getCurrentColors(stored);
+    applyTheme(colors);
+  }
+
   window.OB_THEME = {
     PRESETS,
     FALLBACK,
+    DARK_FALLBACK,
     applyTheme,
     loadTheme,
     saveTheme,
     getCurrentColors,
+    setDarkMode,
   };
 })();
 
