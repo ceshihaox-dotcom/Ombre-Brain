@@ -4499,6 +4499,99 @@ body {
   transform: translateY(-1px);
 }
 
+/* 行末 swatch (替代 input[type=color]) */
+.ob-theme-drawer-swatch {
+  appearance: none;
+  width: 32px; height: 26px;
+  padding: 0;
+  border: 0.5px solid var(--line-2);
+  border-radius: 5px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: border-color .15s, transform .12s;
+}
+.ob-theme-drawer-swatch:hover { border-color: var(--ink-3); }
+.ob-theme-drawer-swatch.is-open {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-3, rgba(110,79,154,0.18));
+}
+
+/* ── 内联 HSV 色板 (展开在对应 row 下方) ── */
+.ob-cp-drawer {
+  padding: 10px 0 4px;
+  margin-bottom: 6px;
+  animation: obCpSlide .18s ease-out;
+}
+@keyframes obCpSlide {
+  from { opacity: 0; max-height: 0; }
+  to   { opacity: 1; max-height: 360px; }
+}
+.ob-cp-area {
+  position: relative;
+  width: 100%;
+  height: 130px;
+  border-radius: 6px;
+  cursor: crosshair;
+  user-select: none;
+  touch-action: none;
+}
+.ob-cp-area-thumb {
+  position: absolute;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  border: 1.5px solid #fff;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.4);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.ob-cp-hue {
+  position: relative;
+  width: 100%;
+  height: 12px;
+  margin-top: 10px;
+  border-radius: 999px;
+  background: linear-gradient(to right,
+    hsl(0,100%,50%), hsl(60,100%,50%), hsl(120,100%,50%),
+    hsl(180,100%,50%), hsl(240,100%,50%), hsl(300,100%,50%), hsl(360,100%,50%));
+  cursor: pointer;
+  user-select: none;
+  touch-action: none;
+}
+.ob-cp-hue-thumb {
+  position: absolute;
+  top: 50%;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1px solid rgba(0,0,0,0.25);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+}
+.ob-cp-inputs {
+  display: flex; align-items: center; gap: 8px;
+  margin-top: 10px;
+}
+.ob-cp-preview {
+  width: 28px; height: 24px;
+  border-radius: 5px;
+  border: 0.5px solid var(--line-2);
+  flex-shrink: 0;
+}
+.ob-cp-hex {
+  flex: 1;
+  font: 500 12px var(--mono);
+  letter-spacing: 0.04em;
+  padding: 5px 8px;
+  border: 0.5px solid var(--line-2);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--ink);
+  outline: none;
+  text-transform: uppercase;
+}
+.ob-cp-hex:focus { border-color: var(--accent); }
+
 .ob-theme-modal-mask {
   position: fixed; inset: 0;
   background: rgba(26, 25, 34, 0.42);
