@@ -3420,11 +3420,12 @@ body {
 }
 .ob-axis-node {
   position: absolute;
-  right: -7px; top: 22px;
+  right: 0; top: 30px;
+  transform: translate(50%, -50%);
   width: 13px; height: 13px;
   border-radius: 50%;
-  background: var(--paper);
-  border: 1.5px solid var(--ink-3);
+  background: transparent;
+  border: 1.5px solid var(--ink-4);
   box-shadow: 0 0 0 4px var(--bg);
 }
 .ob-axis-node-hi {
@@ -4613,9 +4614,14 @@ body {
 }
 
 /* ── 中轴节点：日热度 ── */
-.ob-axis-node.ob-heat-l2 { background: var(--paper); border-color: var(--ink-4); }
-.ob-axis-node.ob-heat-l4 { background: var(--paper); border-color: var(--ink-3); }
-.ob-axis-node.ob-heat-l6 { background: var(--gold-soft); border-color: var(--accent); opacity: 0.6; }
+/* l2/l4/l6 (普通日,maxImp<8): 统一中性空圈, 不抢戏 */
+.ob-axis-node.ob-heat-l2,
+.ob-axis-node.ob-heat-l4,
+.ob-axis-node.ob-heat-l6 {
+  background: transparent;
+  border-color: var(--ink-4);
+  opacity: 1;
+}
 .ob-axis-node.ob-heat-l8 {
   background: var(--accent);
   border-color: var(--accent);
@@ -4632,15 +4638,26 @@ body {
     0 0 0 9px rgba(110, 79, 154, 0.20),
     0 0 22px rgba(110, 79, 154, 0.55);
 }
-/* feel 主导日：粉色 ring + core，覆盖 heat / hi 配色 */
+/* feel 主导日：粉色 ring + core，覆盖 heat / hi 配色，带呼吸脉冲 */
 .ob-axis-node.ob-axis-node-feel {
   background: var(--rose);
   border-color: var(--rose);
   opacity: 1;
-  box-shadow:
-    0 0 0 4px var(--bg),
-    0 0 0 8px rgba(210, 145, 179, 0.18),
-    0 0 16px rgba(210, 145, 179, 0.50);
+  animation: ob-feel-pulse 2.4s ease-in-out infinite;
+}
+@keyframes ob-feel-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 4px var(--bg),
+      0 0 0 8px rgba(210, 145, 179, 0.28),
+      0 0 16px rgba(210, 145, 179, 0.55);
+  }
+  50% {
+    box-shadow:
+      0 0 0 4px var(--bg),
+      0 0 0 11px rgba(210, 145, 179, 0.10),
+      0 0 22px rgba(210, 145, 179, 0.30);
+  }
 }
 .ob-axis-node-today {
   outline: 2px solid var(--rose);

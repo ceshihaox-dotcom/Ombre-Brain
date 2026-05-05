@@ -202,7 +202,7 @@ function DateModuleV2({ date, items, onOpenItem, onOpenDay, density, query, isTo
         </div>
         <div
           className={`ob-axis-node ob-heat-${heatLevel} ${hi > 0 ? 'ob-axis-node-hi' : ''} ${feelDominant ? 'ob-axis-node-feel' : ''} ${isToday ? 'ob-axis-node-today' : ''}`}
-          style={{ width: nodeSize, height: nodeSize, marginTop: -nodeSize / 2 + 6.5 }}
+          style={{ width: nodeSize, height: nodeSize }}
           title={`${items.length} 条 · 最高 importance ${maxImp}`}
         />
       </div>
