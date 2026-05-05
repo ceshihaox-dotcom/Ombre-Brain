@@ -422,8 +422,6 @@ function AppV2() {
         open={writeOpen}
         onClose={() => setWriteOpen(false)}
         onSave={handleSave}
-        defaultDate={TODAY}
-        defaultTime={getNow()}
       />
 
       <TweaksPanel>

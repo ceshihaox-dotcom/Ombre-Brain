@@ -211,12 +211,23 @@ function Fab({ onClick }) {
 }
 
 // ── 写入抽屉（v2 · 信纸感重设计）─────────────────────
-function WriteDrawer({ open, onClose, onSave, defaultDate, defaultTime, defaultTags }) {
+function WriteDrawer({ open, onClose, onSave, defaultTags }) {
+  // defaultDate/defaultTime 不再从父组件传 — 抽屉打开那一刻自己取当下时间
+  // 之前父组件用 const TODAY (页面加载时计算) 永远不变, 跨天没刷新就错日期
+  const _freshNow = () => {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return {
+      date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+      time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+    };
+  };
+  const _initial = _freshNow();
   const [title, setTitle] = uS('');
   const [summary, setSummary] = uS('');
   const [body, setBody] = uS('');
-  const [time, setTime] = uS(defaultTime);
-  const [date, setDate] = uS(defaultDate);
+  const [time, setTime] = uS(_initial.time);
+  const [date, setDate] = uS(_initial.date);
   const [importance, setImportance] = uS(5);
   const [feel, setFeel] = uS(false);
   const [protectFlag, setProtect] = uS(false);
@@ -225,12 +236,13 @@ function WriteDrawer({ open, onClose, onSave, defaultDate, defaultTime, defaultT
 
   uE(() => {
     if (open) {
+      const now = _freshNow();  // 每次开抽屉重新取
       setTitle(''); setSummary(''); setBody(''); setImportance(5);
       setFeel(false); setProtect(false); setTags(defaultTags || []);
-      setDate(defaultDate); setTime(defaultTime);
+      setDate(now.date); setTime(now.time);
       setTimeout(() => titleRef.current && titleRef.current.focus(), 80);
     }
-  }, [open, defaultDate, defaultTime, defaultTags]);
+  }, [open, defaultTags]);
 
   uE(() => {
     if (!open) return;
@@ -271,7 +283,7 @@ function WriteDrawer({ open, onClose, onSave, defaultDate, defaultTime, defaultT
             <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="ob-write-stamp-d" />
             <span className="ob-write-stamp-sep">·</span>
             <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="ob-write-stamp-t" />
-            <button className="ob-write-now" onClick={() => { setDate(defaultDate); setTime(defaultTime); }} title="使用现在">↺</button>
+            <button className="ob-write-now" onClick={() => { const n = _freshNow(); setDate(n.date); setTime(n.time); }} title="使用现在">↺</button>
           </div>
 
           {/* 主标题（极简下划线） */}
@@ -296,17 +308,14 @@ function WriteDrawer({ open, onClose, onSave, defaultDate, defaultTime, defaultT
             rows="2"
           />
 
-          {/* 折叠正文 */}
-          <details className="ob-write-body-wrap">
-            <summary>＋ 展开正文（可选）</summary>
-            <textarea
-              className="ob-write-body"
-              placeholder="…慢慢写。留白也可以。"
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              rows="5"
-            />
-          </details>
+          {/* 正文 */}
+          <textarea
+            className="ob-write-body"
+            placeholder="正文区域"
+            value={body}
+            onChange={(e) => setBody(e.target.value)}
+            rows="5"
+          />
 
           {/* 横向元数据条 */}
           <div className="ob-write-meta-row">
