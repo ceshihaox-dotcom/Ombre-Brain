@@ -25,6 +25,7 @@
       id: 'rose-metal',
       name: '玫瑰金属',
       desc: '浅玫粉 · 玫瑰金 · 深紫',
+      swatch: '#f4e4e1',
       vars: {
         '--bg': '#f4e4e1',
         '--bg-2': '#ead5d1',
@@ -594,7 +595,7 @@
                   aria-label={p.name}
                   title={`${p.name} — ${p.desc || ''}`}
                   className={`ob-theme-swatch ${state.preset === p.id ? 'on' : ''}`}
-                  style={{ background: (p.vars && p.vars['--accent']) || (p.colors && p.colors.accent) || '#888' }}
+                  style={{ background: p.swatch || (p.vars && p.vars['--accent']) || (p.colors && p.colors.accent) || '#888' }}
                   onClick={() => choose(p)}
                 />
               ))}

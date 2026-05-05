@@ -2570,7 +2570,6 @@ function SettingScreen() {
   const [themeState, setThemeState] = useState(() =>
     (window.OB_THEME && window.OB_THEME.loadTheme()) || { preset: 'moonlight-purple' }
   );
-  const [customOpen, setCustomOpen] = useState(false);
 
   useEffect(() => {
     api('/api/trash')
@@ -2593,17 +2592,14 @@ function SettingScreen() {
   const choosePreset = (preset) => {
     if (!window.OB_THEME) return;
     const next = { preset: preset.id };
-    window.OB_THEME.applyTheme(preset.colors);
+    // 用 applyCurrent 统一入口, 自动判断走 vars / colors 路径
     window.OB_THEME.saveTheme(next);
+    if (window.OB_THEME.applyCurrent) {
+      window.OB_THEME.applyCurrent(next);
+    } else if (preset.colors) {
+      window.OB_THEME.applyTheme(preset.colors);  // 老版本 fallback
+    }
     setThemeState(next);
-  };
-  const applyCustomTheme = (custom) => {
-    if (!window.OB_THEME) return;
-    const next = { preset: 'custom', custom };
-    window.OB_THEME.applyTheme(custom);
-    window.OB_THEME.saveTheme(next);
-    setThemeState(next);
-    setCustomOpen(false);
   };
   const PRESETS = (window.OB_THEME && window.OB_THEME.PRESETS) || [];
 
@@ -2643,20 +2639,12 @@ function SettingScreen() {
                       key={p.id}
                       type="button"
                       aria-label={p.name}
-                      title={p.name}
+                      title={`${p.name} — ${p.desc || ''}`}
                       className={'setting-theme-swatch' + (themeState.preset === p.id ? ' on' : '')}
-                      style={{ background: p.colors.accent }}
+                      style={{ background: p.swatch || (p.vars && p.vars['--accent']) || (p.colors && p.colors.accent) || '#888' }}
                       onClick={() => choosePreset(p)}
                     />
                   ))}
-                  <button
-                    type="button"
-                    aria-label="自定义"
-                    title="自定义"
-                    className={'setting-theme-swatch custom' + (themeState.preset === 'custom' ? ' on' : '')}
-                    style={{ background: 'conic-gradient(from 0deg, #6e4f9a, #d291b3, #d4a85f, #6e4f9a)' }}
-                    onClick={() => setCustomOpen(true)}
-                  />
                 </div>
               </div>
             </div>
@@ -2707,11 +2695,6 @@ function SettingScreen() {
         </div>
       </div>
       <TabBar active="setting"/>
-      {customOpen && window.ThemeCustomModal && React.createElement(window.ThemeCustomModal, {
-        initial: window.OB_THEME.getCurrentColors(themeState),
-        onClose: () => setCustomOpen(false),
-        onApply: applyCustomTheme,
-      })}
     </div>
   );
 }
