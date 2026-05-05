@@ -203,6 +203,7 @@
       // ink-2/3/4 不再 JS 端线性 shift, 改由 :root color-mix 朝 --bg 混合
       // 好处: 派生色随 ink 和 bg 双向自适应, 不会因 ink 偏淡导致 ink-4 看不见
     }
+    if (typeof _updateMetaThemeColor === 'function') _updateMetaThemeColor();
   }
 
   // 应用一个新格式预设 (含任意 CSS 变量覆盖)
@@ -262,6 +263,23 @@
     if (preset.vars['--paper'] && preset.vars['--paper-2'] === undefined) {
       root.setProperty('--paper-2', _shift(preset.vars['--paper'], -8));
     }
+    _updateMetaThemeColor();
+  }
+
+  // 同步更新 <meta name="theme-color"> — 控制 iOS PWA / Android Chrome
+  // 状态栏底色, 跟当前 --bg 一致, 修"页面顶部白条"问题
+  function _updateMetaThemeColor() {
+    try {
+      const bg = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim();
+      if (!bg) return;
+      let meta = document.querySelector('meta[name="theme-color"]');
+      if (!meta) {
+        meta = document.createElement('meta');
+        meta.name = 'theme-color';
+        document.head.appendChild(meta);
+      }
+      meta.content = bg;
+    } catch (_) {}
   }
 
   function loadTheme() {
