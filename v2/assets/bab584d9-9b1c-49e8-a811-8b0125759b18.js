@@ -263,7 +263,12 @@ function AppV2() {
           lastWriteDate={lastWriteDate}
           todayDate={TODAY}
           focusToday={focusToday}
-          totalDays={new Set(data.map(i => i.date)).size}
+          totalDays={(() => {
+            if (!data.length) return 1;
+            const earliest = data.reduce((m, i) => i.date < m ? i.date : m, data[0].date);
+            return dayDiff(TODAY, earliest) + 1;
+          })()}
+          totalHi={data.filter(i => i.importance >= 8 || i.highlight).length}
           onWrite={() => setWriteOpen(true)}
           onJumpToday={jumpToToday}
         />
