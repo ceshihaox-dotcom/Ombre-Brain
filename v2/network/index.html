@@ -3409,8 +3409,14 @@ body {
   padding: 14px 16px;
   font-size: 12px;
   display: flex; flex-direction: column; gap: 16px;
-  max-height: calc(100% - 36px);
+  /* 改 height 让侧栏始终填满可视高度, 标签区 flex-grow 利用空间 */
+  height: calc(100% - 36px);
   overflow-y: auto;
+}
+/* 最后一个 section (标签 / 点选筛选) flex-grow 占满剩余 */
+.cs-left .cs-section:last-child {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .cs-left::-webkit-scrollbar { width: 4px; }
 .cs-left::-webkit-scrollbar-thumb { background: var(--c-line-2); border-radius: 2px; }
@@ -3518,7 +3524,8 @@ body {
 /* 标签筛选 — 高度受控 + 滚动条减淡 + tag count display */
 .cs-tag-filters {
   display: flex; flex-wrap: wrap; gap: 5px;
-  max-height: 220px;
+  flex: 1 1 auto;
+  min-height: 220px;
   overflow-y: auto;
   padding-right: 2px;
   scrollbar-width: thin;
