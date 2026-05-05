@@ -337,7 +337,18 @@ def sanitize_name(name: str) -> str:
     """
     if not isinstance(name, str):
         return "unnamed"
-    cleaned = re.sub(r"[^\w\s\u4e00-\u9fff-]", "", name, flags=re.UNICODE)
+    # \u767d\u540d\u5355: \w (UNICODE \u5b57\u6bcd\u6570\u5b57\u4e0b\u5212\u7ebf + CJK) + \u7a7a\u767d + \u5e38\u7528\u4e2d\u82f1\u6587\u6807\u70b9
+    # \u8def\u5f84\u654f\u611f\u5b57\u7b26 (/ \ : * < > | " ?) \u4ecd\u7136\u8fc7\u6ee4\u6389, \u8de8\u5e73\u53f0\u6587\u4ef6\u7cfb\u7edf\u90fd\u5b89\u5168
+    cleaned = re.sub(
+        r"[^\w\s\u4e00-\u9fff\-.,!()'\u3002\u3001\uff0c\uff01\uff1f\uff08\uff09\u300c\u300d\u00b7\u2014\u2026]",
+        "",
+        name,
+        flags=re.UNICODE,
+    )
+    # \u8def\u5f84\u904d\u5386\u9632\u5fa1: .. \u6216\u66f4\u591a\u8fde\u7eed . \u6298\u6210\u5355\u4e2a
+    cleaned = re.sub(r"\.{2,}", ".", cleaned)
+    # \u9996\u90e8 . \u53bb\u6389 (\u907f\u514d .hidden / \u9690\u5f0f\u76f8\u5bf9\u8def\u5f84)
+    cleaned = cleaned.lstrip(".")
     cleaned = cleaned.strip()[:80]
     return cleaned if cleaned else "unnamed"
 
