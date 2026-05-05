@@ -17,7 +17,7 @@
 
   --accent:    #6e4f9a;
   --accent-2:  #8265b3;
-  --accent-3:  rgba(110, 79, 154, 0.10);
+  --accent-3:  var(--accent-a10);
 
   --rose:      #d291b3;
   --rose-deep: #b06998;
@@ -266,7 +266,7 @@ input, textarea { font: inherit; color: inherit; }
   border-radius: 14px;
   padding: 11px 14px;
   display: flex; align-items: center; gap: 10px;
-  box-shadow: 0 4px 14px -10px rgba(110,79,154,0.2);
+  box-shadow: 0 4px 14px -10px var(--accent-a20);
 }
 .home-search-icon {
   font-family: var(--mono); font-size: 14px;
@@ -505,9 +505,9 @@ input, textarea { font: inherit; color: inherit; }
   cursor: pointer;
 }
 .day-card.hi {
-  border-color: rgba(110, 79, 154, 0.25);
+  border-color: var(--accent-a25);
   background:
-    linear-gradient(180deg, rgba(110, 79, 154, 0.04), transparent 30%),
+    linear-gradient(180deg, var(--accent-a06), transparent 30%),
     var(--paper);
 }
 .day-card-hd {
@@ -661,7 +661,7 @@ input, textarea { font: inherit; color: inherit; }
   display: flex; align-items: center; gap: 10px;
   margin: 0 0 14px;
   padding: 9px 12px;
-  background: linear-gradient(90deg, rgba(110, 79, 154, 0.08), rgba(210, 145, 179, 0.06) 70%, transparent);
+  background: linear-gradient(90deg, var(--accent-a08), var(--rose-a08) 70%, transparent);
   border: 0.5px solid var(--line);
   border-radius: 10px;
 }
@@ -669,8 +669,8 @@ input, textarea { font: inherit; color: inherit; }
   width: 36px; height: 36px;
   border-radius: 50%;
   background: conic-gradient(from 0deg,
-    rgba(110,79,154,0.4), rgba(210,145,179,0.4),
-    rgba(166,163,179,0.3), rgba(110,79,154,0.4));
+    var(--accent-a40), var(--rose-a45),
+    rgba(166,163,179,0.3), var(--accent-a40));
   position: relative;
   flex-shrink: 0;
   border: 0.5px solid var(--line-2);
@@ -788,8 +788,8 @@ input, textarea { font: inherit; color: inherit; }
   cursor: pointer;
 }
 .dd-item.hi {
-  border-color: rgba(110, 79, 154, 0.22);
-  background: linear-gradient(90deg, rgba(110,79,154,0.04), transparent 30%), var(--paper);
+  border-color: var(--accent-a20);
+  background: linear-gradient(90deg, var(--accent-a06), transparent 30%), var(--paper);
 }
 .dd-item-time {
   flex-shrink: 0;
@@ -914,7 +914,7 @@ input, textarea { font: inherit; color: inherit; }
   border: 0.5px solid currentColor;
   color: var(--ink-3);
 }
-.mem-full-tag.feel  { color: var(--rose-deep); background: rgba(210,145,179,0.08); }
+.mem-full-tag.feel  { color: var(--rose-deep); background: var(--rose-a08); }
 .mem-full-tag.hi    { color: var(--accent); background: var(--accent-3); }
 .mem-full-tag.ai    { color: var(--accent); background: var(--accent-3); }
 .mem-full-tag.noise { color: var(--ink-4); background: rgba(120,120,130,0.08); }
@@ -1171,7 +1171,7 @@ input, textarea { font: inherit; color: inherit; }
   border: 0.5px solid currentColor;
   color: var(--ink-3);
 }
-.rv-main-tag.feel { color: var(--rose-deep); background: rgba(210,145,179,0.08); }
+.rv-main-tag.feel { color: var(--rose-deep); background: var(--rose-a08); }
 .rv-main-tag.hi   { color: var(--accent); background: var(--accent-3); }
 .rv-main-tag.ai   { color: var(--accent); background: var(--accent-3); }
 .rv-main-title {
@@ -1325,7 +1325,7 @@ input, textarea { font: inherit; color: inherit; }
 }
 .rv-queue-item.cur {
   background: var(--accent-3);
-  border-color: rgba(110,79,154,0.25);
+  border-color: var(--accent-a25);
 }
 .rv-queue-item-st {
   flex-shrink: 0;
@@ -1480,10 +1480,10 @@ input, textarea { font: inherit; color: inherit; }
   display: inline-block;
 }
 .cal-swatch.empty  { background: var(--paper); border: 0.5px solid var(--line-2); }
-.cal-swatch.d1     { background: rgba(110, 79, 154, 0.12); }
-.cal-swatch.d2     { background: rgba(110, 79, 154, 0.28); }
-.cal-swatch.d3     { background: rgba(110, 79, 154, 0.55); }
-.cal-swatch.d4     { background: rgba(110, 79, 154, 0.85); }
+.cal-swatch.d1     { background: var(--accent-a10); }
+.cal-swatch.d2     { background: var(--accent-a30); }
+.cal-swatch.d3     { background: var(--accent-a55); }
+.cal-swatch.d4     { background: var(--accent-a60); }
 .cal-swatch.read   { background: rgba(166, 163, 179, 0.55); }
 .cal-swatch.unread { background: var(--amber); }
 .cal-swatch.hi     { background: var(--accent); }
@@ -1586,14 +1586,14 @@ input, textarea { font: inherit; color: inherit; }
   margin-top: 1px; color: var(--ink); line-height: 1;
 }
 
-/* 模式 1:展示(密度) */
-.mode-show .cal-cell.l1 { background: rgba(110,79,154,0.10); border-color: rgba(110,79,154,0.18); }
-.mode-show .cal-cell.l2 { background: rgba(110,79,154,0.22); border-color: rgba(110,79,154,0.30); color: var(--ink-3); }
+/* 模式 1:展示(密度) — 用主题 accent 派生, 跟主题色同步 */
+.mode-show .cal-cell.l1 { background: var(--accent-a10); border-color: var(--accent-a20); }
+.mode-show .cal-cell.l2 { background: var(--accent-a25); border-color: var(--accent-a30); color: var(--ink-3); }
 .mode-show .cal-cell.l2 .n { color: var(--ink); }
-.mode-show .cal-cell.l3 { background: rgba(110,79,154,0.45); border-color: rgba(110,79,154,0.5); color: rgba(255,255,255,0.7); }
+.mode-show .cal-cell.l3 { background: var(--accent-a45); border-color: var(--accent-a55); color: rgba(255,255,255,0.7); }
 .mode-show .cal-cell.l3 .n { color: #fff; }
 .mode-show .cal-cell.l3 .d { color: rgba(255,255,255,0.6); }
-.mode-show .cal-cell.l4 { background: rgba(110,79,154,0.78); border-color: rgba(110,79,154,0.85); color: rgba(255,255,255,0.7); }
+.mode-show .cal-cell.l4 { background: var(--accent); border-color: var(--accent); color: rgba(255,255,255,0.7); }
 .mode-show .cal-cell.l4 .n { color: #fff; }
 .mode-show .cal-cell.l4 .d { color: rgba(255,255,255,0.55); }
 .mode-show .cal-cell.today { outline: 1.5px solid var(--ink); outline-offset: -1.5px; }
@@ -1609,8 +1609,8 @@ input, textarea { font: inherit; color: inherit; }
 .mode-review .cal-cell.read.dense  { background: rgba(166, 163, 179, 0.36); }
 .mode-review .cal-cell.read.dense2 { background: rgba(166, 163, 179, 0.55); color: var(--ink); }
 .mode-review .cal-cell.unread {
-  border-color: var(--amber);
-  background: var(--amber-soft);
+  border-color: var(--gold);
+  background: color-mix(in oklab, var(--gold) 18%, var(--paper));
   color: var(--ink-2);
 }
 .mode-review .cal-cell.unread::after {
@@ -1619,11 +1619,11 @@ input, textarea { font: inherit; color: inherit; }
   top: 2px; right: 2px;
   width: 4px; height: 4px;
   border-radius: 50%;
-  background: var(--amber);
+  background: var(--gold);
 }
 .mode-review .cal-cell.hi {
   background: var(--accent-3);
-  border-color: rgba(110, 79, 154, 0.4);
+  border-color: var(--accent-a40);
   color: var(--accent);
   font-weight: 600;
 }
@@ -2144,8 +2144,8 @@ input, textarea { font: inherit; color: inherit; }
   margin-bottom: 8px;
 }
 .api-row.active {
-  border-color: rgba(110, 79, 154, 0.35);
-  background: linear-gradient(180deg, rgba(110, 79, 154, 0.05), transparent 50%), var(--paper);
+  border-color: var(--accent-a40);
+  background: linear-gradient(180deg, var(--accent-a06), transparent 50%), var(--paper);
 }
 .api-row-mid { flex: 1; min-width: 0; }
 .api-row-name {
@@ -2237,7 +2237,7 @@ input, textarea { font: inherit; color: inherit; }
 }
 .import-file-zone.has-file {
   border-style: solid;
-  border-color: rgba(110, 79, 154, 0.3);
+  border-color: var(--accent-a30);
   background: var(--accent-3);
   color: var(--accent);
 }
@@ -2273,7 +2273,7 @@ input, textarea { font: inherit; color: inherit; }
   background: var(--paper);
 }
 .import-progress-card.running {
-  border-color: rgba(110, 79, 154, 0.35);
+  border-color: var(--accent-a40);
   background: linear-gradient(180deg, var(--accent-3), transparent 60%), var(--paper);
 }
 .import-progress-card.done {
@@ -2718,12 +2718,12 @@ input, textarea { font: inherit; color: inherit; }
 }
 .edit-toggle.on {
   background: var(--accent-3);
-  border-color: rgba(110,79,154,0.3);
+  border-color: var(--accent-a30);
   color: var(--accent);
 }
 .edit-toggle.on .ic { color: var(--accent); }
 .edit-toggle.feel.on {
-  background: rgba(210,145,179,0.12);
+  background: var(--rose-a12);
   border-color: rgba(176,105,152,0.35);
   color: var(--rose-deep);
 }
@@ -2743,7 +2743,7 @@ input, textarea { font: inherit; color: inherit; }
 /* 动作类按钮(非 toggle): 透明底 + 虚线边 + accent 文字, 跟 feel/钉决 区分 */
 .edit-toggle.action {
   background: transparent;
-  border: 0.5px dashed rgba(110,79,154,0.4);
+  border: 0.5px dashed var(--accent-a40);
   color: var(--accent);
 }
 .edit-toggle.action .ic { color: var(--accent); font-style: normal; font-size: 17px; }
@@ -3046,7 +3046,7 @@ input, textarea { font: inherit; color: inherit; }
 }
 .mood-sens-chip.on {
   background: var(--accent-3);
-  border-color: rgba(110,79,154,0.4);
+  border-color: var(--accent-a40);
   color: var(--accent);
   font-weight: 600;
 }
@@ -3112,7 +3112,7 @@ input, textarea { font: inherit; color: inherit; }
 }
 .mood-result-src:active { background: var(--bg-2); }
 .mood-result-src.on {
-  border-color: rgba(110,79,154,0.45);
+  border-color: var(--accent-a45);
   background: var(--accent-3);
 }
 .mood-result-src-ttl {

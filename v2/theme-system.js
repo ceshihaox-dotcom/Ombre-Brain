@@ -49,7 +49,7 @@
         '--bg': '#fffeec',
         '--bg-2': '#fbf6df',
         '--paper': '#ffffff',
-        '--paper-2': '#f8efe6',
+        '--paper-2': '#faf6e6',
         '--ink': '#4e416f',
         '--ink-2': '#6b5d8e',
         '--ink-3': '#8e82ad',
