@@ -2580,12 +2580,14 @@ function SettingScreen() {
   const toggleDark = () => {
     const next = !dark;
     setDark(next);
-    if (next) {
-      document.documentElement.setAttribute('data-theme', 'dark');
-      localStorage.setItem('mobile-theme', 'dark');
+    localStorage.setItem('mobile-theme', next ? 'dark' : 'light');
+    // 用 OB_THEME.setDarkMode 跟桌面一致 — 暗夜走 DARK_FALLBACK,
+    // 自定义色暂不参与暗夜, 避免半 themed 状态显示异常
+    if (window.OB_THEME && window.OB_THEME.setDarkMode) {
+      window.OB_THEME.setDarkMode(next);
     } else {
-      document.documentElement.removeAttribute('data-theme');
-      localStorage.setItem('mobile-theme', 'light');
+      if (next) document.documentElement.setAttribute('data-theme', 'dark');
+      else document.documentElement.removeAttribute('data-theme');
     }
   };
 
@@ -3302,9 +3304,16 @@ function PlaceholderScreen({ tab, ic, title, sub }) {
 
 function App() {
   // 暗夜模式:挂载时按 localStorage 应用 data-theme
+  // 用 setDarkMode 让 OB_THEME 重跑 applyCurrent, 确保暗夜走 DARK_FALLBACK
+  // 而非用户存的 custom 色 (避免半 themed 异常)
   useEffect(() => {
     const saved = localStorage.getItem('mobile-theme');
-    if (saved === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    const isDark = saved === 'dark';
+    if (window.OB_THEME && window.OB_THEME.setDarkMode) {
+      window.OB_THEME.setDarkMode(isDark);
+    } else if (isDark) {
+      document.documentElement.setAttribute('data-theme', 'dark');
+    }
   }, []);
 
   // 开屏始终落到记忆首页:tab 类路由(review/cal/setting)重置到 home,
