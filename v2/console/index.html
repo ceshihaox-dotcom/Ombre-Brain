@@ -3123,7 +3123,19 @@
 * { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 /* 隐藏滚动条上下箭头按钮 (Windows Chrome 默认会显示, macOS 不显示) */
-::-webkit-scrollbar-button { display: none !important; }
+::-webkit-scrollbar-button,
+::-webkit-scrollbar-button:start,
+::-webkit-scrollbar-button:end,
+::-webkit-scrollbar-button:vertical,
+::-webkit-scrollbar-button:horizontal,
+::-webkit-scrollbar-button:vertical:start:decrement,
+::-webkit-scrollbar-button:vertical:end:increment,
+::-webkit-scrollbar-button:horizontal:start:decrement,
+::-webkit-scrollbar-button:horizontal:end:increment {
+  display: none !important;
+  height: 0 !important;
+  width: 0 !important;
+}
 body {
   background:
     radial-gradient(1200px 700px at 90% -10%, rgba(176, 120, 200, 0.10), transparent 60%),
