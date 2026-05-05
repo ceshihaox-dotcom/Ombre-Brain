@@ -424,11 +424,22 @@
       setActivePicker(null);
     };
 
+    // 关 panel 时若有未应用的 draft, 自动还原 (避免视觉以为已保存但 storage 没动)
+    const togglePanel = () => {
+      if (open && customOpen && initialColors) {
+        window.OB_THEME.applyTheme(initialColors);
+        setCustomOpen(false);
+        setDraftColors(null);
+        setInitialColors(null);
+      }
+      setOpen(o => !o);
+    };
+
     return (
       <div className="ob-theme-toggle-wrap">
         <button
           className="ob-theme-btn"
-          onClick={() => setOpen(o => !o)}
+          onClick={togglePanel}
           title="切换主题色"
         >
           <span className="ob-theme-btn-mark"/>
