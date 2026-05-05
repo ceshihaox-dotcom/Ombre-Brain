@@ -162,25 +162,73 @@
   if (typeof React === 'undefined' || typeof ReactDOM === 'undefined') return;
   const { useState } = React;
 
+  const CUSTOM_ROWS = [
+    ['accent', '强调色', '主紫色 · 按钮 / 链接 / 重要 chip'],
+    ['rose',   '情感色', 'feel 桶 / 温度感'],
+    ['gold',   '重要色', '★ 重要 / 永久标记'],
+    ['bg',     '页面底色', '页面背景 (淡紫灰)'],
+    ['paper',  '卡片色',   '记忆卡片 / 模态框纸面'],
+    ['ink',    '文本色',   '主文字深色 (近黑墨紫)'],
+  ];
+
   function ThemeToggle() {
     const [open, setOpen] = useState(false);
     const [state, setState] = useState(() => window.OB_THEME.loadTheme() || { preset: 'moonlight-purple' });
     const [customOpen, setCustomOpen] = useState(false);
+    // 抽屉打开时记下原色, 用于"重置"和"取消"还原
+    const [initialColors, setInitialColors] = useState(null);
+    const [draftColors, setDraftColors] = useState(null);
 
     const choose = (preset) => {
+      // 选预设时若抽屉开着, 顺手关掉并放弃 draft (要切换到新预设了)
+      if (customOpen) {
+        setCustomOpen(false);
+        setDraftColors(null);
+        setInitialColors(null);
+      }
       const next = { preset: preset.id };
       window.OB_THEME.applyTheme(preset.colors);
       window.OB_THEME.saveTheme(next);
       setState(next);
       setOpen(false);
     };
-    const applyCustom = (custom) => {
-      const next = { preset: 'custom', custom };
-      window.OB_THEME.applyTheme(custom);
+
+    const toggleCustom = () => {
+      if (customOpen) {
+        // 二次点击 = 取消 + 收起 (还原到打开前)
+        if (initialColors) window.OB_THEME.applyTheme(initialColors);
+        setCustomOpen(false);
+        setDraftColors(null);
+        setInitialColors(null);
+      } else {
+        const initial = window.OB_THEME.getCurrentColors(state);
+        setInitialColors(initial);
+        setDraftColors(initial);
+        setCustomOpen(true);
+      }
+    };
+
+    const tweakColor = (key, value) => {
+      const next = { ...draftColors, [key]: value };
+      setDraftColors(next);
+      window.OB_THEME.applyTheme(next);
+    };
+
+    const resetDraft = () => {
+      if (!initialColors) return;
+      setDraftColors(initialColors);
+      window.OB_THEME.applyTheme(initialColors);
+    };
+
+    const applyCustom = () => {
+      if (!draftColors) return;
+      const next = { preset: 'custom', custom: draftColors };
+      window.OB_THEME.applyTheme(draftColors);
       window.OB_THEME.saveTheme(next);
       setState(next);
       setCustomOpen(false);
-      setOpen(false);
+      setDraftColors(null);
+      setInitialColors(null);
     };
 
     return (
@@ -193,34 +241,52 @@
           <span className="ob-theme-btn-mark"/>
         </button>
         {open && (
-          <div className="ob-theme-panel">
-            {window.OB_THEME.PRESETS.map(p => (
+          <div className={`ob-theme-panel ${customOpen ? 'is-expanded' : ''}`}>
+            <div className="ob-theme-panel-swatches">
+              {window.OB_THEME.PRESETS.map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  aria-label={p.name}
+                  title={p.name}
+                  className={`ob-theme-swatch ${state.preset === p.id ? 'on' : ''}`}
+                  style={{ background: p.colors.accent }}
+                  onClick={() => choose(p)}
+                />
+              ))}
               <button
-                key={p.id}
                 type="button"
-                aria-label={p.name}
-                title={p.name}
-                className={`ob-theme-swatch ${state.preset === p.id ? 'on' : ''}`}
-                style={{ background: p.colors.accent }}
-                onClick={() => choose(p)}
+                aria-label="自定义"
+                title={customOpen ? '收起自定义' : '自定义配色'}
+                className={`ob-theme-swatch custom ${state.preset === 'custom' ? 'on' : ''} ${customOpen ? 'is-drawer-open' : ''}`}
+                style={{ background: 'conic-gradient(from 0deg, #6e4f9a, #d291b3, #d4a85f, #6e4f9a)' }}
+                onClick={toggleCustom}
               />
-            ))}
-            <button
-              type="button"
-              aria-label="自定义"
-              title="自定义"
-              className={`ob-theme-swatch custom ${state.preset === 'custom' ? 'on' : ''}`}
-              style={{ background: 'conic-gradient(from 0deg, #6e4f9a, #d291b3, #d4a85f, #6e4f9a)' }}
-              onClick={() => setCustomOpen(true)}
-            />
+            </div>
+            {customOpen && draftColors && (
+              <div className="ob-theme-drawer">
+                <div className="ob-theme-drawer-hint-top">实时预览 · 点 ⊕ 还原 · 应用保存</div>
+                {CUSTOM_ROWS.map(([key, label, hint]) => (
+                  <div key={key} className="ob-theme-drawer-row">
+                    <div className="ob-theme-drawer-row-l">
+                      <div className="ob-theme-drawer-lbl">{label}</div>
+                      <div className="ob-theme-drawer-hint">{hint}</div>
+                    </div>
+                    <input
+                      type="color"
+                      value={draftColors[key] || window.OB_THEME.FALLBACK[key]}
+                      onChange={e => tweakColor(key, e.target.value)}
+                    />
+                    <span className="ob-theme-drawer-val">{draftColors[key] || window.OB_THEME.FALLBACK[key]}</span>
+                  </div>
+                ))}
+                <div className="ob-theme-drawer-foot">
+                  <button className="ob-theme-drawer-btn ghost" onClick={resetDraft} title="恢复到打开前">⊕ 重置</button>
+                  <button className="ob-theme-drawer-btn primary" onClick={applyCustom}>应用</button>
+                </div>
+              </div>
+            )}
           </div>
-        )}
-        {customOpen && (
-          <ThemeCustomModal
-            initial={window.OB_THEME.getCurrentColors(state)}
-            onClose={() => setCustomOpen(false)}
-            onApply={applyCustom}
-          />
         )}
       </div>
     );
