@@ -4300,13 +4300,25 @@ body {
   border: 0.5px solid var(--line-2);
   border-radius: 999px;
   box-shadow: 0 12px 32px -8px rgba(26,25,34,0.18);
-  padding: 8px 12px;
+  z-index: 100;
+  animation: obThemeFadeIn .14s ease-out;
+  transition: border-radius .2s ease, width .2s ease;
+}
+.ob-theme-panel.is-expanded {
+  border-radius: 16px;
+  width: 320px;
+}
+.ob-theme-panel-swatches {
   display: flex;
   align-items: center;
   gap: 12px;
-  z-index: 100;
+  padding: 8px 12px;
   white-space: nowrap;
-  animation: obThemeFadeIn .14s ease-out;
+}
+.ob-theme-panel.is-expanded .ob-theme-panel-swatches {
+  border-bottom: 0.5px solid var(--line);
+  justify-content: space-between;
+  padding: 10px 14px;
 }
 @keyframes obThemeFadeIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
 .ob-theme-swatch {
@@ -4322,6 +4334,92 @@ body {
 .ob-theme-swatch.on {
   box-shadow: 0 0 0 1.5px var(--paper), 0 0 0 3px var(--ink);
   border-color: transparent;
+}
+.ob-theme-swatch.is-drawer-open {
+  box-shadow: 0 0 0 1.5px var(--paper), 0 0 0 3px var(--accent);
+  transform: scale(1.08);
+}
+
+/* ── 自定义配色抽屉 (内联展开, 不遮挡页面) ── */
+.ob-theme-drawer {
+  padding: 6px 14px 12px;
+  animation: obDrawerSlide .22s ease-out;
+}
+@keyframes obDrawerSlide {
+  from { opacity: 0; max-height: 0; }
+  to   { opacity: 1; max-height: 600px; }
+}
+.ob-theme-drawer-hint-top {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-4);
+  letter-spacing: 0.06em;
+  padding: 6px 0 4px;
+  border-bottom: 0.5px dashed var(--line);
+  margin-bottom: 4px;
+}
+.ob-theme-drawer-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 7px 0;
+  border-bottom: 0.5px dashed var(--line);
+}
+.ob-theme-drawer-row:last-of-type { border-bottom: 0; }
+.ob-theme-drawer-row-l { flex: 1; min-width: 0; }
+.ob-theme-drawer-lbl {
+  font: 600 12.5px var(--sans);
+  color: var(--ink);
+}
+.ob-theme-drawer-hint {
+  font-size: 10.5px;
+  color: var(--ink-4);
+  margin-top: 1px;
+}
+.ob-theme-drawer-row input[type=color] {
+  width: 32px; height: 26px;
+  border: 0.5px solid var(--line-2);
+  border-radius: 5px;
+  background: none;
+  cursor: pointer;
+  flex-shrink: 0;
+  padding: 2px;
+}
+.ob-theme-drawer-val {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--ink-3);
+  width: 60px;
+  text-align: right;
+  flex-shrink: 0;
+}
+.ob-theme-drawer-foot {
+  display: flex; gap: 8px;
+  justify-content: flex-end;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 0.5px solid var(--line);
+}
+.ob-theme-drawer-btn {
+  appearance: none;
+  border: 0.5px solid var(--line-2);
+  background: var(--paper);
+  color: var(--ink);
+  padding: 6px 14px;
+  border-radius: 999px;
+  font: 500 12px var(--sans);
+  cursor: pointer;
+  transition: all .15s;
+}
+.ob-theme-drawer-btn:hover:not(.primary) { background: var(--bg-2); border-color: var(--ink-3); }
+.ob-theme-drawer-btn.ghost { color: var(--ink-3); }
+.ob-theme-drawer-btn.primary {
+  background: var(--ink);
+  color: var(--paper);
+  border-color: var(--ink);
+}
+.ob-theme-drawer-btn.primary:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: translateY(-1px);
 }
 
 .ob-theme-modal-mask {
