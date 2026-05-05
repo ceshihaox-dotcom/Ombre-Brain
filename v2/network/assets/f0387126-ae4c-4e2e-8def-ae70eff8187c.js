@@ -283,18 +283,6 @@ function ConstellationApp() {
           </div>
         </div>
         <div className="cs-topbar-actions">
-          <div className="cs-search">
-            <span className="cs-search-icon">⌕</span>
-            <input
-              type="text"
-              placeholder="搜索记忆…  /"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-            {searchQuery && (
-              <button className="cs-search-clear" onClick={() => setSearchQuery('')}>✕</button>
-            )}
-          </div>
           <button className="cs-dark-toggle" title="切换昼夜（星图固定夜幕）">☾</button>
         </div>
       </header>
