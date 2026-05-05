@@ -1346,7 +1346,7 @@ function ImportWorkbench() {
                   <div className="imp-attr-key">情感</div>
                   <div className={`imp-toggle feel${active.feel ? ' on' : ''}`} onClick={() => updateActive({ feel: !active.feel })}>
                     <div className="imp-toggle-dot" />
-                    <span style={{ fontSize: 12, color: active.feel ? '#b06998' : 'var(--ink-3)', fontFamily: 'var(--mono)' }}>
+                    <span style={{ fontSize: 12, color: active.feel ? 'var(--rose-deep)' : 'var(--ink-3)', fontFamily: 'var(--mono)' }}>
                       {active.feel ? '❀ feel' : '中性'}
                     </span>
                   </div>
