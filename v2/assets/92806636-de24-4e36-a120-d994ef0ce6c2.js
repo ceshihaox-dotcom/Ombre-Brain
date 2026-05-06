@@ -17,27 +17,9 @@ function DarkToggle({ dark, onChange }) {
 
 // ── 今天状态条 ────────────────────────────────────────
 function TodayBar({ todayItems, lastWriteDate, todayDate, focusToday, totalDays, totalHi, totalCount, onWrite, onJumpToday }) {
-  let state, label, sub;
-  if (todayItems.length > 0) {
-    state = 'on';
-    label = `第 ${totalDays || 1} 天 · ${totalCount || todayItems.length} 段记忆沉淀于此`;
-    sub = totalHi > 0 ? `${totalHi} 条值得被反复想起` : '继续记录这一天';
-  } else if (lastWriteDate) {
-    const d = dayDiff(todayDate, lastWriteDate);
-    if (d <= 1) {
-      state = 'idle';
-      label = '今天还没记录';
-      sub = '在你忘记之前 · 写一条';
-    } else {
-      state = 'cold';
-      label = `已经 ${d} 天没写`;
-      sub = '记忆会褪色 · 现在补一条';
-    }
-  } else {
-    state = 'idle';
-    label = '今天还没记录';
-    sub = '从这里开始你的第一条';
-  }
+  const state = 'on';
+  const label = `第 ${totalDays || 1} 天 · ${totalCount || todayItems.length} 段记忆沉淀于此`;
+  const sub = totalHi > 0 ? `${totalHi} 条值得被反复想起` : '继续记录这一天';
 
   const f = formatDateV2(todayDate);
   return (

@@ -173,6 +173,7 @@ function AppV2() {
 
         <TodayBar
           todayItems={todayItems}
+          allItems={data}
           lastWriteDate={lastWriteDate}
           todayDate={TODAY}
           onWrite={() => setWriteOpen(true)}
