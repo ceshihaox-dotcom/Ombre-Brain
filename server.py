@@ -2431,10 +2431,21 @@ async def api_backup(request):
       OMBRE_BACKUP_REPO  = https://github.com/<user>/<repo>.git
       OMBRE_BACKUP_TOKEN = github fine-grained PAT (Contents R/W)
       OMBRE_BACKUP_USER  = github 用户名
+    可选鉴权:
+      OMBRE_ADMIN_TOKEN  = 设了的话,调用方必须带 ?token=... 或 X-Admin-Token: ... header.
+                           没设则不鉴权(向后兼容老部署)。强烈建议公网部署设上,
+                           否则攻击者可以无限触发备份消耗 GitHub PAT 配额。
     UptimeRobot 每天 ping 一次此 endpoint 即可."""
     from starlette.responses import JSONResponse
     import tempfile, shutil
     from datetime import datetime as _dt
+
+    # 可选 admin token 鉴权: 配置了就强制校验, 没配则放行
+    expected = os.environ.get("OMBRE_ADMIN_TOKEN", "").strip()
+    if expected:
+        provided = request.query_params.get("token") or request.headers.get("X-Admin-Token", "")
+        if provided != expected:
+            return JSONResponse({"error": "invalid or missing admin token"}, status_code=401)
 
     repo_url = os.environ.get("OMBRE_BACKUP_REPO", "").strip()
     token    = os.environ.get("OMBRE_BACKUP_TOKEN", "").strip()
@@ -2611,6 +2622,8 @@ async def api_breath_debug(request):
                     "type": meta.get("type", "dynamic"),
                     "resolved": resolved,
                     "pinned": meta.get("pinned", False),
+                    "protected": is_protected(meta),
+                    "highlight": is_highlighted(meta),
                     "scores": {
                         "topic": round(topic, 4),
                         "emotion": round(emotion, 4),
