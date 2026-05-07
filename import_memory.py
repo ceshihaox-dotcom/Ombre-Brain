@@ -685,16 +685,18 @@ class ImportEngine:
                             await self.embedding_engine.generate_and_store(bucket_id, item["content"])
                         except Exception:
                             pass
-                    # API 级 preserve_raw=1 时,raw_source 优先用 LLM 推出的精准片段;
-                    # 没给 source_excerpt 时改用 item.content(整理过但跟该 item 强相关)兜底,
-                    # **不再**回退整 chunk content —— chunk 包含同段里其他 items 的对话,
-                    # 写进来会让"查看原文"出现两条无关内容 (用户反馈过的 bug)
+                    # API 级 preserve_raw=1 时,raw_source 只能用 LLM 输出的 source_excerpt:
+                    # - chunk content 会串入其他 items 对话(旧 bug)
+                    # - item.content 是脱水后正文,伪装成原文反而误导用户
+                    # 没 source_excerpt 就不写 raw_source,前端显示"无原文"是诚实的呈现。
+                    # 想让所有记忆都有原文片段,需要打开 OMBRE_LONG_EXCERPT=true 让 LLM 必出此字段。
                     if preserve_raw and bucket_id:
-                        try:
-                            raw_src = item.get("source_excerpt") or item.get("content", "")
-                            await self.bucket_mgr.update(bucket_id, raw_source=raw_src)
-                        except Exception:
-                            pass
+                        src_excerpt = item.get("source_excerpt", "")
+                        if src_excerpt and src_excerpt.strip():
+                            try:
+                                await self.bucket_mgr.update(bucket_id, raw_source=src_excerpt)
+                            except Exception:
+                                pass
                     self.state.data["memories_raw"] += 1
                     self.state.data["memories_created"] += 1
                 else:

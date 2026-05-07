@@ -370,14 +370,20 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
               </>
             ) : (
               // 非编辑态:左下角放"查看原文"按钮(替代旧的 ⌘+E / ← → / Esc 文字提示)
-              // body 为空(列表里 lazy 还没拉 / 真没正文) 时按钮 disable
-              <button
-                type="button"
-                className="ob-modal-btn"
-                onClick={() => setRawOpen(true)}
-                disabled={!view.body || !view.body.trim()}
-                title={view.body && view.body.trim() ? '查看完整原文' : '无原文'}
-              >❡ 查看原文</button>
+              // 读 metadata.raw_source(真原文片段) — 不是 body(脱水后整理的正文,不算原文)
+              // raw_source 为空时按钮可点,但浮层显示"无原文"提示 — 诚实呈现状态
+              (() => {
+                const rawSrc = view._meta && view._meta.raw_source;
+                const hasRaw = !!(rawSrc && String(rawSrc).trim());
+                return (
+                  <button
+                    type="button"
+                    className="ob-modal-btn"
+                    onClick={() => setRawOpen(true)}
+                    title={hasRaw ? '查看完整原文片段' : '此条没有保存原文片段'}
+                  >❡ 查看原文{!hasRaw ? ' (无)' : ''}</button>
+                );
+              })()
             )}
           </div>
           <div className="ob-modal-actions">
@@ -464,10 +470,31 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
               <h2 className="ob-modal-title">{view.title}</h2>
             </header>
             <div className="ob-modal-body">
-              <div
-                className="ob-modal-content"
-                style={{ whiteSpace: 'pre-wrap', lineHeight: 1.75 }}
-              >{view.body || '(无原文)'}</div>
+              {(() => {
+                const rawSrc = view._meta && view._meta.raw_source;
+                const hasRaw = !!(rawSrc && String(rawSrc).trim());
+                if (hasRaw) {
+                  return (
+                    <div
+                      className="ob-modal-content"
+                      style={{ whiteSpace: 'pre-wrap', lineHeight: 1.75 }}
+                    >{rawSrc}</div>
+                  );
+                }
+                return (
+                  <div
+                    className="ob-modal-content"
+                    style={{ opacity: 0.55, fontStyle: 'italic', lineHeight: 1.7 }}
+                  >
+                    此条没有保存原文片段。可能是早期导入(还没引入 source_excerpt 机制),
+                    或导入时 LLM 没输出此字段。
+                    <br /><br />
+                    <span style={{ fontSize: 13, opacity: 0.7 }}>
+                      （注:此处显示的是「原文」—— 即导入时 LLM 摘自对话的精准片段。整理后的脱水正文请回到详情界面查看。）
+                    </span>
+                  </div>
+                );
+              })()}
             </div>
           </div>
         </div>
