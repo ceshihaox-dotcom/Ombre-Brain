@@ -92,6 +92,22 @@
     return r.json();
   };
 
+  // 全字段搜索(标题 / 摘要 / 标签 / 域 / 完整正文) —— 调 /api/search 拿后端 fuzz 命中
+  // 默认 include_vector=false:只返回真的"含 query"的桶,不掺向量(语义)结果,
+  //   避免出现 title/summary/body 都不含 query 但因语义相近被混进结果的污染情况
+  // 返回 { keyword_hits: [{id, name, score, matched_in: ['title'|'summary'|'tag'|'domain'|'content'], ...}], vector_hits: [] }
+  // 调用方拿到 ids 集合作为白名单过滤本地 items;matched_in 给 UI 标"命中: 正文"用
+  window.__obSearch = async function (query, opts) {
+    opts = opts || {};
+    var q = (query || '').trim();
+    if (!q) return { query: '', keyword_hits: [], vector_hits: [] };
+    var params = new URLSearchParams({ q: q, limit: String(opts.limit || 50) });
+    if (opts.includeVector) params.set('include_vector', 'true');
+    var r = await fetch('/api/search?' + params.toString(), { credentials: 'same-origin' });
+    if (!r.ok) throw new Error('GET /api/search ' + r.status);
+    return r.json();
+  };
+
   // 新建桶 — WriteDrawer.onSave 走这里
   window.__obCreateBucket = async function (entry) {
     var eventTime = null;

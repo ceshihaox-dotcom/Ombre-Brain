@@ -679,8 +679,9 @@ class BucketManager:
             meta = bucket.get("metadata", {})
 
             try:
-                # Dim 1: topic relevance (fuzzy text, 0~1)
-                topic_score = self._calc_topic_score(query, bucket)
+                # Dim 1: topic relevance (fuzzy text, 0~1) + 命中字段
+                topic_match = self._calc_topic_match(query, bucket)
+                topic_score = topic_match["score"]
 
                 # Dim 2: emotion resonance (coordinate distance, 0~1)
                 emotion_score = self._calc_emotion_score(
@@ -711,6 +712,8 @@ class BucketManager:
 
                 if normalized >= self.fuzzy_threshold:
                     bucket["score"] = round(normalized, 2)
+                    bucket["matched_in"] = topic_match["matched_in"]
+                    bucket["field_scores"] = topic_match["field_scores"]
                     scored.append(bucket)
             except Exception as e:
                 logger.warning(
@@ -724,34 +727,78 @@ class BucketManager:
 
     # ---------------------------------------------------------
     # Topic relevance sub-score:
-    # name(×3) + domain(×2.5) + tags(×2) + body(×1)
-    # 文本相关性子分：桶名(×3) + 主题域(×2.5) + 标签(×2) + 正文(×1)
+    # name(×3) + domain(×2.5) + tags(×2) + summary(×1.5) + body(×content_weight)
+    # 文本相关性子分：桶名(×3) + 主题域(×2.5) + 标签(×2) + 摘要(×1.5) + 正文(×content_weight)
     # ---------------------------------------------------------
-    def _calc_topic_score(self, query: str, bucket: dict) -> float:
+    # 命中字段判定阈值:partial_ratio >= 此值 → 该字段算"命中",写入 matched_in
+    # rapidfuzz partial_ratio 是 0-100,完整子串=100。70 取一个保守阈值,避免拼音/字符级噪声
+    _MATCH_THRESHOLD = 70
+
+    def _calc_topic_match(self, query: str, bucket: dict) -> dict:
         """
-        Calculate text dimension relevance score (0~1).
-        计算文本维度的相关性得分。
+        Calculate text dimension relevance + which fields actually matched.
+        计算文本相关性 + 标记命中字段(给前端高亮 / 区分 keyword vs vector 用)。
+
+        Returns:
+          {
+            "score": float (0~1),
+            "matched_in": list[str],  # subset of {"title","summary","tags","domain","content"}
+            "field_scores": dict[str, int],  # raw partial_ratio per field, 0~100
+          }
         """
         meta = bucket.get("metadata", {})
 
-        name_score = fuzz.partial_ratio(query, meta.get("name", "")) * 3
-        domain_score = (
-            max(
-                (fuzz.partial_ratio(query, d) for d in meta.get("domain", [])),
-                default=0,
-            )
-            * 2.5
+        # 各字段独立 partial_ratio
+        name_raw = fuzz.partial_ratio(query, meta.get("name", "") or "")
+        summary_raw = fuzz.partial_ratio(query, meta.get("summary", "") or "")
+        domain_raw = max(
+            (fuzz.partial_ratio(query, d) for d in meta.get("domain", []) if d),
+            default=0,
         )
-        tag_score = (
-            max(
-                (fuzz.partial_ratio(query, tag) for tag in meta.get("tags", [])),
-                default=0,
-            )
-            * 2
+        tag_raw = max(
+            (fuzz.partial_ratio(query, tag) for tag in meta.get("tags", []) if tag),
+            default=0,
         )
-        content_score = fuzz.partial_ratio(query, bucket.get("content", "")[:1000]) * self.content_weight
+        # 正文不再 [:1000] 截断 — 完整搜全文。fuzz.partial_ratio 是 O(N*M),
+        # 对几 KB content 仍是 ms 级,真碰到几十万字的桶再说
+        content_raw = fuzz.partial_ratio(query, bucket.get("content", "") or "")
 
-        return (name_score + domain_score + tag_score + content_score) / (100 * (3 + 2.5 + 2 + self.content_weight))
+        # 加权求和(权重表与上方注释一致)
+        name_score = name_raw * 3
+        domain_score = domain_raw * 2.5
+        tag_score = tag_raw * 2
+        summary_score = summary_raw * 1.5
+        content_score = content_raw * self.content_weight
+
+        weight_sum = 3 + 2.5 + 2 + 1.5 + self.content_weight
+        score = (name_score + domain_score + tag_score + summary_score + content_score) / (100 * weight_sum)
+
+        # 字段命中判定(给前端展示"命中: 标题/摘要/正文..."用)
+        matched_in = []
+        if name_raw >= self._MATCH_THRESHOLD: matched_in.append("title")
+        if summary_raw >= self._MATCH_THRESHOLD: matched_in.append("summary")
+        if domain_raw >= self._MATCH_THRESHOLD: matched_in.append("domain")
+        if tag_raw >= self._MATCH_THRESHOLD: matched_in.append("tag")
+        if content_raw >= self._MATCH_THRESHOLD: matched_in.append("content")
+
+        return {
+            "score": score,
+            "matched_in": matched_in,
+            "field_scores": {
+                "title": name_raw,
+                "summary": summary_raw,
+                "domain": domain_raw,
+                "tag": tag_raw,
+                "content": content_raw,
+            },
+        }
+
+    def _calc_topic_score(self, query: str, bucket: dict) -> float:
+        """
+        Backward-compatible thin wrapper — returns only the score field.
+        老接口,只返回 float 分数。新代码请用 _calc_topic_match() 拿到完整命中字段信息。
+        """
+        return self._calc_topic_match(query, bucket)["score"]
 
     # ---------------------------------------------------------
     # Emotion resonance sub-score:

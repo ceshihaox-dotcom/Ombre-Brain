@@ -241,6 +241,23 @@ function PopMenu({ label, value, options, onChange }) {
 // ── 主视图 ──
 function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem }) {
   const [query, setQuery] = cuS('');
+  // server 全字段搜索结果(覆盖完整正文 + matched_in 命中字段)
+  // 客户端 hay 永远漏正文(因 /api/buckets 不下发 body),靠这个补
+  const [searchHits, setSearchHits] = cuS(null);
+  cuE(() => {
+    const q = query.trim();
+    if (!q) { setSearchHits(null); return; }
+    let cancelled = false;
+    const tm = setTimeout(async () => {
+      try {
+        const data = await window.__obSearch(q, { limit: 100 });
+        if (!cancelled) setSearchHits((data.keyword_hits || []).map(h => ({ id: h.id, matched_in: h.matched_in || [] })));
+      } catch (e) {
+        if (!cancelled) { console.warn('[ombre cells] search failed', e); setSearchHits([]); }
+      }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(tm); };
+  }, [query]);
   const [statusFilter, setStatusFilter] = cuS('all');
   const [domainFilters, setDomainFilters] = cuS([]);  // 主题域筛选 (多选 AND)
   const [domainExpanded, setDomainExpanded] = cuS(false);  // 默认 top N, 点击展开全部
@@ -359,10 +376,17 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
       v = v.filter(i => tagFilters.every(t => (i.tags || []).includes(t)));
     }
     if (query) {
-      const q = query.toLowerCase();
-      v = v.filter(i =>
-        (i.title + ' ' + i.summary + ' ' + (i.body || '') + ' ' + (i.tags || []).join(' ')).toLowerCase().includes(q)
-      );
+      if (Array.isArray(searchHits)) {
+        // server 已返回:严格用白名单(覆盖完整正文,且不掺向量噪声)
+        const allowed = new Set(searchHits.map(h => h.id));
+        v = v.filter(i => allowed.has(i.id));
+      } else {
+        // server 还在 loading:fallback 客户端 hay (只能搜得到 title/summary/preview/tags)
+        const q = query.toLowerCase();
+        v = v.filter(i =>
+          (i.title + ' ' + i.summary + ' ' + (i.preview || '') + ' ' + (i.body || '') + ' ' + (i.tags || []).join(' ')).toLowerCase().includes(q)
+        );
+      }
     }
     v = [...v];
     if (sort === 'imp-desc') v.sort((a, b) => b.importance - a.importance);
@@ -372,7 +396,7 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
     else if (sort === 'score-desc') v.sort((a, b) => (b.score || 0) - (a.score || 0));
     else if (sort === 'score-asc')  v.sort((a, b) => (a.score || 0) - (b.score || 0));
     return v;
-  }, [items, statusFilter, domainFilters, tagFilters, query, sort]);
+  }, [items, statusFilter, domainFilters, tagFilters, query, searchHits, sort]);
 
   // 分组
   const groups = cuM(() => {

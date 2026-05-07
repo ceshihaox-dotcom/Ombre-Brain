@@ -2353,26 +2353,94 @@ async def api_bucket_create(request):
 
 @mcp.custom_route("/api/search", methods=["GET"])
 async def api_search(request):
-    """Search buckets by query."""
+    """
+    Search buckets by query — keyword channel(主) + 可选 vector channel(语义猜测).
+
+    Query params:
+      q: 搜索词(必填)
+      limit: 最多返回多少条 keyword 命中,默认 20
+      include_vector: 'true' 时附带向量(语义)结果,默认 'false' (避免污染纯关键词搜索体验)
+
+    Response shape:
+      {
+        "query": str,
+        "keyword_hits": [  # 走 fuzz partial_ratio,真的"含 query"的桶
+          {
+            id, name, score, domain, valence, arousal,
+            content_preview,
+            matched_in: ["title","summary","tag","domain","content"],  # 命中字段,前端高亮 / 标签
+            field_scores: {title, summary, domain, tag, content},  # 0-100 原分,debug 用
+            summary,  # 摘要原文(给前端命中高亮)
+            tags,
+          },
+          ...
+        ],
+        "vector_hits": [  # include_vector=true 时才有,语义相近但 query 不在文本里
+          { id, name, similarity, content_preview, summary, tags, domain }
+        ]
+      }
+    """
     from starlette.responses import JSONResponse
     query = request.query_params.get("q", "")
     if not query:
         return JSONResponse({"error": "missing q parameter"}, status_code=400)
     try:
-        matches = await bucket_mgr.search(query, limit=10)
-        result = []
+        limit = int(request.query_params.get("limit", "20"))
+    except ValueError:
+        limit = 20
+    include_vector = request.query_params.get("include_vector", "false").lower() == "true"
+
+    try:
+        # === 关键词通道 ===
+        matches = await bucket_mgr.search(query, limit=limit)
+        keyword_hits = []
         for b in matches:
             meta = b.get("metadata", {})
-            result.append({
+            keyword_hits.append({
                 "id": b["id"],
                 "name": meta.get("name", b["id"]),
                 "score": b.get("score", 0),
                 "domain": meta.get("domain", []),
+                "tags": meta.get("tags", []),
+                "summary": meta.get("summary", ""),
                 "valence": meta.get("valence", 0.5),
                 "arousal": meta.get("arousal", 0.3),
                 "content_preview": strip_wikilinks(b.get("content", ""))[:200],
+                "matched_in": b.get("matched_in", []),
+                "field_scores": b.get("field_scores", {}),
             })
-        return JSONResponse(result)
+
+        # === 向量通道(可选) — 排除已在 keyword_hits 里的桶,避免重复 ===
+        # search_similar 返回 list[tuple[bucket_id, similarity]],不是 dict
+        vector_hits = []
+        if include_vector and embedding_engine is not None:
+            try:
+                kw_ids = {h["id"] for h in keyword_hits}
+                vec_results = await embedding_engine.search_similar(query, top_k=10)
+                for bucket_id, similarity in vec_results:
+                    if bucket_id in kw_ids:
+                        continue  # 已在关键词命中里,不重复
+                    vb = await bucket_mgr.get(bucket_id)
+                    if not vb:
+                        continue
+                    vmeta = vb.get("metadata", {})
+                    vector_hits.append({
+                        "id": bucket_id,
+                        "name": vmeta.get("name", bucket_id),
+                        "similarity": round(similarity, 3),
+                        "domain": vmeta.get("domain", []),
+                        "tags": vmeta.get("tags", []),
+                        "summary": vmeta.get("summary", ""),
+                        "content_preview": strip_wikilinks(vb.get("content", ""))[:200],
+                    })
+            except Exception as ve:
+                logger.warning(f"[/api/search] vector channel failed: {ve}")
+
+        return JSONResponse({
+            "query": query,
+            "keyword_hits": keyword_hits,
+            "vector_hits": vector_hits,
+        })
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
 

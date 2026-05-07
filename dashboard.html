@@ -1256,7 +1256,9 @@ function renderBuckets(buckets) {
 async function searchBuckets(query) {
   try {
     var res = await fetch(BASE + '/api/search?q=' + encodeURIComponent(query));
-    var results = await res.json();
+    var data = await res.json();
+    // /api/search 现在返回 {keyword_hits, vector_hits},dashboard 只展示关键词命中
+    var results = Array.isArray(data) ? data : (data.keyword_hits || []);
     renderBuckets(results);
   } catch (e) {
     console.error('Search failed:', e);

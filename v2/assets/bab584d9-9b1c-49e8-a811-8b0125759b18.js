@@ -59,7 +59,34 @@ function AppV2() {
   const [loading, setLoading] = uSA(true);
   const [loadError, setLoadError] = uSA(null);
   const [query, setQuery] = uSA('');
+  // 后端全字段搜索结果(含完整正文 + matched_in 命中字段)
+  // 客户端 hay 只能搜 title/summary/preview/tag(列表 endpoint 不返回 body),
+  // 这里用 server search 补漏 — 命中 ids 作为白名单,matched_in 给 dot 旁标"命中:正文"用
+  const [searchHits, setSearchHits] = uSA(null); // null=未搜 / [{id, matched_in}]
+  const [searchLoading, setSearchLoading] = uSA(false);
   const [filters, setFilters] = uSA({ importantOnly: false, feelOnly: false, protectedOnly: false, noiseOnly: false });
+
+  // query 变化 → 250ms debounce → 调 /api/search,拿全字段命中
+  // 空 query → 清空 hits;非空 → setSearchHits(命中数组)
+  uEA(() => {
+    const q = query.trim();
+    if (!q) { setSearchHits(null); setSearchLoading(false); return; }
+    let cancelled = false;
+    setSearchLoading(true);
+    const tm = setTimeout(async () => {
+      try {
+        const data = await window.__obSearch(q, { limit: 80 });
+        if (cancelled) return;
+        const hits = (data.keyword_hits || []).map(h => ({ id: h.id, matched_in: h.matched_in || [] }));
+        setSearchHits(hits);
+      } catch (e) {
+        if (!cancelled) { console.warn('[ombre v2] search failed', e); setSearchHits([]); }
+      } finally {
+        if (!cancelled) setSearchLoading(false);
+      }
+    }, 250);
+    return () => { cancelled = true; clearTimeout(tm); };
+  }, [query]);
   const [domainFilters, setDomainFilters] = uSA([]);  // 主题域多选
   const [domainOpen, setDomainOpen] = uSA(false);     // 默认收起
   const [openDay, setOpenDay] = uSA(null);
@@ -350,6 +377,8 @@ function AppV2() {
         <TimelineV2
           items={domainFilters.length > 0 ? data.filter(b => domainFilters.every(d => (b.domain || []).includes(d))) : data}
           query={query}
+          searchHits={searchHits}
+          searchLoading={searchLoading}
           filters={filters}
           density={t.density}
           todayDate={TODAY}

@@ -268,13 +268,28 @@ function cleanTitle(t) {
   return raw;
 }
 
-function TimelineV2({ items, query, filters, density, onOpenItem, onOpenDay, todayDate }) {
+function TimelineV2({ items, query, searchHits, searchLoading, filters, density, onOpenItem, onOpenDay, todayDate }) {
+  // searchHits 来自 server /api/search,带全字段(含 body)命中 + matched_in
+  // 优先级:有 searchHits 时,白名单只放 server 命中的 id;否则 fallback 到本地 hay
+  // 这样能搜到正文里的关键词(列表 endpoint 不返回 body,客户端 hay 永远漏正文)
+  const matchedInById = useM(() => {
+    const m = new Map();
+    if (Array.isArray(searchHits)) for (const h of searchHits) m.set(h.id, h.matched_in || []);
+    return m;
+  }, [searchHits]);
+
   const filtered = useM(() => {
     return items.filter(it => {
       if (query) {
-        const q = query.toLowerCase();
-        const hay = (it.title + ' ' + it.summary + ' ' + (it.body || '') + ' ' + (it.tags || []).join(' ') + ' ' + (it.artifacts || []).join(' ')).toLowerCase();
-        if (!hay.includes(q)) return false;
+        if (Array.isArray(searchHits)) {
+          // server 已返回:严格走白名单,模型说没含 query 就不显示(避免向量噪声)
+          if (!matchedInById.has(it.id)) return false;
+        } else {
+          // server 还在 loading 或 query 太短:fallback 本地 hay (只能搜得到 title/summary/preview/tags/artifacts)
+          const q = query.toLowerCase();
+          const hay = (it.title + ' ' + it.summary + ' ' + (it.preview || '') + ' ' + (it.body || '') + ' ' + (it.tags || []).join(' ') + ' ' + (it.artifacts || []).join(' ')).toLowerCase();
+          if (!hay.includes(q)) return false;
+        }
       }
       if (filters.protectedOnly && !it.protected) return false;
       if (filters.importantOnly && !(it.importance >= 8 || it.highlight)) return false;
@@ -282,7 +297,7 @@ function TimelineV2({ items, query, filters, density, onOpenItem, onOpenDay, tod
       if (filters.noiseOnly && !it.noise) return false;
       return true;
     });
-  }, [items, query, filters]);
+  }, [items, query, searchHits, matchedInById, filters]);
 
   const groups = useM(() => {
     const map = new Map();
