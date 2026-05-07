@@ -739,6 +739,10 @@ class BucketManager:
         Calculate text dimension relevance + which fields actually matched.
         计算文本相关性 + 标记命中字段(给前端高亮 / 区分 keyword vs vector 用)。
 
+        Score 公式向后兼容旧版本:name(×3) + domain(×2.5) + tags(×2) + content(×content_weight)
+        进分母,跟历史一致。**summary 是 bonus 加分**:命中算分子不算分母,
+        避免桶因为没 summary 字段就被无端稀释打折导致丢失旧的命中。
+
         Returns:
           {
             "score": float (0~1),
@@ -763,15 +767,19 @@ class BucketManager:
         # 对几 KB content 仍是 ms 级,真碰到几十万字的桶再说
         content_raw = fuzz.partial_ratio(query, bucket.get("content", "") or "")
 
-        # 加权求和(权重表与上方注释一致)
+        # 主分母(跟旧版一致,不含 summary):name(×3) + domain(×2.5) + tags(×2) + content(×weight)
         name_score = name_raw * 3
         domain_score = domain_raw * 2.5
         tag_score = tag_raw * 2
-        summary_score = summary_raw * 1.5
         content_score = content_raw * self.content_weight
+        # summary 走 bonus 通道,只加分子(权重 1.5),不进分母 → 不稀释其他字段命中
+        summary_bonus = summary_raw * 1.5
 
-        weight_sum = 3 + 2.5 + 2 + 1.5 + self.content_weight
-        score = (name_score + domain_score + tag_score + summary_score + content_score) / (100 * weight_sum)
+        weight_sum = 3 + 2.5 + 2 + self.content_weight  # 旧分母,保护已有阈值行为
+        score = (name_score + domain_score + tag_score + content_score + summary_bonus) / (100 * weight_sum)
+        # 上限 1.0(summary 命中拉高时可能超 1.0,但分子仍被 100*weight_sum 限制)
+        if score > 1.0:
+            score = 1.0
 
         # 字段命中判定(给前端展示"命中: 标题/摘要/正文..."用)
         matched_in = []
