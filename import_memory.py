@@ -715,6 +715,11 @@ class ImportEngine:
         if not self.dehydrator.api_available:
             raise RuntimeError("API not available")
 
+        # [DEBUG] 排查 source_excerpt 链路:确认 long_excerpt 开关实际值 + 用的是哪份 prompt
+        # rin 反馈 OMBRE_LONG_EXCERPT 设了但新导入仍然没原文 — 用此 log 定位卡在哪一环
+        prompt_kind = "LONG (含 source_excerpt 强制要求)" if self.long_excerpt else "STD (无 source_excerpt 要求)"
+        logger.info(f"[Import LLM] long_excerpt={self.long_excerpt} prompt={prompt_kind}")
+
         response = await self.dehydrator.client.chat.completions.create(
             model=self.dehydrator.model,
             messages=[
@@ -762,6 +767,14 @@ class ImportEngine:
             # 成功路径:清掉之前的失败痕迹,避免 UI 一直挂着旧错
             self.state.data["last_llm_output"] = ""
             self.state.data["last_llm_parsed_ok"] = True
+            # [DEBUG] 排查 source_excerpt 链路:报告本批 items 里多少条带 source_excerpt
+            with_excerpt = sum(1 for it in items if (it.get("source_excerpt") or "").strip())
+            keys_first = sorted(list(items[0].keys())) if items else []
+            first_excerpt_len = len((items[0].get("source_excerpt") or "")) if items else 0
+            logger.info(
+                f"[Import LLM] parsed items={len(items)} with_source_excerpt={with_excerpt} "
+                f"first_item_keys={keys_first} first_excerpt_chars={first_excerpt_len}"
+            )
         return items
 
     def _record_llm_output(self, raw: str, parsed: bool):
