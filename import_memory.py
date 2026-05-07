@@ -454,6 +454,40 @@ is_pattern: true = 反复出现的习惯性行为模式"""
 
 
 # ============================================================
+# Long excerpt 变体 — 在标准 IMPORT_EXTRACT_PROMPT 基础上要求 LLM 输出
+# source_excerpt 字段(200-800 字精准片段),给"查看原文"按钮提供完整上下文。
+# ----------------------------------------------------------
+# 行为开关:config["import"]["long_excerpt"]: true 时启用此 prompt
+# 默认 false,因为 DeepSeek 等弱模型可能越界(把同段其他 item 的对话抄进来)
+# 或欠抄(应付差事只抄一两句),Claude / GPT-4 这类强模型才稳定
+# ============================================================
+
+# 在 schema 例子和规则末尾追加 source_excerpt 字段说明
+_LONG_EXCERPT_SCHEMA_LINE = '    "source_excerpt": "属于这条记忆的对话片段原文(200-800字)",\n    '
+_LONG_EXCERPT_RULES = """
+
+【source_excerpt 字段(强制)】这是给"查看原文"功能用的:
+- 200-800 字,直接**抄录原文**(不是摘要,不要改写)
+- 必须包含说话人标记(如果原文有"用户:""AI:"或角色名前缀,保留)
+- **关键约束**:只抄录跟**本条 item 直接相关**的对话片段
+  - 同 chunk 里如果有别的 item 的对话(讨论无关话题),**不要包含进来**
+  - 宁愿少抄(只抄真正相关的 200 字),也不要把无关对话掺进来
+  - 反例:本 item 是"讨论搬家",但 source_excerpt 把后面"晚饭吃什么"也抄了 ❌
+  - 正例:只抄围绕"搬家"展开的那段对话,从话题开始到自然结束 ✓
+- 如果该 item 在原文里只是一两句简短对话,抄下来即可(允许低于 200 字)
+- 如果该 item 涉及的对话超过 800 字,挑核心 800 字(不要为了凑长度抄无关段落)"""
+
+IMPORT_EXTRACT_PROMPT_LONG = (
+    IMPORT_EXTRACT_PROMPT
+    .replace(
+        '    "preserve_raw": false,\n    "is_pattern": false\n  }',
+        _LONG_EXCERPT_SCHEMA_LINE + '"preserve_raw": false,\n    "is_pattern": false\n  }',
+    )
+    + _LONG_EXCERPT_RULES
+)
+
+
+# ============================================================
 # Import Engine — core processing logic
 # 导入引擎 — 核心处理逻辑
 # ============================================================
@@ -473,6 +507,20 @@ class ImportEngine:
         self._paused = False
         self._running = False
         self._chunks: list[dict] = []
+        # 长 excerpt 开关:开 → LLM 额外输出 source_excerpt(200-800 字精准片段),
+        #                  让"查看原文"显示完整对话片段而非整 chunk 杂烩
+        # 默认 false 是为了开源用户(很多用 DeepSeek,弱模型可能越界/欠抄)
+        # 优先级:env OMBRE_LONG_EXCERPT > config.yaml import.long_excerpt > 默认 false
+        # rin 在 Railway/Zeabur 部署加 env 变量 OMBRE_LONG_EXCERPT=true 即可个人启用,
+        # 公仓库代码默认 false,开源用户行为不变(等测过 DeepSeek 再考虑翻默认)
+        env_long = os.environ.get("OMBRE_LONG_EXCERPT", "").strip().lower()
+        if env_long in ("1", "true", "yes", "on"):
+            self.long_excerpt = True
+        elif env_long in ("0", "false", "no", "off"):
+            self.long_excerpt = False
+        else:
+            self.long_excerpt = bool(config.get("import", {}).get("long_excerpt", False))
+        self.extract_prompt = IMPORT_EXTRACT_PROMPT_LONG if self.long_excerpt else IMPORT_EXTRACT_PROMPT
 
     @property
     def is_running(self) -> bool:
@@ -638,10 +686,12 @@ class ImportEngine:
                         except Exception:
                             pass
                     # API 级 preserve_raw=1 时,raw_source 优先用 LLM 推出的精准片段;
-                    # 没给 source_excerpt 才回退整 chunk 文本(避免每条 bucket 引同一坨)
+                    # 没给 source_excerpt 时改用 item.content(整理过但跟该 item 强相关)兜底,
+                    # **不再**回退整 chunk content —— chunk 包含同段里其他 items 的对话,
+                    # 写进来会让"查看原文"出现两条无关内容 (用户反馈过的 bug)
                     if preserve_raw and bucket_id:
                         try:
-                            raw_src = item.get("source_excerpt") or chunk.get("content", "")
+                            raw_src = item.get("source_excerpt") or item.get("content", "")
                             await self.bucket_mgr.update(bucket_id, raw_source=raw_src)
                         except Exception:
                             pass
@@ -666,7 +716,7 @@ class ImportEngine:
         response = await self.dehydrator.client.chat.completions.create(
             model=self.dehydrator.model,
             messages=[
-                {"role": "system", "content": IMPORT_EXTRACT_PROMPT},
+                {"role": "system", "content": self.extract_prompt},
                 {"role": "user", "content": chunk_content[:12000]},
             ],
             max_tokens=16384,  # Sonnet 4.6 上限 64k,留足以防中途截断

@@ -6,20 +6,27 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
   const [editing, setEditing] = muS(false);
   const [draft, setDraft] = muS(null);
   const [redehydrating, setRedehydrating] = muS(false);
+  // 原文浮层:覆盖在详情 modal 上方,给完整 body 一个不被挤的阅读空间
+  const [rawOpen, setRawOpen] = muS(false);
 
-  // 切换条目时退出编辑 + 重置 draft
+  // 切换条目时退出编辑 + 关原文 + 重置 draft
   muE(() => {
     setEditing(false);
     setDraft(null);
+    setRawOpen(false);
   }, [item?.id]);
 
   muE(() => {
     if (!item) return;
     const onKey = (e) => {
       if (e.key === 'Escape') {
+        // 优先级:原文浮层 > 编辑态 > 关详情 modal
+        if (rawOpen) { setRawOpen(false); return; }
         if (editing) { setEditing(false); setDraft(null); return; }
         onClose();
       }
+      // 原文浮层打开时,不响应 ← / → 切换条目和 ⌘+E 编辑(避免误触)
+      if (rawOpen) return;
       if (!editing && e.key === 'ArrowLeft') onNavigate(-1);
       if (!editing && e.key === 'ArrowRight') onNavigate(1);
       if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
@@ -33,7 +40,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [item, onNavigate, onClose, editing, draft]);
+  }, [item, onNavigate, onClose, editing, draft, rawOpen]);
 
   if (!item) return null;
 
@@ -362,13 +369,15 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
                 <span className="ob-modal-meta-item">Esc 取消</span>
               </>
             ) : (
-              <>
-                <span className="ob-modal-meta-item">⌘+E 编辑</span>
-                <span style={{ color: 'var(--ink-4)' }}>·</span>
-                <span className="ob-modal-meta-item">← / → 切换</span>
-                <span style={{ color: 'var(--ink-4)' }}>·</span>
-                <span className="ob-modal-meta-item">Esc 关闭</span>
-              </>
+              // 非编辑态:左下角放"查看原文"按钮(替代旧的 ⌘+E / ← → / Esc 文字提示)
+              // body 为空(列表里 lazy 还没拉 / 真没正文) 时按钮 disable
+              <button
+                type="button"
+                className="ob-modal-btn"
+                onClick={() => setRawOpen(true)}
+                disabled={!view.body || !view.body.trim()}
+                title={view.body && view.body.trim() ? '查看完整原文' : '无原文'}
+              >❡ 查看原文</button>
             )}
           </div>
           <div className="ob-modal-actions">
@@ -418,6 +427,50 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
           disabled={!hasNext}
           title="更早的一条 →"
         >›</button>
+      )}
+
+      {/* 原文浮层:复用 ob-modal 视觉,叠在详情 modal 上方(z-index 250 > 200)
+          关闭路径:点外部 / 左上 [← 详情] / 右上 [✕] / Esc(在 keydown handler 里) */}
+      {rawOpen && (
+        <div
+          className="ob-modal-wrap"
+          style={{ zIndex: 250 }}
+          onClick={() => setRawOpen(false)}
+        >
+          <div className="ob-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="ob-modal-bg" />
+            <button
+              className="ob-modal-close"
+              onClick={() => setRawOpen(false)}
+              title="关闭原文 (Esc)"
+            >✕</button>
+            <header className="ob-modal-hd">
+              <div className="ob-modal-eyebrow">
+                <button
+                  type="button"
+                  onClick={() => setRawOpen(false)}
+                  title="返回详情 (Esc)"
+                  style={{
+                    background: 'transparent', border: 0, padding: '2px 6px',
+                    color: 'var(--ink-3)', font: 'inherit', cursor: 'pointer',
+                    borderRadius: 4,
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; }}
+                >← 详情</button>
+                <span style={{ opacity: 0.5 }}>/</span>
+                <span>原文 · {item.id.toUpperCase()}</span>
+              </div>
+              <h2 className="ob-modal-title">{view.title}</h2>
+            </header>
+            <div className="ob-modal-body">
+              <div
+                className="ob-modal-content"
+                style={{ whiteSpace: 'pre-wrap', lineHeight: 1.75 }}
+              >{view.body || '(无原文)'}</div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
