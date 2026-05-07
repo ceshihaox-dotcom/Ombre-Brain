@@ -710,7 +710,13 @@ class BucketManager:
                 if meta.get("resolved", False):
                     normalized *= 0.3
 
-                if normalized >= self.fuzzy_threshold:
+                # 入选条件:任一字段关键词命中(matched_in 非空) OR 综合分过 fuzzy_threshold
+                # 前者是为了堵"光在正文/摘要里命中,但老记忆被时间衰减拖低总分,凑不到 50 阈值"
+                # —— 用户期望"含 query 的桶必出来",不该被 emotion/time/importance 打掉
+                # matched_in 非空 = 至少某字段 partial_ratio >= 70(_MATCH_THRESHOLD,稳健)
+                # 综合分 normalized 仍然作为排序依据,不浪费(模糊但多字段微弱命中也进)
+                has_keyword_hit = bool(topic_match["matched_in"])
+                if has_keyword_hit or normalized >= self.fuzzy_threshold:
                     bucket["score"] = round(normalized, 2)
                     bucket["matched_in"] = topic_match["matched_in"]
                     bucket["field_scores"] = topic_match["field_scores"]
