@@ -915,6 +915,10 @@ class ImportEngine:
                 "importance": importance,
                 "preserve_raw": bool(item.get("preserve_raw", False)),
                 "is_pattern": bool(item.get("is_pattern", False)),
+                # source_excerpt 是 LONG prompt 模式下的核心字段(LLM 摘的精准对话片段, 200-800 字)
+                # 之前白名单没列它 → parse 后就丢了 → raw_source 写入逻辑永远拿不到值
+                # 截断到 1500 字留点余量(prompt 上限 800,LLM 偶尔超),避免 metadata 爆炸
+                "source_excerpt": str(item.get("source_excerpt") or "")[:1500],
             })
 
         return validated
