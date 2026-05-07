@@ -613,8 +613,9 @@ class ImportEngine:
             try:
                 await self._process_single_chunk(chunk, preserve_raw)
             except Exception as e:
-                err_msg = f"Chunk {i}: {str(e)[:200]}"
-                logger.warning(f"Import chunk error: {err_msg}")
+                # 完整 traceback 写到 logs(用 logger.exception),错误清单只存简短版避免 state 文件膨胀
+                logger.exception(f"Import chunk {i} failed")
+                err_msg = f"Chunk {i}: {type(e).__name__}: {str(e)[:300]}"
                 if len(self.state.data["errors"]) < 100:
                     self.state.data["errors"].append(err_msg)
 
@@ -746,7 +747,21 @@ class ImportEngine:
             return []
 
         choice = response.choices[0]
-        raw = choice.message.content or ""
+        # 兼容两种 message.content 形态:
+        #   - OpenAI / DeepSeek 标准:str
+        #   - Anthropic native(经某些 OpenAI-compatible 代理 / 直连 SDK):list[TextBlock]
+        # 后者 .content 是 [TextBlock(type='text', text='...')] 这种结构,直接 .strip()/切片/parse 都会炸
+        # 这里统一拍平成纯字符串
+        content_obj = choice.message.content
+        if content_obj is None:
+            raw = ""
+        elif isinstance(content_obj, str):
+            raw = content_obj
+        elif isinstance(content_obj, list):
+            # Anthropic TextBlock list — 取每块的 .text 拼起来(thinking block 等无 .text 的兜底 str 化)
+            raw = "".join(getattr(b, "text", "") or "" for b in content_obj)
+        else:
+            raw = str(content_obj)
         finish_reason = getattr(choice, "finish_reason", "unknown")
         usage = getattr(response, "usage", None)
         usage_info = f"in={usage.prompt_tokens} out={usage.completion_tokens}" if usage else "no usage"
