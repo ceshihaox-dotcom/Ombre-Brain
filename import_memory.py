@@ -718,8 +718,13 @@ class ImportEngine:
 
         # [DEBUG] 排查 source_excerpt 链路:确认 long_excerpt 开关实际值 + 用的是哪份 prompt
         # rin 反馈 OMBRE_LONG_EXCERPT 设了但新导入仍然没原文 — 用此 log 定位卡在哪一环
+        # 同时用 print() 绕过 logger,直接 stdout/stderr,Render Logs 一定能拿到
         prompt_kind = "LONG (含 source_excerpt 强制要求)" if self.long_excerpt else "STD (无 source_excerpt 要求)"
         logger.info(f"[Import LLM] long_excerpt={self.long_excerpt} prompt={prompt_kind}")
+        print(f"[Import LLM-PRINT] long_excerpt={self.long_excerpt} prompt_kind={prompt_kind}", flush=True)
+        # 把开关值同步写入 state,前端 /api/import/status 能直接看到 — 比翻 log 更可靠
+        self.state.data["debug_long_excerpt"] = self.long_excerpt
+        self.state.data["debug_prompt_kind"] = prompt_kind
 
         response = await self.dehydrator.client.chat.completions.create(
             model=self.dehydrator.model,
@@ -779,17 +784,31 @@ class ImportEngine:
             tag = f"[finish_reason={finish_reason}] "
             self._record_llm_output(tag + raw, parsed=False)
         else:
-            # 成功路径:清掉之前的失败痕迹,避免 UI 一直挂着旧错
+            # 成功路径 — 把 LLM raw output 保留到 last_llm_raw(独立字段,不影响原 last_llm_output UI 行为)
+            # [DEBUG] 之前看不到 LLM 给了啥就是因为成功后清空,改成永久保留前 3000 字
             self.state.data["last_llm_output"] = ""
             self.state.data["last_llm_parsed_ok"] = True
-            # [DEBUG] 排查 source_excerpt 链路:报告本批 items 里多少条带 source_excerpt
-            with_excerpt = sum(1 for it in items if (it.get("source_excerpt") or "").strip())
-            keys_first = sorted(list(items[0].keys())) if items else []
-            first_excerpt_len = len((items[0].get("source_excerpt") or "")) if items else 0
-            logger.info(
-                f"[Import LLM] parsed items={len(items)} with_source_excerpt={with_excerpt} "
-                f"first_item_keys={keys_first} first_excerpt_chars={first_excerpt_len}"
-            )
+            self.state.data["last_llm_raw"] = raw[:3000]
+            # 报告本批 items 里多少条带 source_excerpt — 既写 log 也写 state,双保险
+            try:
+                with_excerpt = sum(1 for it in items if (it.get("source_excerpt") or "").strip())
+                keys_first = sorted(list(items[0].keys())) if items else []
+                first_excerpt_len = len((items[0].get("source_excerpt") or "")) if items else 0
+                logger.info(
+                    f"[Import LLM] parsed items={len(items)} with_source_excerpt={with_excerpt} "
+                    f"first_item_keys={keys_first} first_excerpt_chars={first_excerpt_len}"
+                )
+                print(
+                    f"[Import LLM-PRINT] parsed items={len(items)} with_excerpt={with_excerpt} "
+                    f"keys={keys_first} excerpt_chars={first_excerpt_len}",
+                    flush=True,
+                )
+                self.state.data["debug_with_excerpt"] = with_excerpt
+                self.state.data["debug_first_item_keys"] = keys_first
+                self.state.data["debug_first_excerpt_chars"] = first_excerpt_len
+            except Exception as dbg_e:
+                # debug 段不能影响主流程,任何异常吞掉只 log
+                logger.warning(f"[Import LLM-DEBUG] inspection failed: {dbg_e}")
         return items
 
     def _record_llm_output(self, raw: str, parsed: bool):
