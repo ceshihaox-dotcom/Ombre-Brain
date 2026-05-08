@@ -707,14 +707,16 @@ class ImportEngine:
         if not content.strip():
             return
 
+        chunk_event_time = chunk.get("timestamp_start") or chunk.get("timestamp")
+
         # --- LLM extraction ---
+        items = []
         try:
             items = await self._extract_memories(content)
             self.state.data["api_calls"] += 1
         except Exception as e:
             logger.warning(f"LLM extraction failed: {e}")
             self.state.data["api_calls"] += 1
-            return
 
         # 实时记录最近提取的几条,前端进度条展示用
         for it in items:
@@ -727,14 +729,44 @@ class ImportEngine:
             if len(recent) > 5:
                 self.state.data["recent_extracted"] = recent[-5:]
 
+        # === Fallback — LLM 抽不出 / 抛异常时强出 1 条带原文的待整理桶 ===
+        # 服务用户"宁多勿漏": 漏 chunk = 真损失(事后找不回); 多 1 条
+        # 待整理 = 工作台一键删除. 用户在工作台改标题/摘要/tags 比手写快.
+        # 标记 __llm_fallback 隐藏 tag, 方便后续筛选 / 区分.
         if not items:
+            try:
+                preview = content.strip()
+                fallback_name = "(待整理) " + preview[:24].replace("\n", " ")
+                fallback_id = await self.bucket_mgr.create(
+                    content=preview[:300],  # content 占位, raw_source 才是完整原文
+                    tags=["__llm_fallback"],  # 隐藏 tag, statusOf 仍归为 pending
+                    importance=5,
+                    domain=["未分类"],
+                    valence=0.5,
+                    arousal=0.3,
+                    name=fallback_name,
+                    summary="LLM 未抽出此块, 待手动整理 (原文已存到 raw_source)",
+                    event_time=chunk_event_time,
+                    created_by="import",
+                )
+                if fallback_id:
+                    # 完整 chunk 入 raw_source (8KB 内, bucket_manager 自动截)
+                    await self.bucket_mgr.update(fallback_id, raw_source=content[:8000])
+                    self.state.data["memories_created"] = self.state.data.get("memories_created", 0) + 1
+                    recent = self.state.data.setdefault("recent_extracted", [])
+                    recent.append({
+                        "name": fallback_name[:30],
+                        "summary": "(LLM 0 items · fallback 桶)",
+                    })
+                    if len(recent) > 5:
+                        self.state.data["recent_extracted"] = recent[-5:]
+                    logger.info(f"Fallback bucket created (LLM extracted 0 items): {fallback_id}")
+            except Exception as e:
+                logger.warning(f"Fallback bucket creation failed: {e}")
             return
 
-        # 这一 chunk 对应的事件发生时间(从聊天记录的时间戳来),
-        # 用作每条 extracted item 的 event_time(以条目自己的为优先)
-        chunk_event_time = chunk.get("timestamp_start") or chunk.get("timestamp")
-
         # --- Store each extracted memory ---
+        # (chunk_event_time 已在函数顶部声明, 给 fallback 路径也用)
         for item in items:
             try:
                 should_preserve = preserve_raw or item.get("preserve_raw", False)
