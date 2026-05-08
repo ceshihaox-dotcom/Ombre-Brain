@@ -301,6 +301,11 @@ function ImportWorkbench() {
   const [filter, setFilter] = iwS('pending');
   const [editing, setEditing] = iwS(null);
   const [rawOpen, setRawOpen] = iwS(false);
+  // 原文编辑态 — 工作台"原文"显式按钮触发, 跟 body/title/summary 的"点开就改"区别开
+  // (原文重要, 改动需要额外一次点击确认避免误改)
+  const [editingRaw, setEditingRaw] = iwS(false);
+  const [rawDraft, setRawDraft] = iwS('');
+  const [savingRaw, setSavingRaw] = iwS(false);
   const [tagInput, setTagInput] = iwS(false);
   const [tagDraft, setTagDraft] = iwS('');
   const [toast, setToast] = iwS(null);
@@ -499,6 +504,27 @@ function ImportWorkbench() {
     } catch (e) {
       alert('保存失败:' + e.message + '\n刷新中...');
       await fetchQueue();
+    }
+  };
+
+  // 原文保存 — 跟 updateActive 分开是因为本地字段名 (rawSource camelCase) 跟
+  // 后端字段名 (raw_source snake_case) 不同, 直接 spread 会两份并存。
+  // 8KB 上限对齐 bucket_manager.update 的截断点。
+  const saveRaw = async () => {
+    if (!activeId || savingRaw) return;
+    const trunc = String(rawDraft || '').slice(0, 8000);
+    setSavingRaw(true);
+    setQueue(qs => qs.map(q => q.id === activeId ? { ...q, rawSource: trunc } : q));
+    try {
+      await window.__obUpdateBucket(activeId, { raw_source: trunc });
+      setEditingRaw(false);
+      setRawDraft('');
+      setToast({ msg: '原文已保存' });
+    } catch (e) {
+      alert('原文保存失败:' + e.message + '\n刷新中...');
+      await fetchQueue();
+    } finally {
+      setSavingRaw(false);
     }
   };
 
@@ -800,6 +826,8 @@ function ImportWorkbench() {
     }
     setEditing(null);
     setRawOpen(false);
+    setEditingRaw(false);
+    setRawDraft('');
     setToast({
       msg: wasRefined ? `已撤销精修标记 "${prev.title}"` : `已精修 "${prev.title}"`,
       undo: async () => {
@@ -1143,7 +1171,7 @@ function ImportWorkbench() {
               <div
                 key={q.id}
                 className={`imp-q-item ${q.status} ${q.id === activeId ? 'active' : ''}`}
-                onClick={() => { setActiveId(q.id); setEditing(null); setRawOpen(false); }}
+                onClick={() => { setActiveId(q.id); setEditing(null); setRawOpen(false); setEditingRaw(false); setRawDraft(''); }}
               >
                 <div className="imp-q-status" />
                 <div className="imp-q-body">
@@ -1238,18 +1266,72 @@ function ImportWorkbench() {
                 ) : (active.body || <span style={{ color: 'var(--ink-4)' }}>{active._bodyLoaded ? '(正文为空)' : '⌛ 加载中…'}</span>)}
               </div>
 
-              {/* 原文抽屉(只在后端 preserve_raw 留了原文时显示) */}
-              {active.rawSource && (
-                <div className={`imp-raw${rawOpen ? ' open' : ''}`}>
-                  <div className="imp-raw-trigger" onClick={() => setRawOpen(o => !o)}>
-                    <span><span className="imp-raw-arrow">▸</span> &nbsp; 查看原文 <b>·</b> 来源对话片段</span>
-                    <span style={{ opacity: 0.6 }}>{active.rawSource.split('\n').length} 行</span>
+              {/* 原文抽屉(只在后端 preserve_raw 留了原文时显示)
+                  编辑态: 右下角不明显 [✎ 编辑] → textarea 替换 + [取消][保存]
+                  原文重要, 故"显式按钮触发"区别于 body/title/summary 的"点开就改" */}
+              {active.rawSource && (() => {
+                const draftLen = (rawDraft || '').length;
+                const overLimit = draftLen > 8000;
+                return (
+                <div className={`imp-raw${rawOpen ? ' open' : ''}${editingRaw ? ' editing' : ''}`}>
+                  <div
+                    className="imp-raw-trigger"
+                    onClick={() => { if (!editingRaw) setRawOpen(o => !o); }}
+                    style={editingRaw ? { cursor: 'not-allowed' } : undefined}
+                  >
+                    <span>
+                      <span className="imp-raw-arrow">▸</span> &nbsp;
+                      查看原文 <b>·</b> 来源对话片段{editingRaw ? ' · 编辑中' : ''}
+                    </span>
+                    <span style={{ opacity: 0.6 }}>
+                      {editingRaw
+                        ? `${draftLen} / 8000${overLimit ? ' · 会截断' : ''}`
+                        : `${active.rawSource.split('\n').length} 行`}
+                    </span>
                   </div>
                   <div className="imp-raw-body">
-                    <div className="imp-raw-content">{active.rawSource}</div>
+                    {editingRaw ? (
+                      <div className="imp-raw-edit-wrap">
+                        <textarea
+                          className="imp-raw-edit-textarea"
+                          value={rawDraft}
+                          onChange={(e) => setRawDraft(e.target.value)}
+                          autoFocus
+                          placeholder="补全或修订原文片段。保留说话人前缀(用户:/AI:) 让以后「重新脱水」锚点更准。"
+                        />
+                      </div>
+                    ) : (
+                      <div className="imp-raw-content">{active.rawSource}</div>
+                    )}
+                    <div className="imp-raw-foot">
+                      {editingRaw ? (
+                        <>
+                          <button
+                            type="button"
+                            className="imp-raw-edit-btn"
+                            onClick={() => { setEditingRaw(false); setRawDraft(''); }}
+                            disabled={savingRaw}
+                          >取消</button>
+                          <button
+                            type="button"
+                            className="imp-raw-edit-btn primary"
+                            onClick={saveRaw}
+                            disabled={savingRaw}
+                          >{savingRaw ? '⌛ 保存中…' : '保存'}</button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          className="imp-raw-edit-btn"
+                          onClick={() => { setRawDraft(active.rawSource || ''); setEditingRaw(true); }}
+                          title="原文重要,点击进入编辑态(避免误改)"
+                        >✎ 编辑</button>
+                      )}
+                    </div>
                   </div>
                 </div>
-              )}
+                );
+              })()}
 
               {/* tags */}
               <div className="imp-field-label">标签</div>

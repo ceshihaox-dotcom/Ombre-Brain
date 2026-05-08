@@ -7743,6 +7743,73 @@ body {
   padding-top: 14px;
 }
 
+/* 原文编辑态 — 默认低调 (opacity 0.35), hover 才显出
+   原文重要, 改动需要显式按钮触发, 不像 title/summary 那样点开就改 */
+.imp-raw-foot {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 18px 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.imp-raw-edit-btn {
+  background: transparent;
+  border: 0;
+  color: var(--ink-3);
+  font: inherit;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.35;
+  transition: opacity .2s, color .2s, background .15s;
+}
+.imp-raw-edit-btn:hover {
+  opacity: 1;
+  color: var(--accent);
+  background: rgba(150, 142, 168, 0.08);
+}
+.imp-raw-edit-btn.primary {
+  opacity: 0.85;
+  color: var(--accent);
+}
+.imp-raw-edit-btn.primary:hover { opacity: 1; }
+.imp-raw-edit-btn:disabled,
+.imp-raw-edit-btn:disabled:hover {
+  opacity: 0.25;
+  cursor: not-allowed;
+  background: transparent;
+  color: var(--ink-3);
+}
+.imp-raw-edit-wrap {
+  padding: 10px 18px 4px;
+  border-top: 0.5px solid var(--line);
+}
+.imp-raw-edit-textarea {
+  width: 100%;
+  min-height: 200px;
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 12px;
+  line-height: 1.7;
+  color: var(--ink-2);
+  background: var(--bg-1);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  resize: vertical;
+  box-sizing: border-box;
+  transition: border-color .15s;
+}
+.imp-raw-edit-textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+/* 编辑态放宽抽屉高度上限, 给 textarea 拖长空间 */
+.imp-raw.editing .imp-raw-body {
+  max-height: 70vh;
+}
+
 /* tags 编辑 */
 .imp-paper-tags {
   display: flex; flex-wrap: wrap; gap: 6px;
