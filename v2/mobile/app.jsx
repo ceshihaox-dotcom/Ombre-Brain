@@ -868,7 +868,7 @@ function DayDetailScreen({ dayKey }) {
         total: items.length,
         feel: items.filter(({ b }) => isFeel(b)).length,
         hi: items.filter(({ b }) => b.highlight).length,
-        ai: items.filter(({ b }) => b.created_by === 'import').length,  // 当日"导入"条数(原叫 ai 是历史命名, 含义已改)
+        ai: items.filter(({ b }) => b.created_by === 'ai').length,  // 当日 AI 写入条数 (移动端 stats 原样保留)
       },
     };
   }, [buckets, dayKey]);
@@ -1958,9 +1958,10 @@ function levelOf(n) {
 }
 
 function isImportTodo(b) {
-  // 导入桶 + 没有 __import_refined / __import_flagged tag = 待审
-  // (改造前 created_by 默认 'ai' 把导入跟 AI 主动写混在一起, 现在 import 单独)
-  if (b.created_by !== 'import') return false;
+  // AI 写入 + 没有 __import_refined / __import_flagged tag = 待审
+  // (审阅区"原样保留" — 历史正在审的桶维持 created_by='ai' 判定; 新 import 桶
+  //  审阅在工作台做, 移动端审阅区暂不接管. 后期看是否要并入 import.)
+  if (b.created_by !== 'ai') return false;
   const tags = b.tags || [];
   if (tags.indexOf('__import_refined') >= 0) return false;
   if (tags.indexOf('__import_flagged') >= 0) return false;
@@ -2240,9 +2241,9 @@ function ReviewScreen() {
       .then(d => {
         if (cancel) return;
         const list = Array.isArray(d) ? d : [];
-        // 只审阅导入的桶 (AI 主动写跟用户自己写都不走审阅流); 按时间倒序
-        // 改造前 'ai' 混了导入跟 AI 主动写, 改后 import 单独
-        const aiOnly = list.filter(b => b.created_by === 'import');
+        // 移动端审阅区"原样保留" — 仍然按 created_by='ai' 拉, 历史正在审的桶不消失
+        // (新导入桶 created_by='import', 审阅在工作台做; 后期看是否合并到这条流)
+        const aiOnly = list.filter(b => b.created_by === 'ai');
         aiOnly.sort((a, b) => {
           const ta = new Date(a.event_time || a.created || 0).getTime();
           const tb = new Date(b.event_time || b.created || 0).getTime();

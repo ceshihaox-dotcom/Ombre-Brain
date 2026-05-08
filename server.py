@@ -3007,19 +3007,19 @@ async def api_import_results(request):
 
     Query params:
       limit: 拉取上限 (默认 50)
-      source: 'import' (默认, 只看导入桶) | 'all' (含 AI 主动写入 + 用户手写)
-        - 历史 'ai' 桶里混了 import 跟 AI 主动写入(改造前默认值),
-          要看历史可临时传 source=all
+      source: 'all' (默认, 含所有来源) | 'import' / 'ai' / 'user' (按来源过滤)
+        - 工作台是用户的主整理面, 默认拉全部 (包括历史 'ai' 桶, 让用户在
+          展开视图里逐条改 source). 想只看新导入传 source=import.
     """
     from starlette.responses import JSONResponse
     try:
         limit = int(request.query_params.get("limit", "50"))
-        source_filter = request.query_params.get("source", "import")
+        source_filter = request.query_params.get("source", "all")
         all_buckets = await bucket_mgr.list_all(include_archive=False)
         # Sort by created time, newest first
         all_buckets.sort(key=lambda b: b["metadata"].get("created", ""), reverse=True)
-        # 来源过滤 — 默认只看 created_by='import',端点级过滤更经济
-        # (老桶缺 created_by 默认按 ai 计, 不会进 import 清单)
+        # 来源过滤 (端点级) — 默认 'all' 不过滤; 传 'import'/'ai'/'user' 才过滤
+        # 老桶缺 created_by 按 'ai' 计 (跟 list 端点 default 一致)
         if source_filter != "all":
             all_buckets = [
                 b for b in all_buckets

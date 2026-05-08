@@ -73,6 +73,7 @@
       internalized: !!(b.internalized || b.digested),
       domain: Array.isArray(b.domain) ? b.domain.filter(Boolean) : [],
       artifacts: [],
+      createdBy: b.created_by || 'ai',  // 来源 user/ai/import (camelCase 给 console UI 用)
       _hasEventTime: hasEvent,
     };
   };
@@ -127,6 +128,7 @@
     if (patch.summary != null) body.summary = patch.summary;
     if (patch.raw_source != null) body.raw_source = patch.raw_source;  // 原文片段(用户手动补全)
     if (patch.created_by != null) body.created_by = patch.created_by;  // 来源 user/ai/import
+    if (patch.createdBy != null) body.created_by = patch.createdBy;    // camelCase 别名(工作台 active 用)
     if (patch.importance != null) body.importance = patch.importance;
     if (patch.tags != null) body.tags = patch.tags;
     if (patch.protected != null) body.protected = !!patch.protected;

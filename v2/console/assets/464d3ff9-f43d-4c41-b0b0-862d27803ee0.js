@@ -1403,6 +1403,21 @@ function ImportWorkbench() {
                     </div>
                   </div>
                 )}
+                {/* 来源 — 三态 pill, 直接 click 切换 (改错恢复成本低, 不需要"显式编辑"门).
+                    历史 'ai' 桶过工作台时一键改成 import/user, 下次新导入直接是 import */}
+                <div className="imp-attr-row">
+                  <div className="imp-attr-key">来源</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {[['import', '⇣ 导入'], ['ai', '◐ AI 写入'], ['user', '✎ 亲手写']].map(([k, label]) => (
+                      <button
+                        key={k}
+                        className={`imp-batch-pill${(active.createdBy || 'ai') === k ? ' on' : ''}`}
+                        title={k === 'import' ? '从聊天记录导入的(主流)' : k === 'ai' ? 'AI 主动写入(KE/breath/grow)' : '在写入抽屉手写的'}
+                        onClick={() => updateActive({ createdBy: k })}
+                      >{label}</button>
+                    ))}
+                  </div>
+                </div>
                 <div className="imp-attr-row">
                   <div className="imp-attr-key">类型</div>
                   <div style={{ display: 'flex', gap: 6 }}>
