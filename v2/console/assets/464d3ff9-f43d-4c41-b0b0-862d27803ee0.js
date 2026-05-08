@@ -32,6 +32,7 @@ function bucketToItem(b) {
     summary: b.summary || (b.content || '').slice(0, 160),
     body: b.body || b.content || '',
     rawSource: b.raw_source || '',
+    createdBy: b.created_by || 'ai',  // 来源 user/ai/import (来源 pill 切换读这字段)
     tags: b.tags || [],
     importance: b.importance || 5,
     score: typeof b.score === 'number' ? b.score : 0,
@@ -454,7 +455,7 @@ function ImportWorkbench() {
     total: totalCount,
     refined: refinedCount,
     raw: '—',
-    note: '工作台显示最近 100 条记忆库桶,精修后状态会同步保存。',
+    note: '工作台显示最近 500 条记忆库桶,精修后状态会同步保存。',
   }), [queue, totalCount, refinedCount]);
 
   // 默认选中第一个 pending
@@ -1407,13 +1408,14 @@ function ImportWorkbench() {
                     历史 'ai' 桶过工作台时一键改成 import/user, 下次新导入直接是 import */}
                 <div className="imp-attr-row">
                   <div className="imp-attr-key">来源</div>
-                  <div style={{ display: 'flex', gap: 6 }}>
-                    {[['import', '⇣ 导入'], ['ai', '◐ AI 写入'], ['user', '✎ 亲手写']].map(([k, label]) => (
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', flex: 1 }}>
+                    {[['import', '导入'], ['ai', 'AI 写入'], ['user', '亲手写']].map(([k, label]) => (
                       <button
                         key={k}
                         className={`imp-batch-pill${(active.createdBy || 'ai') === k ? ' on' : ''}`}
                         title={k === 'import' ? '从聊天记录导入的(主流)' : k === 'ai' ? 'AI 主动写入(KE/breath/grow)' : '在写入抽屉手写的'}
                         onClick={() => updateActive({ createdBy: k })}
+                        style={{ whiteSpace: 'nowrap' }}
                       >{label}</button>
                     ))}
                   </div>
