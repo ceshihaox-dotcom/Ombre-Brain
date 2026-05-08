@@ -357,6 +357,9 @@ function ImportWorkbench() {
   // 试跑模式:导入时只跑前 N 个 chunk(控成本)
   const [sampleMode, setSampleMode] = iwS(false);
   const [sampleChunks, setSampleChunks] = iwS(5);
+  // 导入分量模式:'small' (单段小内容, 强制至少 1 条) | 'large' (大批量, 宁缺勿滥)
+  // 默认 small — 日常 1-2 天小批导入命中率优先; 真要导大文件手动切 large
+  const [importMode, setImportMode] = iwS('small');
 
   // hover 详情卡:hover 相似项时弹出
   const [hoverItem, setHoverItem] = iwS(null);
@@ -913,7 +916,7 @@ function ImportWorkbench() {
     let succeeded = 0;
     for (const f of files) {
       try {
-        await window.__obImportFile(f, maxChunks);
+        await window.__obImportFile(f, maxChunks, importMode);
         succeeded++;
       } catch (e) {
         alert(`上传 ${f.name} 失败:` + e.message);
@@ -921,7 +924,8 @@ function ImportWorkbench() {
     }
     setUploading(false);
     if (succeeded > 0) {
-      const tag = maxChunks > 0 ? ` (试跑 · 前 ${maxChunks} 块)` : '';
+      const modeTag = importMode === 'large' ? ' · 大分量' : '';
+      const tag = (maxChunks > 0 ? ` (试跑 · 前 ${maxChunks} 块)` : '') + modeTag;
       setToast({ msg: `已开始解析 ${succeeded} 个文件${tag}` });
       setTimeout(() => setToast(null), 4000);
       startImportPolling();  // 启动进度轮询,1.5s 一次
@@ -932,7 +936,7 @@ function ImportWorkbench() {
     if (!pasteText.trim()) { alert('请粘贴对话内容'); return; }
     setUploading(true);
     try {
-      await window.__obImportPasteText(pasteText, pasteName.trim() || undefined);
+      await window.__obImportPasteText(pasteText, pasteName.trim() || undefined, importMode);
       setToast({ msg: '已开始解析粘贴的内容' });
       setTimeout(() => setToast(null), 3000);
       startImportPolling();
@@ -1034,6 +1038,8 @@ function ImportWorkbench() {
           draggedFiles: null,  // 浏览器 dragover 阶段拿不到文件元数据,松手后才有,组件会回退到"松手即开始解析"
           tryMode: sampleMode,
           onTryModeChange: setSampleMode,
+          importMode: importMode,
+          onImportModeChange: setImportMode,
           onPickFiles: () => { if (!uploading) fileRef.current?.click(); },
           onPasteToggle: () => setPasteOpen(o => !o),
         })}

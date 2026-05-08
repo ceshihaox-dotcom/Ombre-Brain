@@ -27,6 +27,8 @@
     draggedFiles = null,
     tryMode = false,
     onTryModeChange = () => {},
+    importMode = 'small',  // 'small' (默认) | 'large'
+    onImportModeChange = () => {},
     onPickFiles = () => {},
     onPasteToggle = () => {},
   }) {
@@ -79,6 +81,21 @@
               style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
             />
             试跑模式
+          </label>
+          {/* 大分量模式 — 默认 unchecked = 小分量(强制至少 1 条);
+              checked = 大分量(宁缺勿滥, 适合 1MB+ 大文件) */}
+          <label
+            className={`ob-import-checkbox ${importMode === 'large' ? 'is-on' : ''}`}
+            title="默认小分量(单段强提取); 勾选切到大分量(宁缺勿滥, 适合大文件)"
+          >
+            <span className="ob-import-checkbox-box" aria-hidden="true"></span>
+            <input
+              type="checkbox"
+              checked={importMode === 'large'}
+              onChange={(e) => onImportModeChange(e.target.checked ? 'large' : 'small')}
+              style={{ position: 'absolute', opacity: 0, pointerEvents: 'none' }}
+            />
+            大分量模式
           </label>
         </div>
 

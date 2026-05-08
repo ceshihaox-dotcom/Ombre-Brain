@@ -2949,6 +2949,11 @@ async def api_import_upload(request):
 
         preserve_raw = request.query_params.get("preserve_raw", "").lower() in ("1", "true")
         resume = request.query_params.get("resume", "").lower() in ("1", "true")
+        # mode: 'small' (用户单独导一段, 强制至少 1 条) 或 'large' (默认, 宁缺勿滥)
+        # 未知值 → 默认 large 兜底
+        mode = request.query_params.get("mode", "large").lower()
+        if mode not in ("small", "large"):
+            mode = "large"
         try:
             max_chunks = int(request.query_params.get("max_chunks", "0") or "0")
         except (ValueError, TypeError):
@@ -2960,7 +2965,7 @@ async def api_import_upload(request):
     # Start import in background
     async def _run_import():
         try:
-            await import_engine.start(raw_content, filename, preserve_raw, resume, max_chunks=max_chunks)
+            await import_engine.start(raw_content, filename, preserve_raw, resume, max_chunks=max_chunks, mode=mode)
         except Exception as e:
             logger.error(f"Import failed: {e}")
 
