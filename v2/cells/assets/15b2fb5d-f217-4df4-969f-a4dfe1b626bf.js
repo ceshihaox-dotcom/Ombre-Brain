@@ -51,7 +51,7 @@ function AppV2() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [data, setData] = uSA(MEMORY_DATA);
   const [query, setQuery] = uSA('');
-  const [filters, setFilters] = uSA({ importantOnly: false, feelOnly: false, protectedOnly: false });
+  const [filters, setFilters] = uSA({ importantOnly: false, feelOnly: false, protectedOnly: false, sourceFilter: null });
   const [openDay, setOpenDay] = uSA(null);
   const [openItem, setOpenItem] = uSA(null);
   const [writeOpen, setWriteOpen] = uSA(false);
@@ -190,8 +190,8 @@ function AppV2() {
             />
           </div>
           <FilterChipV2
-            active={!filters.importantOnly && !filters.feelOnly && !filters.protectedOnly}
-            onClick={() => setFilters({ importantOnly: false, feelOnly: false, protectedOnly: false })}
+            active={!filters.importantOnly && !filters.feelOnly && !filters.protectedOnly && !filters.sourceFilter}
+            onClick={() => setFilters({ importantOnly: false, feelOnly: false, protectedOnly: false, sourceFilter: null })}
           >全部</FilterChipV2>
           <FilterChipV2 tone="amber" active={filters.protectedOnly}
             onClick={() => setFilters(f => ({ ...f, protectedOnly: !f.protectedOnly }))}
@@ -202,6 +202,17 @@ function AppV2() {
           <FilterChipV2 tone="rose" active={filters.feelOnly}
             onClick={() => setFilters(f => ({ ...f, feelOnly: !f.feelOnly }))}
           >❀ Feel</FilterChipV2>
+          {/* 来源 — 三态单选 (再点取消). 历史 'ai' 桶混了 import 跟 AI 主动写,
+              改完代码后新数据就分开了, 老的可在 modal 里手动改 */}
+          <FilterChipV2 active={filters.sourceFilter === 'import'}
+            onClick={() => setFilters(f => ({ ...f, sourceFilter: f.sourceFilter === 'import' ? null : 'import' }))}
+          >⇣ 导入</FilterChipV2>
+          <FilterChipV2 active={filters.sourceFilter === 'ai'}
+            onClick={() => setFilters(f => ({ ...f, sourceFilter: f.sourceFilter === 'ai' ? null : 'ai' }))}
+          >◐ AI 写入</FilterChipV2>
+          <FilterChipV2 active={filters.sourceFilter === 'user'}
+            onClick={() => setFilters(f => ({ ...f, sourceFilter: f.sourceFilter === 'user' ? null : 'user' }))}
+          >✎ 亲手写</FilterChipV2>
         </div>
 
         <TimelineV2

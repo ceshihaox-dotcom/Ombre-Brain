@@ -832,6 +832,7 @@ input, textarea { font: inherit; color: inherit; }
 .dd-pip.feel { background: var(--rose-deep); }
 .dd-pip.hi { background: var(--accent); }
 .dd-pip.ai { background: var(--ink-4); }
+.dd-pip.import { background: var(--accent); opacity: 0.55; }
 .dd-item-snip {
   font-family: var(--serif);
   font-size: 13.5px;

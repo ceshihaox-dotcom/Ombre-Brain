@@ -4,8 +4,10 @@
 const { useState: cmS, useEffect: cmE } = React;
 
 const CM_TAG_META = {
-  '亲手写':    { icon: '✍︎', tone: 'sage' },
-  'AI 写入':   { icon: '✦', tone: 'sage' },
+  // 来源伪标签 (bridge 注入, 跟 metadata.created_by 同步显示) — 三态
+  '亲手写':    { icon: '✎', tone: 'sage' },
+  'AI 写入':   { icon: '◐', tone: 'sage' },
+  '导入':      { icon: '⇣', tone: 'sage' },
   '已内化':    { icon: '◐', tone: 'sage' },
   '保护':      { icon: '⛨', tone: 'amber' },
   '重要':      { icon: '★', tone: 'amber' },
@@ -191,7 +193,9 @@ function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate, mode,
   const isHi = view.importance >= 8 || view.highlight;
   const cells = Array.from({ length: 10 }, (_, i) => i < view.importance);
 
-  const allTagOptions = ['亲手写', 'AI 写入', '已内化', '保护', '重要', 'feel(柔软)', '编程', '工作', '恋爱', '创作', 'AI', '出行', '内心', '日常', '成长'];
+  // 注: '亲手写' / 'AI 写入' / '导入' 已迁到 metadata.created_by 字段(三态),
+  // 不再放进 tag 候选 — 避免双轨制 (字段 + tag 同表达一件事)
+  const allTagOptions = ['已内化', '保护', '重要', 'feel(柔软)', '编程', '工作', '恋爱', '创作', 'AI', '出行', '内心', '日常', '成长'];
   const allDraftTags = Array.from(new Set([...(draft?.tags || []), ...allTagOptions]));
 
   return (

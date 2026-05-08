@@ -64,7 +64,7 @@ function AppV2() {
   // 这里用 server search 补漏 — 命中 ids 作为白名单,matched_in 给 dot 旁标"命中:正文"用
   const [searchHits, setSearchHits] = uSA(null); // null=未搜 / [{id, matched_in}]
   const [searchLoading, setSearchLoading] = uSA(false);
-  const [filters, setFilters] = uSA({ importantOnly: false, feelOnly: false, protectedOnly: false, noiseOnly: false });
+  const [filters, setFilters] = uSA({ importantOnly: false, feelOnly: false, protectedOnly: false, noiseOnly: false, sourceFilter: null });
 
   // query 变化 → 250ms debounce → 调 /api/search,拿全字段命中
   // 空 query → 清空 hits;非空 → setSearchHits(命中数组)
@@ -317,8 +317,8 @@ function AppV2() {
             />
           </div>
           <FilterChipV2
-            active={!filters.importantOnly && !filters.feelOnly && !filters.protectedOnly && !filters.noiseOnly}
-            onClick={() => setFilters({ importantOnly: false, feelOnly: false, protectedOnly: false, noiseOnly: false })}
+            active={!filters.importantOnly && !filters.feelOnly && !filters.protectedOnly && !filters.noiseOnly && !filters.sourceFilter}
+            onClick={() => setFilters({ importantOnly: false, feelOnly: false, protectedOnly: false, noiseOnly: false, sourceFilter: null })}
           >全部</FilterChipV2>
           <FilterChipV2 tone="amber" active={filters.protectedOnly}
             onClick={() => setFilters(f => ({ ...f, protectedOnly: !f.protectedOnly }))}
@@ -332,6 +332,17 @@ function AppV2() {
           <FilterChipV2 active={filters.noiseOnly}
             onClick={() => setFilters(f => ({ ...f, noiseOnly: !f.noiseOnly }))}
           >⌀ 噪声</FilterChipV2>
+          {/* 来源 — 三态单选 (再点取消). 历史 'ai' 桶混了 import 跟 AI 主动写,
+              改完代码后新数据就分开了, 老的可在 modal 里手动改 */}
+          <FilterChipV2 active={filters.sourceFilter === 'import'}
+            onClick={() => setFilters(f => ({ ...f, sourceFilter: f.sourceFilter === 'import' ? null : 'import' }))}
+          >⇣ 导入</FilterChipV2>
+          <FilterChipV2 active={filters.sourceFilter === 'ai'}
+            onClick={() => setFilters(f => ({ ...f, sourceFilter: f.sourceFilter === 'ai' ? null : 'ai' }))}
+          >◐ AI 写入</FilterChipV2>
+          <FilterChipV2 active={filters.sourceFilter === 'user'}
+            onClick={() => setFilters(f => ({ ...f, sourceFilter: f.sourceFilter === 'user' ? null : 'user' }))}
+          >✎ 亲手写</FilterChipV2>
         </div>
 
         {/* 主题域筛选行 (默认收起, 点击展开) */}

@@ -346,6 +346,17 @@ class BucketManager:
             new_type = kwargs["type"]
             if new_type in ("dynamic", "feel", "permanent", "archived"):
                 post["type"] = new_type
+        # created_by(来源分类) — user / ai / import 三态
+        # 'ai' 是历史默认 (导入和 AI proactive 都曾混在 ai 里), 现在 import 单独区分。
+        # 未知值静默 drop, 避免脏数据; 以后扩第四种 (如 'system') 加进白名单即可
+        if "created_by" in kwargs:
+            cb = kwargs["created_by"]
+            if cb is None or cb == "":
+                _drop("created_by")
+            elif str(cb) in {"user", "ai", "import"}:
+                post["created_by"] = str(cb)
+            else:
+                logger.warning(f"忽略未知 created_by 值: {cb!r} (合法: user/ai/import)")
         # raw_source(导入工作台"查看原文"用) — 任意字符串
         if "raw_source" in kwargs:
             rs = kwargs["raw_source"]

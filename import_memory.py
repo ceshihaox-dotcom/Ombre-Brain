@@ -680,6 +680,7 @@ class ImportEngine:
                         name=item.get("name"),
                         summary=item.get("summary"),
                         event_time=item_event_time,
+                        created_by="import",  # 跟 AI proactive 写入 (默认 'ai') 区分
                     )
                     if self.embedding_engine:
                         try:
@@ -979,6 +980,7 @@ class ImportEngine:
             name=name or None,
             summary=summary or None,
             event_time=event_time,
+            created_by="import",  # 跟 AI proactive 写入 (默认 'ai') 区分
         )
         # LLM 提取的"原文最关键一两句"片段 — 同时写两个字段:
         #   source_excerpt: 给"重新脱水含正文"主题锚点法 + 未来精确锚定功能用 (核心字段)

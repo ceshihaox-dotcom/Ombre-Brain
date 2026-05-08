@@ -44,7 +44,10 @@
     var time = local.time || '00:00';
 
     var tags = (b.tags || []).slice();
+    // 来源伪标签注入 — 三态: user/ai/import
+    // (真值在 metadata.created_by; 这里只是 v2 mock 形态展示用, 改 tag 不会改后端 source)
     if (b.created_by === 'user') tags.push('亲手写');
+    else if (b.created_by === 'import') tags.push('导入');
     else tags.push('AI 写入');
     if (b.internalized || b.digested) tags.push('已内化');
     if (b.protected || b.pinned) tags.push('保护');
@@ -123,6 +126,7 @@
     if (patch.body != null) body.content = patch.body;
     if (patch.summary != null) body.summary = patch.summary;
     if (patch.raw_source != null) body.raw_source = patch.raw_source;  // 原文片段(用户手动补全)
+    if (patch.created_by != null) body.created_by = patch.created_by;  // 来源 user/ai/import
     if (patch.importance != null) body.importance = patch.importance;
     if (patch.tags != null) body.tags = patch.tags;
     if (patch.protected != null) body.protected = !!patch.protected;

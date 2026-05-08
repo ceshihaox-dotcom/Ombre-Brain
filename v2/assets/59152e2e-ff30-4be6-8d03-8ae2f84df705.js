@@ -295,6 +295,8 @@ function TimelineV2({ items, query, searchHits, searchLoading, filters, density,
       if (filters.importantOnly && !(it.importance >= 8 || it.highlight)) return false;
       if (filters.feelOnly && !it.feel) return false;
       if (filters.noiseOnly && !it.noise) return false;
+      // 来源筛选 — 缺 created_by 的老桶按 'ai' 计 (跟后端 list 端点 default 一致)
+      if (filters.sourceFilter && (it.created_by || 'ai') !== filters.sourceFilter) return false;
       return true;
     });
   }, [items, query, searchHits, matchedInById, filters]);

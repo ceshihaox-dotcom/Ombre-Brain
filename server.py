@@ -1545,6 +1545,7 @@ async def api_bucket_update(request):
         "type",  # 支持 feel ↔ dynamic 切换(导入工作台 feel 开关)
         "summary",  # 用户可编辑的摘要(v2 modal),为空时回退到 content_preview
         "raw_source",  # 用户可手动补全/修订的原文片段(详情 modal 原文浮层编辑入口)
+        "created_by",  # 来源分类 user/ai/import (历史 ai 桶可手动改成 import 等)
     }
     updates = {k: v for k, v in body.items() if k in allowed}
     if not updates:
@@ -3002,13 +3003,28 @@ async def api_import_patterns(request):
 
 @mcp.custom_route("/api/import/results", methods=["GET"])
 async def api_import_results(request):
-    """List recently imported/created buckets for review (导入工作台用)."""
+    """List recently imported/created buckets for review (导入工作台用).
+
+    Query params:
+      limit: 拉取上限 (默认 50)
+      source: 'import' (默认, 只看导入桶) | 'all' (含 AI 主动写入 + 用户手写)
+        - 历史 'ai' 桶里混了 import 跟 AI 主动写入(改造前默认值),
+          要看历史可临时传 source=all
+    """
     from starlette.responses import JSONResponse
     try:
         limit = int(request.query_params.get("limit", "50"))
+        source_filter = request.query_params.get("source", "import")
         all_buckets = await bucket_mgr.list_all(include_archive=False)
         # Sort by created time, newest first
         all_buckets.sort(key=lambda b: b["metadata"].get("created", ""), reverse=True)
+        # 来源过滤 — 默认只看 created_by='import',端点级过滤更经济
+        # (老桶缺 created_by 默认按 ai 计, 不会进 import 清单)
+        if source_filter != "all":
+            all_buckets = [
+                b for b in all_buckets
+                if b.get("metadata", {}).get("created_by", "ai") == source_filter
+            ]
         results = []
         for b in all_buckets[:limit]:
             meta = b.get("metadata", {})
@@ -3023,6 +3039,7 @@ async def api_import_results(request):
                 "importance": meta.get("importance", 5),
                 "created": meta.get("created", ""),
                 "event_time": meta.get("event_time", ""),
+                "created_by": meta.get("created_by", "ai"),  # 来源 user/ai/import
                 "protected": is_protected(meta),
                 "highlight": is_highlighted(meta),
                 "pinned": is_protected(meta) or is_highlighted(meta),

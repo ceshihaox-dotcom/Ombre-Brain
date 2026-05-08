@@ -83,6 +83,8 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
   if (!item) return null;
 
   const startEdit = () => {
+    // created_by 来源优先级: 顶层 (乐观更新后有) > _meta.created_by > 'ai' (历史默认)
+    const curSource = item.created_by || (item._meta && item._meta.created_by) || 'ai';
     setDraft({
       title: item.title,
       summary: item.summary || '',
@@ -97,6 +99,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
       highlight: !!item.highlight,
       internalized: !!item.internalized,
       noise: !!item.noise,
+      created_by: curSource,  // user / ai / import
     });
     setEditing(true);
   };
@@ -166,7 +169,9 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
   const isHi = view.importance >= 8 || view.highlight;
   const cells = Array.from({ length: 10 }, (_, i) => i < view.importance);
 
-  const allTagOptions = ['亲手写', 'AI 写入', '已内化', '保护', '重要', 'feel(柔软)', '编程', '工作', '恋爱', '创作', 'AI', '出行', '内心', '日常', '成长'];
+  // 注: '亲手写' / 'AI 写入' 已迁到 metadata.created_by 字段(三态 user/ai/import),
+  // 不再放进 tag 候选 — 避免双轨制 (字段 + tag 同表达一件事)
+  const allTagOptions = ['已内化', '保护', '重要', 'feel(柔软)', '编程', '工作', '恋爱', '创作', 'AI', '出行', '内心', '日常', '成长'];
   const allDraftTags = Array.from(new Set([...(draft?.tags || []), ...allTagOptions]));
 
   return (
@@ -190,6 +195,18 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
             <span>{editing ? '编辑中' : '记忆'} · {item.id.toUpperCase()}</span>
             <span style={{ opacity: 0.5 }}>/</span>
             <span>{idx + 1} / {sorted.length}</span>
+            {!editing && (() => {
+              // 来源标签 — user/ai/import 三态; 历史 ai 桶有可能其实是导入(待手动改)
+              const src = item.created_by || (item._meta && item._meta.created_by) || 'ai';
+              const labels = { user: '✎ 亲手写', ai: '◐ AI 写入', import: '⇣ 导入' };
+              const tip = src === 'ai' ? 'AI 主动写入(若实为导入,可在编辑态改来源)' : '';
+              return (
+                <>
+                  <span style={{ opacity: 0.5 }}>/</span>
+                  <span style={{ opacity: 0.7 }} title={tip}>{labels[src] || src}</span>
+                </>
+              );
+            })()}
             {!editing && isHi && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--accent)' }}>★ 重要</span></>}
             {!editing && view.feel && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--rose-deep)' }}>❀ feel</span></>}
             {!editing && view.protected && <><span style={{ opacity: 0.5 }}>/</span><span>★ 钉决</span></>}
@@ -334,6 +351,30 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
 
           {editing && (
             <>
+              {/* 来源 — 三态 radio (user/ai/import). AI 写入跟导入的区分以前没有,
+                  现在分开了; 历史 ai 桶可在此手动改 import */}
+              <div className="ob-modal-section">来源</div>
+              <div className="ob-modal-edit-flags">
+                {[
+                  { val: 'user', label: '✎ 亲手写' },
+                  { val: 'ai', label: '◐ AI 写入' },
+                  { val: 'import', label: '⇣ 导入' },
+                ].map(opt => (
+                  <label
+                    key={opt.val}
+                    className={`ob-modal-edit-flag ${draft.created_by === opt.val ? 'on' : ''}`}
+                  >
+                    <input
+                      type="radio"
+                      name={`ob-source-${item.id}`}
+                      checked={draft.created_by === opt.val}
+                      onChange={() => setDraft(d => ({ ...d, created_by: opt.val }))}
+                    />
+                    <span>{opt.label}</span>
+                  </label>
+                ))}
+              </div>
+
               <div className="ob-modal-section">状态</div>
               <div className="ob-modal-edit-flags">
                 <label className={`ob-modal-edit-flag ${draft.protected ? 'on' : ''}`}>

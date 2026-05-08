@@ -219,7 +219,11 @@ function HomeScreen() {
     if (filters.has('feel'))     result = result.filter(b => isFeel(b));
     if (filters.has('internal')) result = result.filter(b => b.internalized || b.digested);
     if (filters.has('cold'))     result = result.filter(b => (b.importance || 5) < 2);
-    if (filters.has('mine'))     result = result.filter(b => b.created_by === 'user');
+    // 来源过滤 — 三态多选 (OR), 缺 created_by 的老桶按 'ai' 计 (跟后端 list 端点 default 一致)
+    const srcFilters = ['user', 'ai', 'import'].filter(s => filters.has('src-' + s));
+    if (srcFilters.length > 0) {
+      result = result.filter(b => srcFilters.includes(b.created_by || 'ai'));
+    }
     if (domainFilters.length > 0) {
       result = result.filter(b => domainFilters.every(d => (b.domain || []).includes(d)));
     }
@@ -284,8 +288,9 @@ function HomeScreen() {
       for (const { b } of items) {
         if (b.highlight) { dots.add('hi'); hasHi = true; }
         if (isFeel(b)) dots.add('feel');
-        if (b.created_by === 'ai') dots.add('ai');
-        if (b.created_by === 'user') dots.add('note');
+        if (b.created_by === 'import') dots.add('import');
+        else if (b.created_by === 'user') dots.add('note');
+        else dots.add('ai');  // 默认 ai (含历史缺失字段的桶)
       }
       return { key: k, dt, dayFmt: fmtDay(dt), cnt: items.length, peakImp, hi: hasHi, dots: Array.from(dots), items };
     });
@@ -380,10 +385,20 @@ function HomeScreen() {
             className={'home-chip' + (filters.has('cold') ? ' on' : '')}
             onClick={() => toggleFilter('cold')}
           >待消化</span>
+          {/* 来源三态 chip — 多选 (OR). 替代旧的 "我写的" 单态.
+              改造前 'ai' 混了导入跟 AI 主动写, 改后 import 单独成态 */}
           <span
-            className={'home-chip' + (filters.has('mine') ? ' on' : '')}
-            onClick={() => toggleFilter('mine')}
-          >我写的</span>
+            className={'home-chip' + (filters.has('src-import') ? ' on' : '')}
+            onClick={() => toggleFilter('src-import')}
+          >⇣ 导入</span>
+          <span
+            className={'home-chip' + (filters.has('src-ai') ? ' on' : '')}
+            onClick={() => toggleFilter('src-ai')}
+          >◐ AI 写入</span>
+          <span
+            className={'home-chip' + (filters.has('src-user') ? ' on' : '')}
+            onClick={() => toggleFilter('src-user')}
+          >✎ 亲手写</span>
           <span
             className={'home-chip noise' + (filters.has('noise') ? ' on' : '')}
             onClick={() => toggleFilter('noise')}
@@ -495,6 +510,7 @@ function HomeScreen() {
                       <span className="dd-item-tags">
                         {isFeel(b) && <span className="dd-pip feel"/>}
                         {b.highlight && <span className="dd-pip hi"/>}
+                        {b.created_by === 'import' && <span className="dd-pip import"/>}
                         {b.created_by === 'ai' && <span className="dd-pip ai"/>}
                       </span>
                     </div>
@@ -852,7 +868,7 @@ function DayDetailScreen({ dayKey }) {
         total: items.length,
         feel: items.filter(({ b }) => isFeel(b)).length,
         hi: items.filter(({ b }) => b.highlight).length,
-        ai: items.filter(({ b }) => b.created_by === 'ai').length,
+        ai: items.filter(({ b }) => b.created_by === 'import').length,  // 当日"导入"条数(原叫 ai 是历史命名, 含义已改)
       },
     };
   }, [buckets, dayKey]);
@@ -910,6 +926,7 @@ function DayDetailScreen({ dayKey }) {
                 <span className="dd-item-tags">
                   {isFeel(b) && <span className="dd-pip feel"/>}
                   {b.highlight && <span className="dd-pip hi"/>}
+                  {b.created_by === 'import' && <span className="dd-pip import"/>}
                   {b.created_by === 'ai' && <span className="dd-pip ai"/>}
                 </span>
               </div>
@@ -996,7 +1013,7 @@ function MemFullScreen({ id }) {
           {dayFmt && <span>{dayFmt.num} {dayFmt.mo} {dayFmt.year}</span>}
           {time && <><span>·</span><span><b>{time}</b></span></>}
           <span>·</span>
-          <span>{m.created_by === 'ai' ? 'AI 写入' : '亲手写'}</span>
+          <span>{m.created_by === 'import' ? '⇣ 导入' : m.created_by === 'user' ? '✎ 亲手写' : '◐ AI 写入'}</span>
         </div>
       </div>
 
@@ -1238,6 +1255,7 @@ function FormFields({
   showSummary = true, showPin = true, contentRequired = false,
   onRedehydrate, redehydrating,    // 可选:编辑既有桶时传入,新建时不传
   noise, onToggleNoise,            // 可选:编辑既有桶时传入(噪声 toggle)
+  createdBy, setCreatedBy,         // 可选:编辑既有桶时传入(来源三态 user/ai/import)
 }) {
   const feel = tags.some(t => /^feel/i.test(String(t)));
   const toggleFeel = () => {
@@ -1306,6 +1324,28 @@ function FormFields({
           <span className="edit-imp-num">{imp}</span>
         </div>
       </div>
+
+      {setCreatedBy && (
+        <div className="edit-field">
+          <div className="edit-field-lbl">来源</div>
+          <div className="edit-toggle-row">
+            {[
+              { val: 'user', label: '亲手写', icon: '✎' },
+              { val: 'ai', label: 'AI 写入', icon: '◐' },
+              { val: 'import', label: '导入', icon: '⇣' },
+            ].map(opt => (
+              <button
+                key={opt.val}
+                type="button"
+                className={'edit-toggle ' + (createdBy === opt.val ? 'on' : '')}
+                onClick={() => setCreatedBy(opt.val)}
+              >
+                <span className="ic">{opt.icon}</span><span>{opt.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="edit-field">
         <div className="edit-field-lbl">动态属性</div>
@@ -1380,6 +1420,8 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
   const [redehyOpen, setRedehyOpen] = useState(false);
   // 是否有可重写正文用的原文 (raw_source)
   const [hasRawSource, setHasRawSource] = useState(false);
+  // 来源 — user / ai / import 三态
+  const [createdBy, setCreatedBy] = useState('ai');
   // 记下加载时的 noise 初值, save 时若没变就完全不动 resolved 字段
   // (resolved 不止是噪声标记, 还表"已解决/未解决", 不能误覆盖)
   const originalNoiseRef = useRef(false);
@@ -1401,6 +1443,7 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
         setTags(m.tags || []);
         setEventTime(toLocalDateTimeStr(m.event_time || m.created || ''));
         setHasRawSource(!!(m.raw_source && String(m.raw_source).trim()));
+        setCreatedBy(m.created_by || 'ai');
         setLoading(false);
       })
       .catch(e => { if (!cancel) { setError(e.message); setLoading(false); } });
@@ -1451,6 +1494,7 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
         tags: tags,
         protected: pin,
         event_time: fromLocalDateTimeStr(eventTime),
+        created_by: createdBy,
       };
       // 噪声字段只在用户实际切换时发送, 避免误覆盖 resolved 的本意(已解决/未解决)
       if (noise !== originalNoiseRef.current) {
@@ -1593,6 +1637,7 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
               onRedehydrate={openRedehydrate}
               redehydrating={redehydrating}
               noise={noise} onToggleNoise={toggleNoise}
+              createdBy={createdBy} setCreatedBy={setCreatedBy}
             />
             <button className="edit-delete-btn" onClick={del} disabled={loading || saving}>
               ✕ 删除这条记忆
@@ -1913,8 +1958,9 @@ function levelOf(n) {
 }
 
 function isImportTodo(b) {
-  // AI 写入 + 没有 __import_refined / __import_flagged tag = 待审
-  if (b.created_by !== 'ai') return false;
+  // 导入桶 + 没有 __import_refined / __import_flagged tag = 待审
+  // (改造前 created_by 默认 'ai' 把导入跟 AI 主动写混在一起, 现在 import 单独)
+  if (b.created_by !== 'import') return false;
   const tags = b.tags || [];
   if (tags.indexOf('__import_refined') >= 0) return false;
   if (tags.indexOf('__import_flagged') >= 0) return false;
@@ -2194,8 +2240,9 @@ function ReviewScreen() {
       .then(d => {
         if (cancel) return;
         const list = Array.isArray(d) ? d : [];
-        // 只审阅 AI 写入的(用户自己写的不需要走审阅流);按时间倒序
-        const aiOnly = list.filter(b => b.created_by === 'ai');
+        // 只审阅导入的桶 (AI 主动写跟用户自己写都不走审阅流); 按时间倒序
+        // 改造前 'ai' 混了导入跟 AI 主动写, 改后 import 单独
+        const aiOnly = list.filter(b => b.created_by === 'import');
         aiOnly.sort((a, b) => {
           const ta = new Date(a.event_time || a.created || 0).getTime();
           const tb = new Date(b.event_time || b.created || 0).getTime();
