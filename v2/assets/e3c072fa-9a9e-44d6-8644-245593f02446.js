@@ -8,19 +8,27 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
   const [redehydrating, setRedehydrating] = muS(false);
   // 原文浮层:覆盖在详情 modal 上方,给完整 body 一个不被挤的阅读空间
   const [rawOpen, setRawOpen] = muS(false);
+  // 原文编辑态:把 LLM 漏掉的细节手动补回来 (写 metadata.raw_source)
+  // 边界提醒:写进去之后这个字段就不再是「AI 没碰过的真实片段」, 而是「你亲手摸过的完整版」
+  const [editingRaw, setEditingRaw] = muS(false);
+  const [rawDraft, setRawDraft] = muS('');
+  const [savingRaw, setSavingRaw] = muS(false);
 
   // 切换条目时退出编辑 + 关原文 + 重置 draft
   muE(() => {
     setEditing(false);
     setDraft(null);
     setRawOpen(false);
+    setEditingRaw(false);
+    setRawDraft('');
   }, [item?.id]);
 
   muE(() => {
     if (!item) return;
     const onKey = (e) => {
       if (e.key === 'Escape') {
-        // 优先级:原文浮层 > 编辑态 > 关详情 modal
+        // 优先级:原文编辑态 > 原文浮层 > 详情编辑态 > 关详情 modal
+        if (editingRaw) { setEditingRaw(false); setRawDraft(''); return; }
         if (rawOpen) { setRawOpen(false); return; }
         if (editing) { setEditing(false); setDraft(null); return; }
         onClose();
@@ -40,7 +48,37 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [item, onNavigate, onClose, editing, draft, rawOpen]);
+  }, [item, onNavigate, onClose, editing, draft, rawOpen, editingRaw]);
+
+  // 进入原文编辑:从当前 raw_source 拉 draft (空 → 空 textarea, 首次填也走这条)
+  const startEditRaw = () => {
+    const cur = (item._meta && item._meta.raw_source) || '';
+    setRawDraft(cur);
+    setEditingRaw(true);
+  };
+  const cancelEditRaw = () => {
+    setEditingRaw(false);
+    setRawDraft('');
+  };
+  const saveEditRaw = async () => {
+    if (!onUpdate || savingRaw) return;
+    setSavingRaw(true);
+    try {
+      // 走父级 onUpdate → bridge __obUpdateBucket → /api/bucket/{id}/update
+      // 后端 bucket_manager 会截到 8KB
+      const truncated = String(rawDraft || '').slice(0, 8000);
+      await onUpdate(item.id, { raw_source: truncated, __synced: true });
+      // 父级 refresh 是异步的, 直接 mutate 当前 _meta 让浮层立刻反映新值
+      // (refresh 后 item 引用会被替换, 这里的 mutation 自然失效, 不会脏污长期状态)
+      if (item._meta) item._meta.raw_source = truncated;
+      setEditingRaw(false);
+      setRawDraft('');
+    } catch (e) {
+      alert('原文保存失败: ' + (e && e.message ? e.message : e));
+    } finally {
+      setSavingRaw(false);
+    }
+  };
 
   if (!item) return null;
 
@@ -436,69 +474,134 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
       )}
 
       {/* 原文浮层:复用 ob-modal 视觉,叠在详情 modal 上方(z-index 250 > 200)
-          关闭路径:点外部 / 左上 [← 详情] / 右上 [✕] / Esc(在 keydown handler 里) */}
-      {rawOpen && (
+          关闭路径:点外部 / 左上 [← 详情] / 右上 [✕] / Esc(在 keydown handler 里)
+          编辑态:点 [✎ 编辑] 切到 textarea, [保存]/[取消] 在 footer */}
+      {rawOpen && (() => {
+        const rawSrc = view._meta && view._meta.raw_source;
+        const hasRaw = !!(rawSrc && String(rawSrc).trim());
+        const RAW_MAX = 8000;  // 后端 bucket_manager 截断点 — UI 同步上限避免静默丢字
+        const draftLen = (rawDraft || '').length;
+        const overLimit = draftLen > RAW_MAX;
+        return (
         <div
           className="ob-modal-wrap"
           style={{ zIndex: 250 }}
-          onClick={() => setRawOpen(false)}
+          onClick={() => { if (!editingRaw) setRawOpen(false); }}
         >
           <div className="ob-modal" onClick={(e) => e.stopPropagation()}>
             <div className="ob-modal-bg" />
             <button
               className="ob-modal-close"
-              onClick={() => setRawOpen(false)}
-              title="关闭原文 (Esc)"
+              onClick={() => { if (!editingRaw) setRawOpen(false); }}
+              title={editingRaw ? '请先保存或取消编辑' : '关闭原文 (Esc)'}
+              disabled={editingRaw}
+              style={editingRaw ? { opacity: 0.4, cursor: 'not-allowed' } : undefined}
             >✕</button>
             <header className="ob-modal-hd">
               <div className="ob-modal-eyebrow">
                 <button
                   type="button"
-                  onClick={() => setRawOpen(false)}
-                  title="返回详情 (Esc)"
+                  onClick={() => { if (!editingRaw) setRawOpen(false); }}
+                  title={editingRaw ? '请先保存或取消编辑' : '返回详情 (Esc)'}
+                  disabled={editingRaw}
                   style={{
                     background: 'transparent', border: 0, padding: '2px 6px',
-                    color: 'var(--ink-3)', font: 'inherit', cursor: 'pointer',
-                    borderRadius: 4,
+                    color: editingRaw ? 'var(--ink-4)' : 'var(--ink-3)',
+                    font: 'inherit', cursor: editingRaw ? 'not-allowed' : 'pointer',
+                    borderRadius: 4, opacity: editingRaw ? 0.5 : 1,
                   }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = 'var(--accent)'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = 'var(--ink-3)'; }}
+                  onMouseEnter={(e) => { if (!editingRaw) e.currentTarget.style.color = 'var(--accent)'; }}
+                  onMouseLeave={(e) => { if (!editingRaw) e.currentTarget.style.color = 'var(--ink-3)'; }}
                 >← 详情</button>
                 <span style={{ opacity: 0.5 }}>/</span>
-                <span>原文 · {item.id.toUpperCase()}</span>
+                <span>原文 · {item.id.toUpperCase()}{editingRaw ? ' · 编辑中' : ''}</span>
               </div>
               <h2 className="ob-modal-title">{view.title}</h2>
             </header>
             <div className="ob-modal-body">
-              {(() => {
-                const rawSrc = view._meta && view._meta.raw_source;
-                const hasRaw = !!(rawSrc && String(rawSrc).trim());
-                if (hasRaw) {
-                  return (
-                    <div
-                      className="ob-modal-content"
-                      style={{ whiteSpace: 'pre-wrap', lineHeight: 1.75 }}
-                    >{rawSrc}</div>
-                  );
-                }
-                return (
-                  <div
-                    className="ob-modal-content"
-                    style={{ opacity: 0.55, fontStyle: 'italic', lineHeight: 1.7 }}
-                  >
-                    此条没有保存原文片段。可能是早期导入(还没引入 source_excerpt 机制),
-                    或导入时 LLM 没输出此字段。
-                    <br /><br />
-                    <span style={{ fontSize: 13, opacity: 0.7 }}>
-                      （注:此处显示的是「原文」—— 即导入时 LLM 摘自对话的精准片段。整理后的脱水正文请回到详情界面查看。）
-                    </span>
-                  </div>
-                );
-              })()}
+              {editingRaw ? (
+                <textarea
+                  value={rawDraft}
+                  onChange={(e) => setRawDraft(e.target.value)}
+                  autoFocus
+                  placeholder={hasRaw
+                    ? '直接修改 / 补充原文片段。保留说话人前缀(如「用户:」「AI:」)能让后续重新脱水时锚点更准。'
+                    : '此条目前没有原文。在这里粘贴或手写补全 — 这段内容会喂给以后的「↻ 重新脱水」当输入。'}
+                  style={{
+                    width: '100%',
+                    minHeight: 'calc(60vh - 120px)',
+                    background: 'var(--paper-2, rgba(0,0,0,0.02))',
+                    border: '1px solid var(--ink-5, rgba(0,0,0,0.12))',
+                    borderRadius: 6,
+                    padding: '14px 16px',
+                    font: 'inherit',
+                    lineHeight: 1.75,
+                    color: 'var(--ink-1)',
+                    resize: 'vertical',
+                    whiteSpace: 'pre-wrap',
+                    boxSizing: 'border-box',
+                  }}
+                />
+              ) : hasRaw ? (
+                <div
+                  className="ob-modal-content"
+                  style={{ whiteSpace: 'pre-wrap', lineHeight: 1.75 }}
+                >{rawSrc}</div>
+              ) : (
+                <div
+                  className="ob-modal-content"
+                  style={{ opacity: 0.55, fontStyle: 'italic', lineHeight: 1.7 }}
+                >
+                  此条没有保存原文片段。可能是早期导入(还没引入 source_excerpt 机制),
+                  或导入时 LLM 没输出此字段。
+                  <br /><br />
+                  <span style={{ fontSize: 13, opacity: 0.7 }}>
+                    （注:此处显示的是「原文」—— 即导入时 LLM 摘自对话的精准片段。整理后的脱水正文请回到详情界面查看。）
+                    <br />
+                    点下方 [✎ 编辑] 可以手动补一段进来。
+                  </span>
+                </div>
+              )}
             </div>
+            {/* footer:非编辑态 [✎ 编辑] / 编辑态 字数 + [取消][保存] */}
+            <footer className="ob-modal-foot">
+              <div className="ob-modal-meta">
+                {editingRaw ? (
+                  <span
+                    className="ob-modal-meta-item"
+                    style={{ color: overLimit ? 'var(--danger, #b94545)' : 'var(--ink-3)' }}
+                    title={overLimit ? '超过 8KB 上限,保存时会被截断' : ''}
+                  >{draftLen} / {RAW_MAX}{overLimit ? ' · 会截断' : ''}</span>
+                ) : (
+                  <span className="ob-modal-meta-item" style={{ opacity: 0.6 }}>
+                    {hasRaw ? '原文片段 (可编辑补全)' : '空原文'}
+                  </span>
+                )}
+              </div>
+              <div className="ob-modal-actions">
+                {editingRaw ? (
+                  <>
+                    <button className="ob-modal-btn" onClick={cancelEditRaw} disabled={savingRaw}>取消</button>
+                    <button
+                      className="ob-modal-btn ob-modal-btn-primary"
+                      onClick={saveEditRaw}
+                      disabled={savingRaw}
+                      title="保存到 metadata.raw_source — 以后「↻ 重新脱水」会拿到这份新内容"
+                    >{savingRaw ? '⌛ 保存中…' : '保存'}</button>
+                  </>
+                ) : onUpdate ? (
+                  <button
+                    className="ob-modal-btn ob-modal-btn-primary"
+                    onClick={startEditRaw}
+                    title="手动补全或修订原文片段"
+                  >✎ 编辑</button>
+                ) : null}
+              </div>
+            </footer>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

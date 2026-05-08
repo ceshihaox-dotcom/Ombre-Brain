@@ -149,6 +149,7 @@
     if (patch.title != null) body.name = patch.title;
     if (patch.body != null) body.content = patch.body;
     if (patch.summary != null) body.summary = patch.summary;
+    if (patch.raw_source != null) body.raw_source = patch.raw_source;  // 原文片段(用户手动补全)
     if (patch.importance != null) body.importance = patch.importance;
     if (patch.tags != null) body.tags = patch.tags;
     if (patch.protected != null) body.protected = !!patch.protected;

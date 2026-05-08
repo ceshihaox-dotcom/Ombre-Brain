@@ -1544,6 +1544,7 @@ async def api_bucket_update(request):
         "internalized", "digested", "event_time", "content", "model_valence",
         "type",  # 支持 feel ↔ dynamic 切换(导入工作台 feel 开关)
         "summary",  # 用户可编辑的摘要(v2 modal),为空时回退到 content_preview
+        "raw_source",  # 用户可手动补全/修订的原文片段(详情 modal 原文浮层编辑入口)
     }
     updates = {k: v for k, v in body.items() if k in allowed}
     if not updates:
