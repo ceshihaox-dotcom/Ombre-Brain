@@ -546,6 +546,34 @@ _LARGE_MODE_SUFFIX = """
 
 
 # ============================================================
+# JSON 输出格式硬约束 — 凌驾所有 framing 拼到 prompt 最末尾
+# ----------------------------------------------------------
+# Why: 上面规则 1/2/6/7 + LONG_EXCERPT_RULES + SMALL/LARGE_SUFFIX 累加
+# 后 system prompt 长达 1800-2200 字, LLM 在长 prompt 下"输出 JSON 数组"
+# 指令容易被淹没, 输出 prose 或非法 JSON → _parse_extraction 救不回来
+# → 0 items → fallback 桶满天飞.
+#
+# 用户实测证据 (2026-05-08): 同一段内容, import prompt 出 0 items 走
+# fallback, 但 fallback 桶手动按 [↻ 重新脱水] (REGEN_CONTENT_PROMPT,
+# 纯文本输出) 顺利成功. 同 LLM 同内容, 区别只在输出格式 — 这定位
+# JSON 格式约束是真正的瓶颈.
+#
+# 这段拼到最末尾, 利用 LLM 对 prompt 末尾内容的注意力优势, 让"必须 JSON"
+# 成为最后看到的强约束.
+# ============================================================
+_JSON_HARD_CONSTRAINT = """
+
+⚠️ 输出格式硬约束(优先级最高, 凌驾上面所有 framing 与规则):
+- 你的回复**必须**是合法 JSON 数组: 第一个字符是 `[`, 最后一个字符是 `]`
+- JSON 之前 / 之后**不要**有任何字符: 不要 markdown 代码块, 不要前言,
+  不要解释, 不要 prose 描述, 不要"以下是结果:"这种话术
+- 没有合法 JSON = 整次提取作废, 后端会兜底成 fallback 桶, **比抓得少更糟**
+- 即使你判断这次没什么好抓的, 也要输出合法 JSON (在 SMALL 模式下至少 1 条,
+  其他模式可以 [], 但永远不能输出非 JSON 文本)
+"""
+
+
+# ============================================================
 # Import Engine — core processing logic
 # 导入引擎 — 核心处理逻辑
 # ============================================================
@@ -616,13 +644,15 @@ class ImportEngine:
 
         # 根据 mode 临时切换 extract_prompt (long_excerpt 跟 mode 是两个维度, 交叉处理)
         # 每次 start() 重算, 不持久化到 __init__ — 方便每次导入选择不同 mode
+        # JSON 硬约束**永远拼在最末尾** — 利用 LLM 对 prompt 末尾的注意力优势
+        # 让"必须 JSON 数组"成为最后看到的指令, 凌驾任何 framing
         base_prompt = IMPORT_EXTRACT_PROMPT_LONG if self.long_excerpt else IMPORT_EXTRACT_PROMPT
         if mode == "small":
-            self.extract_prompt = base_prompt + _SMALL_MODE_SUFFIX
+            self.extract_prompt = base_prompt + _SMALL_MODE_SUFFIX + _JSON_HARD_CONSTRAINT
         elif mode == "large":
-            self.extract_prompt = base_prompt + _LARGE_MODE_SUFFIX
+            self.extract_prompt = base_prompt + _LARGE_MODE_SUFFIX + _JSON_HARD_CONSTRAINT
         else:
-            self.extract_prompt = base_prompt
+            self.extract_prompt = base_prompt + _JSON_HARD_CONSTRAINT
 
         try:
             source_hash = hashlib.sha256(raw_content.encode()).hexdigest()[:16]
