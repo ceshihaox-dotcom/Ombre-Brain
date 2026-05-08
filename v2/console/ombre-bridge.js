@@ -159,8 +159,10 @@
 
   // ---------- 导入工作台专用 ----------
   // 上传文件(multipart) 或 粘贴原文(裸文本 body)
-  window.__obImportUpload = async function (filenameOrText, isFile, fileObj) {
-    var url = '/api/import/upload?preserve_raw=1';
+  // mode: 'small' (默认, 强制至少 1 条) 或 'large' (大批量精挑)
+  window.__obImportUpload = async function (filenameOrText, isFile, fileObj, mode) {
+    var modeQ = '&mode=' + encodeURIComponent(mode || 'small');
+    var url = '/api/import/upload?preserve_raw=1' + modeQ;
     var opts;
     if (isFile && fileObj) {
       var fd = new FormData();
@@ -182,9 +184,10 @@
   };
 
   // 简洁版:粘贴文本(更直观的调用)
-  window.__obImportPasteText = async function (rawText, filenameHint) {
+  window.__obImportPasteText = async function (rawText, filenameHint, mode) {
     var fname = filenameHint || ('paste-' + new Date().toISOString().slice(0, 19).replace(/:/g, '') + '.txt');
-    var r = await fetch('/api/import/upload?preserve_raw=1&filename=' + encodeURIComponent(fname), {
+    var modeQ = '&mode=' + encodeURIComponent(mode || 'small');
+    var r = await fetch('/api/import/upload?preserve_raw=1&filename=' + encodeURIComponent(fname) + modeQ, {
       method: 'POST',
       headers: { 'Content-Type': 'text/plain;charset=utf-8' },
       body: rawText,
@@ -194,10 +197,11 @@
   };
 
   // 上传文件;maxChunks > 0 → sample 模式,只跑前 N 个 chunk(试水/控成本)
-  window.__obImportFile = async function (file, maxChunks) {
+  // mode: 'small' (默认, 强制至少 1 条) 或 'large' (大批量精挑)
+  window.__obImportFile = async function (file, maxChunks, mode) {
     var fd = new FormData();
     fd.append('file', file, file.name);
-    var url = '/api/import/upload?preserve_raw=1';
+    var url = '/api/import/upload?preserve_raw=1&mode=' + encodeURIComponent(mode || 'small');
     if (maxChunks && maxChunks > 0) url += '&max_chunks=' + maxChunks;
     var r = await fetch(url, { method: 'POST', body: fd });
     if (!r.ok) throw new Error('上传失败:' + (await r.text()));
