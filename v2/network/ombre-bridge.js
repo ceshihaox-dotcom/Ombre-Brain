@@ -102,7 +102,10 @@
       body.resolved = !!patch.noise;
       if (patch.noise) body.importance = 1;
     }
-    // feel 在 ombre-brain 是 type 字段(feel / dynamic),update 端点未暴露 type 切换 — 暂跳过
+    // feel 在 ombre-brain 是 type 字段(feel / dynamic),update 端点已暴露 type 切换
+    // (commit 089e440 加进了 allowed) — 跟 console bridge 同步处理
+    if (patch.type != null) body.type = patch.type;            // feel ↔ dynamic 直传
+    if (patch.feel != null) body.type = patch.feel ? 'feel' : 'dynamic';  // 兼容 ItemModal 的 boolean toggle
     var r = await fetch('/api/bucket/' + encodeURIComponent(id) + '/update', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
