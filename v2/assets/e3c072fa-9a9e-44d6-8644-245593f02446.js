@@ -118,24 +118,56 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
     setDraft(null);
   };
 
-  // 重新脱水: LLM 重新生成 name/summary/tags/valence/arousal (正文/重要度保留)
-  // 后端已写盘, 这里更新 draft + 通过 onUpdate 同步父级状态
+  // 重新脱水: LLM 重新生成 name/summary/tags/valence/arousal
+  // 流程: redehydrate (预览, 不写盘) → 拿 d.new → redehydrate-commit (真写盘) → 同步前端
+  // 旧版 bug: 直接读 d.metadata 但端点改造成预览模式后只返 d.new, 导致 newSummary='' 写空盘
   const redehydrate = async () => {
     if (!item || redehydrating) return;
-    if (!window.confirm(`重新脱水会让 LLM 重新生成「${item.title || '这条'}」的标题、一句话摘要、标签和情感参数。\n正文不变, 重要度也保留。继续?`)) return;
+    if (!window.confirm(`重新脱水会让 LLM 重新生成「${item.title || '这条'}」的标题、一句话摘要、标签和情感参数。\n继续?`)) return;
+    // 二次询问是否重写正文 (导入台已有这个选项, 这边补上)
+    const regenContent = window.confirm(
+      '要不要顺便重写正文?\n\n' +
+      '[确定] = 是, 基于原文 (raw_source) + 主题锚点重写正文 (需要 raw_source 非空)\n' +
+      '[取消] = 否, 只重写标题/摘要/标签等元数据, 正文不变'
+    );
     setRedehydrating(true);
     try {
-      const r = await fetch(`/api/bucket/${encodeURIComponent(item.id)}/redehydrate`, { method: 'POST' });
+      // Step 1: 预览端点拿 LLM 输出
+      const r = await fetch(`/api/bucket/${encodeURIComponent(item.id)}/redehydrate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ regenerate_content: regenContent }),
+      });
       const d = await r.json().catch(() => ({}));
       if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
-      const m = d.metadata || {};
-      const newSummary = m.summary || '';
-      const newTitle = m.name || item.title;
-      // 同步表单(若在编辑) + 通知父级刷新列表
+      const newVals = d.new || {};
+      const newTitle = newVals.name || item.title;
+      const newSummary = newVals.summary || '';
+      const newTags = Array.isArray(newVals.tags) ? newVals.tags : (item.tags || []);
+      const newContent = newVals.content !== undefined ? newVals.content : (item.body || '');
+
+      // Step 2: commit 端点真写盘 (commit 接受字段白名单, 缺哪个就不动哪个)
+      const commitBody = {
+        name: newTitle,
+        summary: newSummary,
+        tags: newTags,
+      };
+      if (regenContent) commitBody.content = newContent;
+      const c = await fetch(`/api/bucket/${encodeURIComponent(item.id)}/redehydrate-commit`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(commitBody),
+      });
+      const cd = await c.json().catch(() => ({}));
+      if (!c.ok) throw new Error(cd.error || `HTTP ${c.status}`);
+
+      // Step 3: 同步前端 state
+      const updates = { title: newTitle, summary: newSummary, tags: newTags, __synced: true };
+      if (regenContent) updates.body = newContent;
       if (draft) {
-        setDraft(dr => ({ ...dr, title: newTitle, summary: newSummary, tags: m.tags || dr.tags }));
+        setDraft(dr => ({ ...dr, ...updates }));
       }
-      if (onUpdate) onUpdate(item.id, { title: newTitle, summary: newSummary, tags: m.tags || item.tags, __synced: true });
+      if (onUpdate) onUpdate(item.id, updates);
     } catch (e) {
       alert('重新脱水失败: ' + e.message);
     } finally {
