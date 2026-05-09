@@ -144,8 +144,9 @@ function DateModuleV2({ date, items, onOpenItem, onOpenDay, density, query, isTo
   const isDense = items.length >= 7;
   const cardCountAttr = isDense ? 'dense' : String(Math.min(items.length, 10));
 
-  // 当日按时间正序(早→晚, 跟阅读顺序一致)
-  const sorted = [...items].sort((a, b) => a.time.localeCompare(b.time));
+  // 当日按时间倒序(晚→早, 跟整体日期倒序一致 — 时段块标题已倒序 night→morning,
+  // 块内条目跟着倒序: 22:00 在 18:00 之前. 用户反馈"早午晚夜按正序显示有点乱"修这个)
+  const sorted = [...items].sort((a, b) => b.time.localeCompare(a.time));
 
   // 显示数量：折叠时按密度规则；本地展开则全部显示
   const COLLAPSED_SHOW = isDense ? 8 : 4;

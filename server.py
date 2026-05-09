@@ -2313,6 +2313,11 @@ async def api_bucket_create(request):
     protected = bool(body.get("protected", False))
     highlight = bool(body.get("highlight", False))
     internalized = bool(body.get("internalized", False))
+    # type 字段 — 用户在 WriteDrawer 切 feel 时前端传 type='feel'
+    # 默认 'dynamic', 合法值: dynamic / feel / permanent
+    bucket_type = body.get("type", "dynamic")
+    if bucket_type not in ("dynamic", "feel", "permanent"):
+        bucket_type = "dynamic"
 
     try:
         bucket_id = await bucket_mgr.create(
@@ -2326,6 +2331,7 @@ async def api_bucket_create(request):
             protected=protected,
             highlight=highlight,
             event_time=event_time,
+            bucket_type=bucket_type,  # feel 切换时这里写入 metadata.type='feel'
             created_by="user",  # dashboard 手动新建标记,跟 AI 写入区分
         )
     except Exception as e:
