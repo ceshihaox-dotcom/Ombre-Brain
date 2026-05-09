@@ -1463,13 +1463,19 @@ function ImportWorkbench() {
                       type="date"
                       value={(active.timeHint || '').slice(0, 10)}
                       onChange={(e) => {
-                        const dateOnly = e.target.value;  // YYYY-MM-DD (本地)
-                        const oldTime = (active.timeHint || '').slice(11, 16) || '';
-                        // 本地 → UTC ISO 给后端
-                        const eventTime = dateOnly && window.__obLocalToUtcIso
-                          ? window.__obLocalToUtcIso(dateOnly, oldTime || '00:00')
-                          : (dateOnly ? (dateOnly + 'T' + (oldTime || '00:00') + ':00') : '');
+                        // onChange 只更新本地 (避免 native picker / 输入过程中 partial 触发立即 fetch)
+                        const dateOnly = e.target.value;
+                        const oldTime = (active.timeHint || '').slice(11, 16);
                         setQueue(qs => qs.map(q => q.id === activeId ? { ...q, timeHint: dateOnly + (oldTime ? ' ' + oldTime : '') } : q));
+                      }}
+                      onBlur={(e) => {
+                        // onBlur 才 fetch — 用户编辑完离开输入框, 数据完整
+                        const dateOnly = e.target.value;
+                        if (!dateOnly || dateOnly.length !== 10) return;  // 不完整不发请求
+                        const oldTime = (active.timeHint || '').slice(11, 16) || '';
+                        const eventTime = window.__obLocalToUtcIso
+                          ? window.__obLocalToUtcIso(dateOnly, oldTime || '00:00')
+                          : (dateOnly + 'T' + (oldTime || '00:00') + ':00');
                         window.__obUpdateBucket(activeId, { event_time: eventTime || null }).catch(err => alert('保存失败:' + err.message));
                       }}
                       style={{
@@ -1483,13 +1489,18 @@ function ImportWorkbench() {
                       type="time"
                       value={(active.timeHint || '').slice(11, 16)}
                       onChange={(e) => {
-                        const timeOnly = e.target.value;  // HH:MM (本地)
+                        const timeOnly = e.target.value;
                         const dateOnly = (active.timeHint || '').slice(0, 10);
-                        if (!dateOnly) return;
-                        const eventTime = window.__obLocalToUtcIso
-                          ? window.__obLocalToUtcIso(dateOnly, timeOnly || '00:00')
-                          : (dateOnly + 'T' + (timeOnly || '00:00') + ':00');
                         setQueue(qs => qs.map(q => q.id === activeId ? { ...q, timeHint: dateOnly + (timeOnly ? ' ' + timeOnly : '') } : q));
+                      }}
+                      onBlur={(e) => {
+                        const timeOnly = e.target.value;
+                        const dateOnly = (active.timeHint || '').slice(0, 10);
+                        if (!dateOnly || dateOnly.length !== 10) return;  // 没日期就没法组装 ISO
+                        if (!timeOnly || !/^\d{2}:\d{2}$/.test(timeOnly)) return;  // 时间不完整不发请求
+                        const eventTime = window.__obLocalToUtcIso
+                          ? window.__obLocalToUtcIso(dateOnly, timeOnly)
+                          : (dateOnly + 'T' + timeOnly + ':00');
                         window.__obUpdateBucket(activeId, { event_time: eventTime }).catch(err => alert('保存失败:' + err.message));
                       }}
                       style={{

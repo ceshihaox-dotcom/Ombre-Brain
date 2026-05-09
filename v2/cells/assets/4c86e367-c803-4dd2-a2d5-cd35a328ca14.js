@@ -181,11 +181,22 @@ function Fab({ onClick }) {
 
 // ── 写入抽屉（v2 · 信纸感重设计）─────────────────────
 function WriteDrawer({ open, onClose, onSave, defaultDate, defaultTime, defaultTags }) {
+  // defaultDate/defaultTime 父组件常用 const TODAY (page-load 时算), 跨天没刷新就错
+  // 改成抽屉打开那一刻内部自己取当下时间 (跟主版 92806636.js 同步)
+  const _freshNow = () => {
+    const d = new Date();
+    const pad = (n) => String(n).padStart(2, '0');
+    return {
+      date: `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`,
+      time: `${pad(d.getHours())}:${pad(d.getMinutes())}`,
+    };
+  };
+  const _initial = _freshNow();
   const [title, setTitle] = uS('');
   const [summary, setSummary] = uS('');
   const [body, setBody] = uS('');
-  const [time, setTime] = uS(defaultTime);
-  const [date, setDate] = uS(defaultDate);
+  const [time, setTime] = uS(_initial.time);
+  const [date, setDate] = uS(_initial.date);
   const [importance, setImportance] = uS(5);
   const [feel, setFeel] = uS(false);
   const [protectFlag, setProtect] = uS(false);
@@ -194,12 +205,13 @@ function WriteDrawer({ open, onClose, onSave, defaultDate, defaultTime, defaultT
 
   uE(() => {
     if (open) {
+      const now = _freshNow();  // 每次开抽屉重新取
       setTitle(''); setSummary(''); setBody(''); setImportance(5);
       setFeel(false); setProtect(false); setTags(defaultTags || []);
-      setDate(defaultDate); setTime(defaultTime);
+      setDate(now.date); setTime(now.time);
       setTimeout(() => titleRef.current && titleRef.current.focus(), 80);
     }
-  }, [open, defaultDate, defaultTime, defaultTags]);
+  }, [open, defaultTags]);
 
   uE(() => {
     if (!open) return;

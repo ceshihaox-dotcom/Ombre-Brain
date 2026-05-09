@@ -13,6 +13,8 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
   const [editingRaw, setEditingRaw] = muS(false);
   const [rawDraft, setRawDraft] = muS('');
   const [savingRaw, setSavingRaw] = muS(false);
+  // 自定义 tag 输入草稿 — 编辑态新增 tag 用 (allTagOptions 之外的)
+  const [tagDraft, setTagDraft] = muS('');
 
   // 切换条目时退出编辑 + 关原文 + 重置 draft
   muE(() => {
@@ -328,19 +330,53 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
 
           <div className="ob-modal-section">标签</div>
           {editing ? (
-            <div className="ob-modal-edit-tags">
-              {allDraftTags.map(tg => (
-                <button
-                  key={tg}
-                  type="button"
-                  className={`ob-modal-edit-tag ${draft.tags.includes(tg) ? 'on' : ''}`}
-                  onClick={() => setDraft(d => ({
-                    ...d,
-                    tags: d.tags.includes(tg) ? d.tags.filter(x => x !== tg) : [...d.tags, tg]
-                  }))}
-                >{tg}</button>
-              ))}
-            </div>
+            <>
+              <div className="ob-modal-edit-tags">
+                {allDraftTags.map(tg => (
+                  <button
+                    key={tg}
+                    type="button"
+                    className={`ob-modal-edit-tag ${draft.tags.includes(tg) ? 'on' : ''}`}
+                    onClick={() => setDraft(d => ({
+                      ...d,
+                      tags: d.tags.includes(tg) ? d.tags.filter(x => x !== tg) : [...d.tags, tg]
+                    }))}
+                  >{tg}</button>
+                ))}
+              </div>
+              {/* 自定义新 tag 输入 — Enter 添加, 不能跟已有 tag 重复, 不能加 __ 前缀 (隐藏 tag 系统保留) */}
+              <div style={{ marginTop: 8 }}>
+                <input
+                  type="text"
+                  className="ob-modal-edit-tag-input"
+                  value={tagDraft}
+                  onChange={(e) => setTagDraft(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      const v = tagDraft.trim();
+                      if (!v) return;
+                      if (v.startsWith('__')) { setTagDraft(''); return; }  // __ 前缀是系统隐藏 tag
+                      if (draft.tags.includes(v)) { setTagDraft(''); return; }
+                      setDraft(d => ({ ...d, tags: [...d.tags, v] }));
+                      setTagDraft('');
+                    }
+                  }}
+                  placeholder="+ 添加自定义标签 (按 Enter)"
+                  style={{
+                    width: '100%',
+                    padding: '6px 10px',
+                    border: '1px dashed var(--ink-5, rgba(0,0,0,0.18))',
+                    borderRadius: 4,
+                    background: 'transparent',
+                    color: 'var(--ink-2)',
+                    font: 'inherit',
+                    fontSize: 13,
+                    boxSizing: 'border-box',
+                  }}
+                />
+              </div>
+            </>
           ) : (
             view.tags && view.tags.length > 0 ? (
               <div className="ob-modal-tags">
