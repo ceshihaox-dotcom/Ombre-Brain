@@ -89,6 +89,11 @@ function fmtTime(dt) {
 }
 
 function isFeel(b) {
+  // type='feel' (用户工作台手动切换 / 后端写 metadata.type='feel') 优先判定
+  // tags 里有 'feel' 字眼是历史兼容 (LLM 给的 'feel(柔软)' 等), 两条都认
+  // 之前只查 tags, 用户在工作台 toggle feel 后 type='feel' 但 tags 不变 →
+  // 移动端检测不出, "标记不是粉色点" — 修这个不一致
+  if (b.type === 'feel') return true;
   return (b.tags || []).some(t => /feel/i.test(String(t)));
 }
 

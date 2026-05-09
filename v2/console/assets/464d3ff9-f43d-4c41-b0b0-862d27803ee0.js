@@ -17,8 +17,16 @@ function statusOf(item) {
   if (tags.includes(STATUS_TAG_FLAGGED)) return 'flagged';
   return 'pending';
 }
+// bridge 注入的"伪 tag" — 来源 / 状态 在 imp-paper 都有独立 UI (source pill /
+// type pill / importance bar) 显示, 不应该塞进 tag 列表里让用户误以为可以
+// 像普通 tag 一样删除. 删除伪 tag 也无效因为 fetchQueue 重拉时 bridge 又注入.
+// 修复"导入台标签无法删除" (实际是删了又出现) — visibleTags 一起过滤掉.
+const _CONSOLE_PSEUDO_TAGS = new Set([
+  '亲手写', 'AI 写入', '导入',                                    // 来源伪 tag (用 source pill 切换)
+  '已内化', '保护', '重要', 'feel(柔软)',                          // 状态伪 tag (用对应 toggle / type pill 切换)
+]);
 function visibleTags(tags) {
-  return (tags || []).filter(t => !String(t).startsWith('__'));
+  return (tags || []).filter(t => !String(t).startsWith('__') && !_CONSOLE_PSEUDO_TAGS.has(String(t)));
 }
 
 // API bucket → 工作台 item shape
