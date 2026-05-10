@@ -3288,9 +3288,17 @@ body {
 }
 .ob-chip:hover { background: var(--bg-2); color: var(--ink); }
 .ob-chip-on { background: var(--ink); color: var(--paper); }
-.ob-chip-on.ob-chip-rose { background: var(--rose-deep); color: var(--paper); }
-.ob-chip-on.ob-chip-amber { background: var(--accent); color: var(--paper); }
-.ob-chip-on.ob-chip-gold { background: var(--accent); color: var(--paper); }
+/* 语义 tone — 跟卡片 badge 配色一致 */
+.ob-chip-on.ob-chip-pin       { background: #c79a4f; color: var(--paper); }
+[data-theme="dark"] .ob-chip-on.ob-chip-pin { background: #d8b070; color: #14131c; }
+.ob-chip-on.ob-chip-highlight { background: var(--ink); color: var(--paper); }
+.ob-chip-on.ob-chip-fresh     { background: var(--accent); color: var(--paper); }
+.ob-chip-on.ob-chip-feel      { background: var(--rose-deep); color: var(--paper); }
+.ob-chip-on.ob-chip-noise     { background: var(--ink-3); color: var(--paper); }
+/* 老 tone alias (向后兼容) */
+.ob-chip-on.ob-chip-rose  { background: var(--rose-deep); color: var(--paper); }
+.ob-chip-on.ob-chip-amber { background: #c79a4f; color: var(--paper); }
+.ob-chip-on.ob-chip-gold  { background: var(--accent); color: var(--paper); }
 
 /* ── 时间线 ── */
 .ob-timeline { position: relative; }
@@ -4196,34 +4204,64 @@ body {
   font-weight: 500;
 }
 
-/* 状态 flags */
+/* 状态 flags — 紧凑 chip 样式, 不再是大方块 */
 .ob-modal-edit-flags {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0,1fr));
-  gap: 8px;
-  margin: 8px 0 18px 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 6px 0 14px 0;
 }
 .ob-modal-edit-flag {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 9px 12px;
-  border: 1px solid var(--line-2);
-  border-radius: 6px;
-  font-size: 13px;
+  gap: 5px;
+  padding: 4px 11px;
+  border: 0.5px solid var(--line-2);
+  border-radius: 999px;
+  font-size: 12px;
   color: var(--ink-2);
   cursor: pointer;
   background: var(--paper);
   transition: all .12s;
   user-select: none;
+  white-space: nowrap;
 }
-.ob-modal-edit-flag input { accent-color: var(--accent); margin: 0; }
-.ob-modal-edit-flag:hover { border-color: var(--accent); }
+.ob-modal-edit-flag input {
+  accent-color: var(--accent);
+  margin: 0;
+  width: 12px; height: 12px;
+}
+.ob-modal-edit-flag:hover { border-color: var(--accent); color: var(--ink); }
+/* 默认 on (来源 / 已内化 / noise / 普通 toggle) — 主色 */
 .ob-modal-edit-flag.on {
   background: color-mix(in oklch, var(--accent) 8%, var(--paper));
   border-color: var(--accent);
   color: var(--ink);
 }
+/* 语义 tone — 跟卡片/chip 配色一致 */
+.ob-modal-edit-flag.on.tone-pin {
+  background: rgba(199, 154, 79, 0.10);
+  border-color: #c79a4f;
+  color: #8a6a30;
+}
+[data-theme="dark"] .ob-modal-edit-flag.on.tone-pin { color: #d8b070; }
+.ob-modal-edit-flag.on.tone-feel {
+  background: var(--rose-a10);
+  border-color: var(--rose-deep);
+  color: var(--rose-deep);
+}
+.ob-modal-edit-flag.on.tone-highlight {
+  background: color-mix(in oklch, var(--ink) 6%, var(--paper));
+  border-color: var(--ink-2);
+  color: var(--ink);
+}
+.ob-modal-edit-flag.on.tone-noise {
+  background: color-mix(in oklch, var(--ink-3) 12%, var(--paper));
+  border-color: var(--ink-3);
+  color: var(--ink-3);
+}
+.ob-modal-edit-flag.is-disabled,
+.ob-modal-edit-flag input:disabled { cursor: not-allowed; opacity: 0.45; }
 
 /* 查看态：toggle 按钮 on 状态 */
 .ob-modal-btn.on {
@@ -5880,9 +5918,14 @@ body {
   color: var(--paper);
   border-color: var(--ink);
 }
-.ob-cells-chip.on.tone-pin    { background: var(--accent); border-color: var(--accent); }
-.ob-cells-chip.on.tone-feel   { background: var(--rose-deep); border-color: var(--rose-deep); }
-.ob-cells-chip.on.tone-protect { background: #b08456; border-color: #b08456; }
+/* 语义 tone — 跟卡片 badge 配色一致 */
+.ob-cells-chip.on.tone-pin       { background: #c79a4f; border-color: #c79a4f; color: var(--paper); }
+[data-theme="dark"] .ob-cells-chip.on.tone-pin { background: #d8b070; border-color: #d8b070; color: #14131c; }
+.ob-cells-chip.on.tone-highlight { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.ob-cells-chip.on.tone-fresh     { background: var(--accent); border-color: var(--accent); color: var(--paper); }
+.ob-cells-chip.on.tone-feel      { background: var(--rose-deep); border-color: var(--rose-deep); color: var(--paper); }
+.ob-cells-chip.on.tone-noise     { background: var(--ink-3); border-color: var(--ink-3); color: var(--paper); }
+.ob-cells-chip.on.tone-protect   { background: #b08456; border-color: #b08456; }
 .ob-cells-chip-count {
   font-family: var(--mono);
   font-size: 10px;
@@ -6033,14 +6076,24 @@ body {
   outline-offset: -1px;
 }
 
-/* 视觉分层 */
+/* 视觉分层 — 跟 chip / badge / mark icon 配色一致 */
 .ob-cell.is-pin {
-  background: linear-gradient(90deg, var(--accent-a06), transparent 60%);
-  border-left: 2px solid var(--accent);
+  background: linear-gradient(90deg, rgba(199,154,79,0.06), transparent 60%);
+  border-left: 2px solid #c79a4f;
   padding-left: 12px;
 }
 .ob-cell.is-pin:hover {
-  background: linear-gradient(90deg, var(--accent-a10), var(--bg-2) 60%);
+  background: linear-gradient(90deg, rgba(199,154,79,0.10), var(--bg-2) 60%);
+}
+[data-theme="dark"] .ob-cell.is-pin { border-left-color: #d8b070; }
+.ob-cell.is-highlight {
+  border-left: 2px solid var(--ink-2);
+  padding-left: 12px;
+}
+.ob-cell.is-fresh {
+  background: linear-gradient(90deg, var(--accent-a06), transparent 60%);
+  border-left: 2px solid var(--accent);
+  padding-left: 12px;
 }
 .ob-cell.is-feel {
   border-left: 2px dashed var(--rose-deep);
@@ -6246,6 +6299,19 @@ body {
   border-color: var(--ink-4);
 }
 .ob-card-cell.is-pin::before {
+  content: "";
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: #c79a4f;
+}
+[data-theme="dark"] .ob-card-cell.is-pin::before { background: #d8b070; }
+.ob-card-cell.is-highlight::before {
+  content: "";
+  position: absolute; left: 0; top: 0; bottom: 0;
+  width: 3px;
+  background: var(--ink-2);
+}
+.ob-card-cell.is-fresh::before {
   content: "";
   position: absolute; left: 0; top: 0; bottom: 0;
   width: 3px;

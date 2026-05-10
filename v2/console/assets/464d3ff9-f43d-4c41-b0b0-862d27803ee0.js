@@ -1220,35 +1220,25 @@ function ImportWorkbench() {
                 </div>
                 <div className="imp-attr-row">
                   <div className="imp-attr-key">类型</div>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                    {/* 上排: 动态 / 钉决 (互斥) + 高亮 (独立, 可叠加) */}
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      {(() => {
-                        const current = active.noise ? 'noise' : (active.protected ? 'permanent' : 'dynamic');
-                        return [['dynamic', '动态'], ['permanent', '钉决']].map(([k, label]) => (
-                          <button
-                            key={k}
-                            className={`imp-batch-pill${current === k ? ' on' : ''}`}
-                            onClick={() => updateActive({ noise: false, protected: k === 'permanent' })}
-                          >{label}</button>
-                        ));
-                      })()}
-                      <button
-                        className={`imp-batch-pill${active.highlight && !active.protected ? ' on' : ''}`}
-                        title="高亮: 浮现优先 + score 加成 (跟类型独立, 可叠加; 钉决已含此效果)"
-                        onClick={() => updateActive({ highlight: !active.highlight })}
-                        disabled={active.protected}
-                        style={active.protected ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
-                      >高亮{active.protected ? ' (钉决已含)' : ''}</button>
-                    </div>
-                    {/* 下排: 噪声 (单独一行, 加速衰减语义跟上面三个区分开) */}
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      <button
-                        className={`imp-batch-pill${active.noise ? ' on' : ''}`}
-                        title="加速衰减(×0.05) + importance 锁 1, 几天内自动归档"
-                        onClick={() => updateActive({ noise: !active.noise, protected: false })}
-                      >噪声</button>
-                    </div>
+                  {/* 默认 = 动态 (无 active button); 钉决/噪声 互斥, 高亮 独立可叠加 */}
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    <button
+                      className={`imp-batch-pill${active.protected ? ' on' : ''}`}
+                      title="钉决: 永不衰减归档, importance 锁 10"
+                      onClick={() => updateActive({ protected: !active.protected, noise: false })}
+                    >钉决</button>
+                    <button
+                      className={`imp-batch-pill${active.highlight && !active.protected ? ' on' : ''}`}
+                      title="高亮: 浮现优先 + score 加成 (跟类型独立, 可叠加; 钉决已含此效果)"
+                      onClick={() => updateActive({ highlight: !active.highlight })}
+                      disabled={active.protected}
+                      style={active.protected ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
+                    >高亮{active.protected ? ' (钉决已含)' : ''}</button>
+                    <button
+                      className={`imp-batch-pill${active.noise ? ' on' : ''}`}
+                      title="噪声: 加速衰减(×0.05) + importance 锁 1, 几天内自动归档"
+                      onClick={() => updateActive({ noise: !active.noise, protected: false })}
+                    >噪声</button>
                   </div>
                 </div>
                 <div className="imp-attr-row">

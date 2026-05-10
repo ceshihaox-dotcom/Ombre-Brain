@@ -149,7 +149,8 @@ function Timeline({ items, query, filters, density, accent, onOpenItem, onOpenDa
       }
       if (filters.protectedOnly && !it.protected) return false;
       if (filters.noiseOnly && !it.noise) return false;
-      if (filters.importantOnly && !(it.importance >= 8 || it.highlight)) return false;
+      if (filters.highlightOnly && !it.highlight) return false;
+      if (filters.importantOnly && !((it.importance || 5) >= 8)) return false;
       if (filters.feelOnly && !it.feel) return false;
       return true;
     });
