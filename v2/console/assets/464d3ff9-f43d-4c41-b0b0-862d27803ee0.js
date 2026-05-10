@@ -1223,19 +1223,19 @@ function ImportWorkbench() {
                   {/* 默认 = 动态 (无 active button); 钉决/噪声 互斥, 高亮 独立可叠加 */}
                   <div style={{ display: 'flex', gap: 6 }}>
                     <button
-                      className={`imp-batch-pill${active.protected ? ' on' : ''}`}
+                      className={`imp-batch-pill${active.protected ? ' on tone-pin' : ''}`}
                       title="钉决: 永不衰减归档, importance 锁 10"
                       onClick={() => updateActive({ protected: !active.protected, noise: false })}
                     >钉决</button>
                     <button
-                      className={`imp-batch-pill${active.highlight && !active.protected ? ' on' : ''}`}
-                      title="高亮: 浮现优先 + score 加成 (跟类型独立, 可叠加; 钉决已含此效果)"
+                      className={`imp-batch-pill${active.highlight && !active.protected ? ' on tone-highlight' : ''}`}
+                      title={active.protected ? '钉决已含「高亮」效果, 取消钉决后此项才生效' : '高亮: 浮现优先 + score 加成 (跟类型独立, 可叠加)'}
                       onClick={() => updateActive({ highlight: !active.highlight })}
                       disabled={active.protected}
                       style={active.protected ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
-                    >高亮{active.protected ? ' (钉决已含)' : ''}</button>
+                    >高亮</button>
                     <button
-                      className={`imp-batch-pill${active.noise ? ' on' : ''}`}
+                      className={`imp-batch-pill${active.noise ? ' on tone-noise' : ''}`}
                       title="噪声: 加速衰减(×0.05) + importance 锁 1, 几天内自动归档"
                       onClick={() => updateActive({ noise: !active.noise, protected: false })}
                     >噪声</button>

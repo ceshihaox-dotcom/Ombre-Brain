@@ -3107,6 +3107,12 @@
   --sage:      #8a8898;       /* 中性灰 */
   --amber:     #6e4f9a;
 
+  /* 状态梯度色板 (深紫 → 中紫 → 浅紫泛粉 → 玫粉) — 跟 cells / timeline 对齐 */
+  --c-pin:       color-mix(in oklab, var(--accent) 60%, var(--ink) 40%);
+  --c-highlight: var(--accent);
+  --c-fresh:     color-mix(in oklab, var(--accent) 50%, var(--rose) 50%);
+  --c-feel:      var(--rose-deep);
+
   --serif:     "Cormorant Garamond","Noto Serif SC", Georgia, serif;
   --sans:      "Inter","Noto Sans SC", -apple-system, system-ui, sans-serif;
   --mono:      "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -7186,6 +7192,10 @@ body {
 }
 .imp-batch-pill:hover { color: var(--ink); border-color: var(--ink-3); }
 .imp-batch-pill.on { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+/* 语义 tone — 紫粉渐变 (深紫→中紫→玫粉) + noise 灰 */
+.imp-batch-pill.on.tone-pin       { background: var(--c-pin); border-color: var(--c-pin); color: var(--paper); }
+.imp-batch-pill.on.tone-highlight { background: var(--c-highlight); border-color: var(--c-highlight); color: var(--paper); }
+.imp-batch-pill.on.tone-noise     { background: var(--ink-3); border-color: var(--ink-3); color: var(--paper); }
 
 /* ── 左队列 ── */
 .imp-queue {
@@ -7631,7 +7641,8 @@ body {
 }
 .imp-imp-fill {
   position: absolute; inset: 0 auto 0 0;
-  background: linear-gradient(90deg, var(--accent), #d4a85f);
+  /* 粉紫渐变 — 起点玫粉 (低 importance), 终点深紫 (高 importance, 跟钉决配色对齐) */
+  background: linear-gradient(90deg, var(--c-feel), var(--c-fresh), var(--c-highlight), var(--c-pin));
   border-radius: 999px;
   transition: width .25s;
 }

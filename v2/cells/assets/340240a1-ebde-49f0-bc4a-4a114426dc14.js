@@ -322,8 +322,8 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
       { id: 'ai', label: '◐ AI 写入', tone: '', count: c(i => (i.created_by || 'ai') === 'ai') },
       { id: 'mine', label: '✎ 亲手写', tone: '', count: c(i => i.created_by === 'user') },
       { id: 'feel', label: '♡ Feel', tone: 'feel', count: c(i => i.feel) },
-      { id: 'internal', label: '已内化', tone: '', count: c(i => i.internalized) },
-      { id: 'cold', label: '待消化', tone: '', count: c(i => i.importance < 2) },
+      { id: 'internal', label: '已内化', tone: 'noise', count: c(i => i.internalized) },
+      { id: 'cold', label: '待消化', tone: 'noise', count: c(i => i.importance < 2) },
       { id: 'noise', label: '⌀ 噪声', tone: 'noise', count: c(i => i.noise) },
     ];
   }, [items]);
