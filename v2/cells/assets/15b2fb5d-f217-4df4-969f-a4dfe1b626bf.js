@@ -209,13 +209,13 @@ function AppV2() {
               改完代码后新数据就分开了, 老的可在 modal 里手动改 */}
           <FilterChipV2 active={filters.sourceFilter === 'import'}
             onClick={() => setFilters(f => ({ ...f, sourceFilter: f.sourceFilter === 'import' ? null : 'import' }))}
-          >⇣ 导入</FilterChipV2>
+          >导入</FilterChipV2>
           <FilterChipV2 active={filters.sourceFilter === 'ai'}
             onClick={() => setFilters(f => ({ ...f, sourceFilter: f.sourceFilter === 'ai' ? null : 'ai' }))}
-          >◐ AI 写入</FilterChipV2>
+          >AI 写入</FilterChipV2>
           <FilterChipV2 active={filters.sourceFilter === 'user'}
             onClick={() => setFilters(f => ({ ...f, sourceFilter: f.sourceFilter === 'user' ? null : 'user' }))}
-          >✎ 亲手写</FilterChipV2>
+          >亲手写</FilterChipV2>
         </div>
 
         <TimelineV2

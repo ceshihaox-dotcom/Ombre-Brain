@@ -4,9 +4,10 @@
 const { useState: useS, useMemo: useM, useEffect: useE, useRef: useR } = React;
 
 const TAG_META_V2 = {
-  '亲手写': { icon: '✍︎', tone: 'sage' },
-  'AI 写入': { icon: '✦', tone: 'sage' },
-  '导入': { icon: '⇣', tone: 'sage' },
+  // 来源类不带图标 — 文字本身够清楚
+  '亲手写': { icon: '', tone: 'sage' },
+  'AI 写入': { icon: '', tone: 'sage' },
+  '导入': { icon: '', tone: 'sage' },
   '已内化': { icon: '◐', tone: 'sage' },
   '保护': { icon: '❖', tone: 'amber' },
   '高亮': { icon: '★', tone: 'amber' },
@@ -17,7 +18,7 @@ function TagV2({ name }) {
   const m = TAG_META_V2[name] || { icon: '·', tone: 'sage' };
   return (
     <span className={`ob-tag ob-tag-${m.tone}`}>
-      <span className="ob-tag-i">{m.icon}</span>
+      {m.icon && <span className="ob-tag-i">{m.icon}</span>}
       <span>{name}</span>
     </span>
   );

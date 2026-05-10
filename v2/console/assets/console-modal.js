@@ -4,10 +4,10 @@
 const { useState: cmS, useEffect: cmE } = React;
 
 const CM_TAG_META = {
-  // 来源伪标签 (bridge 注入, 跟 metadata.created_by 同步显示) — 三态
-  '亲手写':    { icon: '✎', tone: 'sage' },
-  'AI 写入':   { icon: '◐', tone: 'sage' },
-  '导入':      { icon: '⇣', tone: 'sage' },
+  // 来源伪标签 (bridge 注入, 跟 metadata.created_by 同步显示) — 不带图标, 文字本身够清楚
+  '亲手写':    { icon: '', tone: 'sage' },
+  'AI 写入':   { icon: '', tone: 'sage' },
+  '导入':      { icon: '', tone: 'sage' },
   '已内化':    { icon: '◐', tone: 'sage' },
   '保护':      { icon: '❖', tone: 'amber' },
   '高亮':      { icon: '★', tone: 'amber' },
@@ -18,7 +18,7 @@ function CmTag({ name }) {
   const m = CM_TAG_META[name] || { icon: '·', tone: 'sage' };
   return (
     <span className={`ob-tag ob-tag-${m.tone}`}>
-      <span className="ob-tag-i">{m.icon}</span>
+      {m.icon && <span className="ob-tag-i">{m.icon}</span>}
       <span>{name}</span>
     </span>
   );

@@ -20,10 +20,9 @@ function TodayBar({ todayItems, lastWriteDate, todayDate, allItems, onWrite, onJ
   const all = allItems || todayItems || [];
   const totalCount = all.length;
   const totalDays = new Set(all.map(i => i.date).filter(Boolean)).size || 1;
-  const totalHi = all.filter(i => (i.importance >= 8) || i.highlight).length;
+  // 值得被反复想起 = 钉决 + 高亮 + 重要(>=8) 的并集 (不重复计数)
+  const totalHi = all.filter(i => (i.protected || i.pinned) || i.highlight || (i.importance || 5) >= 8).length;
   const state = 'on';
-  const label = `第 ${totalDays} 天 · ${totalCount} 段记忆沉淀于此`;
-  const sub = totalHi > 0 ? `${totalHi} 条值得被反复想起` : '继续记录这一天';
 
   const f = formatDateV2(todayDate);
   return (
@@ -35,11 +34,17 @@ function TodayBar({ todayItems, lastWriteDate, todayDate, allItems, onWrite, onJ
         </div>
         <div className="ob-today-text">
           <div className="ob-today-eyebrow">{f.y}-{f.m}-{f.day} · {f.wk}</div>
-          <div className="ob-today-label">{label}</div>
+          <div className="ob-today-label">
+            第 <strong className="ob-today-num-big">{totalDays}</strong> 天 · <strong className="ob-today-num-pink">{totalCount}</strong> 段记忆沉淀于此
+          </div>
         </div>
       </div>
       <div className="ob-today-r">
-        <div className="ob-today-sub">{sub}</div>
+        <div className="ob-today-sub">
+          {totalHi > 0
+            ? <><strong className="ob-today-num-pink">{totalHi}</strong> 条值得被反复想起</>
+            : '继续记录这一天'}
+        </div>
         <div className="ob-today-actions">
           {todayItems.length > 0 && (
             <button className="ob-today-btn primary" onClick={onJumpToday}>只看今天 ↓</button>

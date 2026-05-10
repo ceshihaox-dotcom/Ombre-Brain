@@ -395,15 +395,15 @@ function HomeScreen() {
           <span
             className={'home-chip' + (filters.has('src-import') ? ' on' : '')}
             onClick={() => toggleFilter('src-import')}
-          >⇣ 导入</span>
+          >导入</span>
           <span
             className={'home-chip' + (filters.has('src-ai') ? ' on' : '')}
             onClick={() => toggleFilter('src-ai')}
-          >◐ AI 写入</span>
+          >AI 写入</span>
           <span
             className={'home-chip' + (filters.has('src-user') ? ' on' : '')}
             onClick={() => toggleFilter('src-user')}
-          >✎ 亲手写</span>
+          >亲手写</span>
           <span
             className={'home-chip noise' + (filters.has('noise') ? ' on' : '')}
             onClick={() => toggleFilter('noise')}
@@ -1018,7 +1018,7 @@ function MemFullScreen({ id }) {
           {dayFmt && <span>{dayFmt.num} {dayFmt.mo} {dayFmt.year}</span>}
           {time && <><span>·</span><span><b>{time}</b></span></>}
           <span>·</span>
-          <span>{m.created_by === 'import' ? '⇣ 导入' : m.created_by === 'user' ? '✎ 亲手写' : '◐ AI 写入'}</span>
+          <span>{m.created_by === 'import' ? '导入' : m.created_by === 'user' ? '亲手写' : 'AI 写入'}</span>
         </div>
       </div>
 
@@ -1335,9 +1335,9 @@ function FormFields({
           <div className="edit-field-lbl">来源</div>
           <div className="edit-toggle-row">
             {[
-              { val: 'user', label: '亲手写', icon: '✎' },
-              { val: 'ai', label: 'AI 写入', icon: '◐' },
-              { val: 'import', label: '导入', icon: '⇣' },
+              { val: 'user', label: '亲手写' },
+              { val: 'ai', label: 'AI 写入' },
+              { val: 'import', label: '导入' },
             ].map(opt => (
               <button
                 key={opt.val}
@@ -1345,7 +1345,7 @@ function FormFields({
                 className={'edit-toggle ' + (createdBy === opt.val ? 'on' : '')}
                 onClick={() => setCreatedBy(opt.val)}
               >
-                <span className="ic">{opt.icon}</span><span>{opt.label}</span>
+                <span>{opt.label}</span>
               </button>
             ))}
           </div>

@@ -322,9 +322,33 @@ class BucketManager:
                 pass
 
         if "protected" in kwargs:
-            post["protected"] = bool(kwargs["protected"])
-            if kwargs["protected"]:
-                post["importance"] = 10  # protected → lock importance to 10
+            new_protected = bool(kwargs["protected"])
+            was_protected = bool(post.get("protected", False))
+            post["protected"] = new_protected
+            if new_protected and not was_protected:
+                # 上钉决: 备份原 importance (可能用户之前手动设过), 再锁 10
+                # 取消钉决时从这里恢复, 避免误触永久丢失原值
+                try:
+                    cur_imp = int(post.get("importance", 5))
+                    if cur_imp != 10:
+                        post["importance_before_protect"] = cur_imp
+                except (ValueError, TypeError):
+                    pass
+                post["importance"] = 10
+            elif not new_protected and was_protected:
+                # 取消钉决: 若调用方没显式改 importance, 则从备份恢复
+                # (marking_noise 之类同时传 importance 的场景由调用方说了算)
+                if "importance" not in kwargs:
+                    backup = post.get("importance_before_protect")
+                    if backup is not None:
+                        try:
+                            post["importance"] = max(1, min(10, int(backup)))
+                        except (ValueError, TypeError):
+                            pass
+                _drop("importance_before_protect")
+            elif new_protected:
+                # 已 protected, 再次写 — 维持锁
+                post["importance"] = 10
             # 写新字段后顺手清老 pinned,完成迁移
             _drop("pinned")
         if "highlight" in kwargs:

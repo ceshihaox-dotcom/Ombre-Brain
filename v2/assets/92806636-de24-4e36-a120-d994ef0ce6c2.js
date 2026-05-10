@@ -18,8 +18,8 @@ function DarkToggle({ dark, onChange }) {
 // ── 今天状态条 ────────────────────────────────────────
 function TodayBar({ todayItems, lastWriteDate, todayDate, focusToday, totalDays, totalHi, totalCount, onWrite, onJumpToday }) {
   const state = 'on';
-  const label = `第 ${totalDays || 1} 天 · ${totalCount || todayItems.length} 段记忆沉淀于此`;
-  const sub = totalHi > 0 ? `${totalHi} 条值得被反复想起` : '继续记录这一天';
+  const days = totalDays || 1;
+  const count = totalCount || todayItems.length;
 
   const f = formatDateV2(todayDate);
   return (
@@ -31,11 +31,17 @@ function TodayBar({ todayItems, lastWriteDate, todayDate, focusToday, totalDays,
         </div>
         <div className="ob-today-text">
           <div className="ob-today-eyebrow">{f.y}-{f.m}-{f.day} · {f.wk}</div>
-          <div className="ob-today-label">{label}</div>
+          <div className="ob-today-label">
+            第 <strong className="ob-today-num-big">{days}</strong> 天 · <strong className="ob-today-num-pink">{count}</strong> 段记忆沉淀于此
+          </div>
         </div>
       </div>
       <div className="ob-today-r">
-        <div className="ob-today-sub">{sub}</div>
+        <div className="ob-today-sub">
+          {totalHi > 0
+            ? <><strong className="ob-today-num-pink">{totalHi}</strong> 条值得被反复想起</>
+            : '继续记录这一天'}
+        </div>
         <div className="ob-today-actions">
           {todayItems.length > 0 && (
             <button
