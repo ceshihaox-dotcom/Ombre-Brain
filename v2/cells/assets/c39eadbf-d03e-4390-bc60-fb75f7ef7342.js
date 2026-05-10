@@ -6,6 +6,9 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
   const [editing, setEditing] = muS(false);
   const [draft, setDraft] = muS(null);
   const [redehydrating, setRedehydrating] = muS(false);
+  // 重新脱水弹窗 — Phase1 选项 → Phase2 新旧对比 (跟工作台同款体验)
+  const [redehyOpen, setRedehyOpen] = muS(false);
+  const [redehyPreview, setRedehyPreview] = muS(null);
   // 原文浮层:覆盖在详情 modal 上方,给完整 body 一个不被挤的阅读空间
   const [rawOpen, setRawOpen] = muS(false);
   // 原文编辑态:把 LLM 漏掉的细节手动补回来 (写 metadata.raw_source)
@@ -29,14 +32,18 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
     if (!item) return;
     const onKey = (e) => {
       if (e.key === 'Escape') {
-        // 优先级:原文编辑态 > 原文浮层 > 详情编辑态 > 关详情 modal
+        // 优先级:重新脱水弹窗 > 原文编辑态 > 原文浮层 > 详情编辑态 > 关详情 modal
+        if (redehyOpen) {
+          if (!redehydrating) { setRedehyOpen(false); setRedehyPreview(null); }
+          return;
+        }
         if (editingRaw) { setEditingRaw(false); setRawDraft(''); return; }
         if (rawOpen) { setRawOpen(false); return; }
         if (editing) { setEditing(false); setDraft(null); return; }
         onClose();
       }
-      // 原文浮层打开时,不响应 ← / → 切换条目和 ⌘+E 编辑(避免误触)
-      if (rawOpen) return;
+      // 重新脱水弹窗 / 原文浮层打开时,不响应 ← / → 切换条目和 ⌘+E 编辑(避免误触)
+      if (redehyOpen || rawOpen) return;
       if (!editing && e.key === 'ArrowLeft') onNavigate(-1);
       if (!editing && e.key === 'ArrowRight') onNavigate(1);
       if ((e.metaKey || e.ctrlKey) && e.key === 'e') {
@@ -50,7 +57,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [item, onNavigate, onClose, editing, draft, rawOpen, editingRaw]);
+  }, [item, onNavigate, onClose, editing, draft, rawOpen, editingRaw, redehyOpen, redehydrating]);
 
   // 进入原文编辑:从当前 raw_source 拉 draft (空 → 空 textarea, 首次填也走这条)
   const startEditRaw = () => {
@@ -118,58 +125,61 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
     setDraft(null);
   };
 
-  // 重新脱水: LLM 重新生成 name/summary/tags/valence/arousal
-  // 流程: redehydrate (预览, 不写盘) → 拿 d.new → redehydrate-commit (真写盘) → 同步前端
-  // 旧版 bug: 直接读 d.metadata 但端点改造成预览模式后只返 d.new, 导致 newSummary='' 写空盘
-  const redehydrate = async () => {
+  // 重新脱水: 走 RedehydrateModal 两阶段 (Phase1 选项 → Phase2 新旧对比 → 接受/重做)
+  // 触发只是开 modal; 真正 fetch 在 runRedehyPreview / commitRedehy 里
+  const openRedehy = () => {
     if (!item || redehydrating) return;
-    if (!window.confirm(`重新脱水会让 LLM 重新生成「${item.title || '这条'}」的标题、一句话摘要、标签和情感参数。\n继续?`)) return;
-    // 二次询问是否重写正文 (导入台已有这个选项, 这边补上)
-    const regenContent = window.confirm(
-      '要不要顺便重写正文?\n\n' +
-      '[确定] = 是, 基于原文 (raw_source) + 主题锚点重写正文 (需要 raw_source 非空)\n' +
-      '[取消] = 否, 只重写标题/摘要/标签等元数据, 正文不变'
-    );
+    setRedehyPreview(null);
+    setRedehyOpen(true);
+  };
+  const closeRedehy = () => {
+    if (redehydrating) return;
+    setRedehyOpen(false);
+    setRedehyPreview(null);
+  };
+  const runRedehyPreview = async ({ regenerate_content }) => {
+    if (!item || redehydrating) return;
     setRedehydrating(true);
     try {
-      // Step 1: 预览端点拿 LLM 输出
       const r = await fetch(`/api/bucket/${encodeURIComponent(item.id)}/redehydrate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ regenerate_content: regenContent }),
+        body: JSON.stringify({ regenerate_content: !!regenerate_content }),
       });
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok) throw new Error(d.error || `HTTP ${r.status}`);
-      const newVals = d.new || {};
-      const newTitle = newVals.name || item.title;
-      const newSummary = newVals.summary || '';
-      const newTags = Array.isArray(newVals.tags) ? newVals.tags : (item.tags || []);
-      const newContent = newVals.content !== undefined ? newVals.content : (item.body || '');
-
-      // Step 2: commit 端点真写盘 (commit 接受字段白名单, 缺哪个就不动哪个)
-      const commitBody = {
-        name: newTitle,
-        summary: newSummary,
-        tags: newTags,
-      };
-      if (regenContent) commitBody.content = newContent;
-      const c = await fetch(`/api/bucket/${encodeURIComponent(item.id)}/redehydrate-commit`, {
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      setRedehyPreview(data);
+    } catch (e) {
+      alert('生成预览失败:\n' + (e.message || String(e)));
+    } finally {
+      setRedehydrating(false);
+    }
+  };
+  const commitRedehy = async (finalDraft) => {
+    if (!item || redehydrating) return;
+    setRedehydrating(true);
+    try {
+      const r = await fetch(`/api/bucket/${encodeURIComponent(item.id)}/redehydrate-commit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(commitBody),
+        body: JSON.stringify(finalDraft),
       });
-      const cd = await c.json().catch(() => ({}));
-      if (!c.ok) throw new Error(cd.error || `HTTP ${c.status}`);
-
-      // Step 3: 同步前端 state
-      const updates = { title: newTitle, summary: newSummary, tags: newTags, __synced: true };
-      if (regenContent) updates.body = newContent;
-      if (draft) {
-        setDraft(dr => ({ ...dr, ...updates }));
-      }
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+      // 同步前端 — __synced:true 让父级别再写盘, 只 mutate UI
+      const updates = {
+        title: finalDraft.name || item.title,
+        summary: finalDraft.summary || '',
+        tags: Array.isArray(finalDraft.tags) ? finalDraft.tags : (item.tags || []),
+        __synced: true,
+      };
+      if (finalDraft.content !== undefined) updates.body = finalDraft.content;
+      if (draft) setDraft(dr => ({ ...dr, ...updates }));
       if (onUpdate) onUpdate(item.id, updates);
+      setRedehyOpen(false);
+      setRedehyPreview(null);
     } catch (e) {
-      alert('重新脱水失败: ' + e.message);
+      alert('写入失败:\n' + (e.message || String(e)));
     } finally {
       setRedehydrating(false);
     }
@@ -544,9 +554,9 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
                 )}
                 <button
                   className="ob-modal-btn"
-                  onClick={redehydrate}
+                  onClick={openRedehy}
                   disabled={redehydrating}
-                  title="LLM 重新生成标题/摘要/标签/情感(正文和重要度保留)"
+                  title="LLM 重新生成标题/摘要/标签/情感; 预览界面可对比新旧再决定"
                 >{redehydrating ? '⌛ 提炼中…' : '↻ 重新脱水'}</button>
                 <button className="ob-modal-btn" onClick={cancelEdit}>取消</button>
                 <button className="ob-modal-btn ob-modal-btn-primary" onClick={saveEdit}>保存</button>
@@ -711,6 +721,18 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
         </div>
         );
       })()}
+
+      {/* 重新脱水弹窗 — 跟工作台同款体验 (Phase1 选项 → Phase2 新旧对比) */}
+      {window.RedehydrateModal && React.createElement(window.RedehydrateModal, {
+        open: redehyOpen,
+        item: { id: item.id, title: item.title, rawSource: (item._meta && item._meta.raw_source) || '' },
+        busy: redehydrating,
+        preview: redehyPreview,
+        onCancel: closeRedehy,
+        onPreview: runRedehyPreview,
+        onReroll: runRedehyPreview,
+        onCommit: commitRedehy,
+      })}
     </div>
   );
 }
