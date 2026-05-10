@@ -148,9 +148,9 @@ function ImportWorkbench() {
   // 试跑模式:导入时只跑前 N 个 chunk(控成本)
   const [sampleMode, setSampleMode] = iwS(false);
   const [sampleChunks, setSampleChunks] = iwS(5);
-  // 导入分量模式:'small' (单段小内容, 强制至少 1 条) | 'large' (大批量, 宁缺勿滥)
-  // 默认 small — 日常 1-2 天小批导入命中率优先; 真要导大文件手动切 large
-  const [importMode, setImportMode] = iwS('small');
+  // 导入分量模式: 'large' (大批量, 宁缺勿滥, 默认) | 'small' (补漏 · 必出 1 条)
+  // 大份量稳定 = 5-06 朋友那版的行为, 漏的 chunk 用户用 SMALL 模式手动补即可
+  const [importMode, setImportMode] = iwS('large');
 
   // hover 详情卡:hover 相似项时弹出
   const [hoverItem, setHoverItem] = iwS(null);
@@ -716,7 +716,7 @@ function ImportWorkbench() {
     }
     setUploading(false);
     if (succeeded > 0) {
-      const modeTag = importMode === 'large' ? ' · 大分量' : '';
+      const modeTag = importMode === 'small' ? ' · 小分量(补漏)' : '';
       const tag = (maxChunks > 0 ? ` (试跑 · 前 ${maxChunks} 块)` : '') + modeTag;
       setToast({ msg: `已开始解析 ${succeeded} 个文件${tag}` });
       setTimeout(() => setToast(null), 4000);

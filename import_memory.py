@@ -490,21 +490,23 @@ IMPORT_EXTRACT_PROMPT_LONG = (
 
 
 # ============================================================
-# Mode framing 后缀 — 已废止 (2026-05-09 回滚)
+# SMALL mode framing 后缀 — 用户主动补漏时用, 必出 1 条
 # ----------------------------------------------------------
-# 实测累计 prompt 改动让 system prompt 太长, LLM 输出 JSON 失败 / 截断
-# 导致 fallback 桶满天飞. 回到原版 prompt (规则 1/2/6/7 都是改之前的).
+# 当用户在工作台勾选 SMALL 模式时, 主 prompt 末尾追加这段, 让 LLM 知道
+# 这一段是用户特意补的, 即使琐碎也尽量提炼, 不要返空数组.
+# LARGE 模式 (默认大批量导入) 不加此 suffix, 保持 5-06 稳定的"宁缺勿漏"行为.
 #
-# 工作台 SMALL/LARGE toggle UI + bridge mode 透传 + server.py mode
-# query 参数都**保留** (基础设施), 只是 ImportEngine.start() 不再
-# 根据 mode 拼 suffix. 以后想再做差异化 prompt 直接在这里加回 suffix
-# 常量 + start() 拼装即可, 工程量很小.
-#
-# 保留的有效改动:
-# - source_excerpt 200~2500 字 + 至少 100 字带语境 + 禁止 ... 省略
-#   (在 _LONG_EXCERPT_RULES 里, 服务"原文不省略"诉求)
-# - LLM 0 items fallback 兜底 (_process_single_chunk, 服务"宁多勿漏")
+# 配合: _process_single_chunk 已删除 fallback 兜底逻辑. 现在 LARGE 返空 →
+# 直接跳过 chunk; SMALL 因为 prompt 要求"至少 1 条"返空概率极低.
 # ============================================================
+_SMALL_MODE_SUFFIX = """
+
+【本次模式 — 用户主动补漏】
+- 这段内容是用户特意挑出来交给你整理的 (之前批量导入漏掉了 / 想补一条具体记忆)
+- 即使内容琐碎、不够"重大", 也请尽量提炼, **至少出 1 条**
+- 只有内容完全是噪声 / 纯技术输出 / 无意义寒暄时才返回空数组
+- 条目数仍守 0~3 上限, 但下限从"可空"改为"尽量 1 条"
+"""
 
 
 # ============================================================
@@ -576,11 +578,14 @@ class ImportEngine:
         self._running = True
         self._paused = False
 
-        # mode 参数当前**不影响 prompt** — 2026-05-09 回滚后 SMALL/LARGE
-        # framing 后缀已废止. 接口保留, 以后想再做差异化重启用即可.
-        # 当前所有 mode 都用同一份 base prompt.
+        # mode 决定 prompt 末尾是否追加"必出 1 条"的 SMALL framing
+        # - large (默认): 不加 suffix, 保持 5-06 稳定的"宁缺勿滥"行为
+        # - small (用户主动补漏): 加 suffix, 让 LLM 至少出 1 条
         base_prompt = IMPORT_EXTRACT_PROMPT_LONG if self.long_excerpt else IMPORT_EXTRACT_PROMPT
-        self.extract_prompt = base_prompt
+        if mode == "small":
+            self.extract_prompt = base_prompt + _SMALL_MODE_SUFFIX
+        else:
+            self.extract_prompt = base_prompt
 
         try:
             source_hash = hashlib.sha256(raw_content.encode()).hexdigest()[:16]
@@ -687,40 +692,10 @@ class ImportEngine:
             if len(recent) > 5:
                 self.state.data["recent_extracted"] = recent[-5:]
 
-        # === Fallback — LLM 抽不出 / 抛异常时强出 1 条带原文的待整理桶 ===
-        # 服务用户"宁多勿漏": 漏 chunk = 真损失(事后找不回); 多 1 条
-        # 待整理 = 工作台一键删除. 用户在工作台改标题/摘要/tags 比手写快.
-        # 标记 __llm_fallback 隐藏 tag, 方便后续筛选 / 区分.
+        # LLM 返空 → 跳过这个 chunk, 不创建任何桶 (回到 5-06 朋友那版的稳定行为)
+        # 旧的"宁多勿漏 fallback 待整理桶"已删 — 退化体验 + 性能差,
+        # 漏的 chunk 用户可在工作台 SMALL 模式手动补
         if not items:
-            try:
-                preview = content.strip()
-                fallback_name = "(待整理) " + preview[:24].replace("\n", " ")
-                fallback_id = await self.bucket_mgr.create(
-                    content=preview[:300],  # content 占位, raw_source 才是完整原文
-                    tags=["__llm_fallback"],  # 隐藏 tag, statusOf 仍归为 pending
-                    importance=5,
-                    domain=["未分类"],
-                    valence=0.5,
-                    arousal=0.3,
-                    name=fallback_name,
-                    summary="LLM 未抽出此块, 待手动整理 (原文已存到 raw_source)",
-                    event_time=chunk_event_time,
-                    created_by="import",
-                )
-                if fallback_id:
-                    # 完整 chunk 入 raw_source (8KB 内, bucket_manager 自动截)
-                    await self.bucket_mgr.update(fallback_id, raw_source=content[:8000])
-                    self.state.data["memories_created"] = self.state.data.get("memories_created", 0) + 1
-                    recent = self.state.data.setdefault("recent_extracted", [])
-                    recent.append({
-                        "name": fallback_name[:30],
-                        "summary": "(LLM 0 items · fallback 桶)",
-                    })
-                    if len(recent) > 5:
-                        self.state.data["recent_extracted"] = recent[-5:]
-                    logger.info(f"Fallback bucket created (LLM extracted 0 items): {fallback_id}")
-            except Exception as e:
-                logger.warning(f"Fallback bucket creation failed: {e}")
             return
 
         # --- Store each extracted memory ---
