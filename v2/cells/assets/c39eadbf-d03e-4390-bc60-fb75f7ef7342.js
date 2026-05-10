@@ -253,7 +253,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
             })()}
             {!editing && isHi && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--accent)' }}>★ 重要</span></>}
             {!editing && view.feel && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--rose-deep)' }}>❀ feel</span></>}
-            {!editing && view.protected && <><span style={{ opacity: 0.5 }}>/</span><span>★ 钉决</span></>}
+            {!editing && view.protected && <><span style={{ opacity: 0.5 }}>/</span><span>❖ 钉决</span></>}
             {!editing && view.internalized && <><span style={{ opacity: 0.5 }}>/</span><span>◐ 已内化</span></>}
             {!editing && view.noise && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--ink-4)' }}>⌀ 噪声</span></>}
           </div>
@@ -463,9 +463,18 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
                   <input type="checkbox" checked={draft.feel} onChange={(e) => setDraft(d => ({ ...d, feel: e.target.checked }))} />
                   <span>❀ feel</span>
                 </label>
-                <label className={`ob-modal-edit-flag ${draft.highlight ? 'on' : ''}`}>
-                  <input type="checkbox" checked={draft.highlight} onChange={(e) => setDraft(d => ({ ...d, highlight: e.target.checked }))} />
-                  <span>★ 标记重要</span>
+                {/* 钉决已含 highlight 效果 (calculate_score 直接返回 protected_score, highlight_mult 走不到), 钉决时禁用此 toggle 避免双标 */}
+                <label
+                  className={`ob-modal-edit-flag ${draft.highlight ? 'on' : ''} ${draft.protected ? 'is-disabled' : ''}`}
+                  title={draft.protected ? '钉决已含「重要」效果 — 取消钉决后此项才生效' : ''}
+                >
+                  <input
+                    type="checkbox"
+                    checked={draft.highlight}
+                    disabled={draft.protected}
+                    onChange={(e) => setDraft(d => ({ ...d, highlight: e.target.checked }))}
+                  />
+                  <span>★ 标记重要{draft.protected ? ' (钉决已含)' : ''}</span>
                 </label>
                 <label className={`ob-modal-edit-flag ${draft.internalized ? 'on' : ''}`}>
                   <input type="checkbox" checked={draft.internalized} onChange={(e) => setDraft(d => ({ ...d, internalized: e.target.checked }))} />
@@ -571,7 +580,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
                 <button
                   className={`ob-modal-btn ${view.protected ? 'on' : ''}`}
                   onClick={() => toggleField('protected')}
-                >★ {view.protected ? '已钉决' : '钉决'}</button>
+                >❖ {view.protected ? '已钉决' : '钉决'}</button>
                 <button
                   className={`ob-modal-btn ${view.highlight ? 'on' : ''}`}
                   onClick={() => toggleField('highlight')}

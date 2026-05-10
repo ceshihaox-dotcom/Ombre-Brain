@@ -2,6 +2,13 @@
 // 在 babel 脚本之前加载,提供全局 helper
 
 (function () {
+  // bridge 读端注入到 item.tags 显示用的伪 tag — 写端要把它们剥离, 否则会污染 bucket.tags
+  var PSEUDO_TAGS = { '亲手写': 1, 'AI 写入': 1, '导入': 1, '已内化': 1, '保护': 1, '重要': 1, 'feel(柔软)': 1 };
+  function stripPseudoTags(tags) {
+    if (!Array.isArray(tags)) return tags;
+    return tags.filter(function (t) { return !PSEUDO_TAGS[String(t)]; });
+  }
+
   // ISO → 本地 date/time
   //   带 Z / 时区偏移: 按 UTC 解析转本地 (created)
   //   无时区: 按本地解析 (event_time, LLM 从原文文本推断, 无时区)
@@ -131,7 +138,7 @@
     if (patch.created_by != null) body.created_by = patch.created_by;  // 来源 user/ai/import
     if (patch.createdBy != null) body.created_by = patch.createdBy;    // camelCase 别名(工作台 active 用)
     if (patch.importance != null) body.importance = patch.importance;
-    if (patch.tags != null) body.tags = patch.tags;
+    if (patch.tags != null) body.tags = stripPseudoTags(patch.tags);
     if (patch.protected != null) body.protected = !!patch.protected;
     if (patch.highlight != null) body.highlight = !!patch.highlight;
     if (patch.internalized != null) body.internalized = !!patch.internalized;

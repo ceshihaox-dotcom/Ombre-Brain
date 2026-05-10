@@ -49,7 +49,7 @@ function ImpDot({ value }) {
 
 function MarkIcon({ item, big }) {
   const cls = big ? 'ob-card-cell-mark' : 'ob-cell-mark';
-  if (item.protected || item.pinned) return <span className={`${cls} pin`} title="钉决/保护">★</span>;
+  if (item.protected || item.pinned) return <span className={`${cls} pin`} title="钉决/保护">❖</span>;
   if (item.importance >= 8 || item.highlight) return <span className={`${cls} fresh`} title="重要">✦</span>;
   if (item.feel) return <span className={`${cls} feel`} title="feel">❀</span>;
   return <span className={cls} title="日常">·</span>;
@@ -312,7 +312,7 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
     const c = (fn) => items.filter(fn).length;
     return [
       { id: 'all', label: '全部', tone: '', count: items.length },
-      { id: 'pin', label: '★ 钉决', tone: 'pin', count: c(i => i.protected || i.pinned) },
+      { id: 'pin', label: '❖ 钉决', tone: 'pin', count: c(i => i.protected || i.pinned) },
       { id: 'fresh', label: '✦ 重要', tone: '', count: c(i => i.importance >= 8 || i.highlight) },
       { id: 'feel', label: '❀ Feel', tone: 'feel', count: c(i => i.feel) },
       { id: 'internal', label: '已内化', tone: '', count: c(i => i.internalized) },
@@ -416,7 +416,7 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
         else g.normal.push(i);
       });
       const out = [
-        { id: 'pin', label: '钉决', icon: '★', tone: 'pin', items: g.pin },
+        { id: 'pin', label: '钉决', icon: '❖', tone: 'pin', items: g.pin },
         { id: 'fresh', label: '重要 (≥8)', icon: '✦', tone: 'fresh', items: g.fresh },
         { id: 'feel', label: 'Feel', icon: '❀', tone: 'feel', items: g.feel },
         { id: 'normal', label: '日常', icon: '·', tone: '', items: g.normal },
@@ -766,7 +766,7 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
         <div className="ob-cells-bulk">
           <span className="ob-cells-bulk-count">已选 {selected.size} 条</span>
           <div className="ob-cells-bulk-sep" />
-          <button className="ob-cells-bulk-btn" onClick={() => bulkAction('pin')}>★ 钉决</button>
+          <button className="ob-cells-bulk-btn" onClick={() => bulkAction('pin')}>❖ 钉决</button>
           <button className="ob-cells-bulk-btn" onClick={() => bulkAction('unpin')}>◯ 取消钉决</button>
           <button className="ob-cells-bulk-btn" onClick={() => bulkAction('feel')}>❀ 标 feel</button>
           <button className="ob-cells-bulk-btn" onClick={() => bulkAction('internal')}>◐ 标内化</button>

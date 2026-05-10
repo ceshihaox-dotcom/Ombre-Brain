@@ -2,6 +2,13 @@
 // 在 babel 脚本之前加载,提供全局 helper
 
 (function () {
+  // bridge 读端注入到 item.tags 显示用的伪 tag — 写端要把它们剥离, 否则会污染 bucket.tags
+  var PSEUDO_TAGS = { '亲手写': 1, 'AI 写入': 1, '导入': 1, '已内化': 1, '保护': 1, '重要': 1, 'feel(柔软)': 1 };
+  function stripPseudoTags(tags) {
+    if (!Array.isArray(tags)) return tags;
+    return tags.filter(function (t) { return !PSEUDO_TAGS[String(t)]; });
+  }
+
   // 真实 bucket(/api/buckets list 项) → v2 mock 形态
   window.__obRealToMock = function (b) {
     var evt = b.event_time || '';
@@ -14,7 +21,9 @@
     var time = src.length >= 16 ? src.slice(11, 16) : '00:00';
 
     var tags = (b.tags || []).slice();
+    // 来源伪标签 — 三态 user/ai/import (真值在 metadata.created_by; 这里只是显示用)
     if (b.created_by === 'user') tags.push('亲手写');
+    else if (b.created_by === 'import') tags.push('导入');
     else tags.push('AI 写入');
     if (b.internalized || b.digested) tags.push('已内化');
     if (b.protected || b.pinned) tags.push('保护');
@@ -95,7 +104,7 @@
     if (patch.raw_source != null) body.raw_source = patch.raw_source;  // 原文片段(用户手动补全)
     if (patch.created_by != null) body.created_by = patch.created_by;  // 来源 user/ai/import
     if (patch.importance != null) body.importance = patch.importance;
-    if (patch.tags != null) body.tags = patch.tags;
+    if (patch.tags != null) body.tags = stripPseudoTags(patch.tags);
     if (patch.protected != null) body.protected = !!patch.protected;
     if (patch.highlight != null) body.highlight = !!patch.highlight;
     if (patch.internalized != null) body.internalized = !!patch.internalized;
