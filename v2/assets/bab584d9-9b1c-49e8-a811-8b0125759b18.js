@@ -328,7 +328,7 @@ function AppV2() {
           >✦ 重要</FilterChipV2>
           <FilterChipV2 tone="rose" active={filters.feelOnly}
             onClick={() => setFilters(f => ({ ...f, feelOnly: !f.feelOnly }))}
-          >❀ Feel</FilterChipV2>
+          >♡ Feel</FilterChipV2>
           <FilterChipV2 active={filters.noiseOnly}
             onClick={() => setFilters(f => ({ ...f, noiseOnly: !f.noiseOnly }))}
           >⌀ 噪声</FilterChipV2>

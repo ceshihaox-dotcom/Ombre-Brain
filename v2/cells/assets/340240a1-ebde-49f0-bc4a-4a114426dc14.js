@@ -53,8 +53,8 @@ function MarkIcon({ item, big }) {
   const cls = big ? 'ob-card-cell-mark' : 'ob-cell-mark';
   if (item.protected || item.pinned) return <span className={`${cls} pin`} title="钉决/保护">❖</span>;
   if (item.highlight) return <span className={`${cls} highlight`} title="高亮">★</span>;
-  if ((item.importance || 5) >= 8) return <span className={`${cls} fresh`} title="重要度高">▲</span>;
-  if (item.feel) return <span className={`${cls} feel`} title="feel">❀</span>;
+  if ((item.importance || 5) >= 8) return <span className={`${cls} fresh`} title="重要度高">✦</span>;
+  if (item.feel) return <span className={`${cls} feel`} title="feel">♡</span>;
   return <span className={cls} title="日常">·</span>;
 }
 
@@ -317,11 +317,11 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
       { id: 'all', label: '全部', tone: '', count: items.length },
       { id: 'pin', label: '❖ 钉决', tone: 'pin', count: c(i => i.protected || i.pinned) },
       { id: 'highlight', label: '★ 高亮', tone: '', count: c(i => i.highlight) },
-      { id: 'imp_high', label: '▲ 重要度≥8', tone: '', count: c(i => (i.importance || 5) >= 8) },
+      { id: 'imp_high', label: '✦ 重要度≥8', tone: '', count: c(i => (i.importance || 5) >= 8) },
       { id: 'import', label: '⇣ 导入', tone: '', count: c(i => i.created_by === 'import') },
       { id: 'ai', label: '◐ AI 写入', tone: '', count: c(i => (i.created_by || 'ai') === 'ai') },
       { id: 'mine', label: '✎ 亲手写', tone: '', count: c(i => i.created_by === 'user') },
-      { id: 'feel', label: '❀ Feel', tone: 'feel', count: c(i => i.feel) },
+      { id: 'feel', label: '♡ Feel', tone: 'feel', count: c(i => i.feel) },
       { id: 'internal', label: '已内化', tone: '', count: c(i => i.internalized) },
       { id: 'cold', label: '待消化', tone: '', count: c(i => i.importance < 2) },
       { id: 'noise', label: '⌀ 噪声', tone: '', count: c(i => i.noise) },
@@ -429,8 +429,8 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
       const out = [
         { id: 'pin', label: '钉决', icon: '❖', tone: 'pin', items: g.pin },
         { id: 'highlight', label: '高亮', icon: '★', tone: 'highlight', items: g.highlight },
-        { id: 'fresh', label: '重要', icon: '▲', tone: 'fresh', items: g.fresh },
-        { id: 'feel', label: 'Feel', icon: '❀', tone: 'feel', items: g.feel },
+        { id: 'fresh', label: '重要', icon: '✦', tone: 'fresh', items: g.fresh },
+        { id: 'feel', label: 'Feel', icon: '♡', tone: 'feel', items: g.feel },
         { id: 'normal', label: '日常', icon: '·', tone: '', items: g.normal },
         { id: 'cold', label: '待消化 (<2)', icon: '◌', tone: 'cold', items: g.cold },
         { id: 'internalized', label: '已内化', icon: '◐', tone: '', items: g.internalized },
@@ -782,7 +782,7 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
           <div className="ob-cells-bulk-sep" />
           <button className="ob-cells-bulk-btn" onClick={() => bulkAction('pin')}>❖ 钉决</button>
           <button className="ob-cells-bulk-btn" onClick={() => bulkAction('unpin')}>◯ 取消钉决</button>
-          <button className="ob-cells-bulk-btn" onClick={() => bulkAction('feel')}>❀ 标 feel</button>
+          <button className="ob-cells-bulk-btn" onClick={() => bulkAction('feel')}>♡ 标 feel</button>
           <button className="ob-cells-bulk-btn" onClick={() => bulkAction('internal')}>◐ 标内化</button>
           <button className="ob-cells-bulk-btn" onClick={() => bulkAction('noise')} title="加速衰减 + importance 锁 1, 几天内归档">⌀ 标噪声</button>
           <button className="ob-cells-bulk-btn" onClick={() => bulkAction('unnoise')}>↺ 取消噪声</button>

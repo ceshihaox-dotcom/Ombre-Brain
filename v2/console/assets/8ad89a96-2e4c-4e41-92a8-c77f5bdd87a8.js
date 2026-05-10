@@ -51,7 +51,7 @@ function ImportPage({ items }) {
           accent: 'topic',
         },
         feelCount > 0 && {
-          icon: '❀',
+          icon: '♡',
           title: 'feel 类记忆集中区',
           stat: `${feelCount} 条情感性记忆 · 建议夜间合并时跳过避免被压缩`,
           accent: 'feel',
@@ -167,7 +167,7 @@ function ImportPage({ items }) {
               <div className="oc-imported-hd">
                 <div className="oc-imported-title">
                   {it.protected && <span style={{ color: 'var(--accent)', marginRight: 4 }}>❖</span>}
-                  {it.feel && <span style={{ color: 'var(--rose-deep)', marginRight: 4 }}>❀</span>}
+                  {it.feel && <span style={{ color: 'var(--rose-deep)', marginRight: 4 }}>♡</span>}
                   {it.title}
                 </div>
                 <div className="oc-imported-meta">

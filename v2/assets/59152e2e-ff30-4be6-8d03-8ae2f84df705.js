@@ -10,7 +10,7 @@ const TAG_META_V2 = {
   '已内化': { icon: '◐', tone: 'sage' },
   '保护': { icon: '❖', tone: 'amber' },
   '高亮': { icon: '★', tone: 'amber' },
-  'feel(柔软)': { icon: '❀', tone: 'rose' }
+  'feel(柔软)': { icon: '♡', tone: 'rose' }
 };
 
 function TagV2({ name }) {
@@ -221,8 +221,8 @@ function DateModuleV2({ date, items, onOpenItem, onOpenDay, density, query, isTo
             <span className="ob-card-count">{items.length} 条记忆</span>
             {pins > 0 && <span className="ob-card-pin-badge">❖ 钉决 · {pins}</span>}
             {highlights > 0 && <span className="ob-card-highlight-badge">★ 高亮 · {highlights}</span>}
-            {hi > 0 && <span className="ob-card-hi-badge">▲ 重要 · {hi}</span>}
-            {feels > 0 && <span className="ob-card-feel-badge">❀ feel · {feels}</span>}
+            {hi > 0 && <span className="ob-card-hi-badge">✦ 重要 · {hi}</span>}
+            {feels > 0 && <span className="ob-card-feel-badge">♡ feel · {feels}</span>}
             {noises > 0 && <span className="ob-card-noise-badge">⌀ 噪声 · {noises}</span>}
           </div>
           <span className="ob-card-open">展开当日 →</span>

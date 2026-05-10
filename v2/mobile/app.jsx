@@ -381,7 +381,7 @@ function HomeScreen() {
           <span
             className={'home-chip feel' + (filters.has('feel') ? ' on' : '')}
             onClick={() => toggleFilter('feel')}
-          >❀ Feel</span>
+          >♡ Feel</span>
           <span
             className={'home-chip' + (filters.has('internal') ? ' on' : '')}
             onClick={() => toggleFilter('internal')}

@@ -976,7 +976,7 @@ function ImportWorkbench() {
                 <div className="imp-q-body">
                   <div className="imp-q-title">{q.title}</div>
                   <div className="imp-q-meta">
-                    {q.feel && <span className="imp-q-feel">❀</span>}
+                    {q.feel && <span className="imp-q-feel">♡</span>}
                     {q.protected && <span style={{ color: 'var(--accent)' }}>❖</span>}
                     <span>imp <b>{q.importance}</b></span>
                     {q.timeHint && <span>· {q.timeHint.slice(5, 10)}</span>}
@@ -1220,31 +1220,35 @@ function ImportWorkbench() {
                 </div>
                 <div className="imp-attr-row">
                   <div className="imp-attr-key">类型</div>
-                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                    {(() => {
-                      const current = active.noise ? 'noise' : (active.protected ? 'permanent' : 'dynamic');
-                      return [['dynamic', '动态'], ['permanent', '钉决'], ['noise', '⌀ 噪声']].map(([k, label]) => (
-                        <button
-                          key={k}
-                          className={`imp-batch-pill${current === k ? ' on' : ''}`}
-                          title={k === 'noise' ? '加速衰减(×0.05) + importance 锁 1, 几天内自动归档' : undefined}
-                          onClick={() => updateActive({
-                            noise: k === 'noise',
-                            protected: k === 'permanent',
-                          })}
-                        >
-                          {k === 'permanent' && '❖ '}{label}
-                        </button>
-                      ));
-                    })()}
-                    {/* 高亮跟动态/钉决/噪声独立, 可叠加 — score boost */}
-                    <button
-                      className={`imp-batch-pill${active.highlight ? ' on' : ''}`}
-                      title="高亮: 浮现优先 + score 加成 (跟类型独立, 可叠加; 钉决已含此效果)"
-                      onClick={() => updateActive({ highlight: !active.highlight })}
-                      disabled={active.protected}
-                      style={active.protected ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
-                    >★ 高亮{active.protected ? ' (钉决已含)' : ''}</button>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {/* 上排: 动态 / 钉决 (互斥) + 高亮 (独立, 可叠加) */}
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {(() => {
+                        const current = active.noise ? 'noise' : (active.protected ? 'permanent' : 'dynamic');
+                        return [['dynamic', '动态'], ['permanent', '钉决']].map(([k, label]) => (
+                          <button
+                            key={k}
+                            className={`imp-batch-pill${current === k ? ' on' : ''}`}
+                            onClick={() => updateActive({ noise: false, protected: k === 'permanent' })}
+                          >{label}</button>
+                        ));
+                      })()}
+                      <button
+                        className={`imp-batch-pill${active.highlight && !active.protected ? ' on' : ''}`}
+                        title="高亮: 浮现优先 + score 加成 (跟类型独立, 可叠加; 钉决已含此效果)"
+                        onClick={() => updateActive({ highlight: !active.highlight })}
+                        disabled={active.protected}
+                        style={active.protected ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
+                      >高亮{active.protected ? ' (钉决已含)' : ''}</button>
+                    </div>
+                    {/* 下排: 噪声 (单独一行, 加速衰减语义跟上面三个区分开) */}
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button
+                        className={`imp-batch-pill${active.noise ? ' on' : ''}`}
+                        title="加速衰减(×0.05) + importance 锁 1, 几天内自动归档"
+                        onClick={() => updateActive({ noise: !active.noise, protected: false })}
+                      >噪声</button>
+                    </div>
                   </div>
                 </div>
                 <div className="imp-attr-row">
@@ -1252,7 +1256,7 @@ function ImportWorkbench() {
                   <div className={`imp-toggle feel${active.feel ? ' on' : ''}`} onClick={() => updateActive({ feel: !active.feel })}>
                     <div className="imp-toggle-dot" />
                     <span style={{ fontSize: 12, color: active.feel ? 'var(--rose-deep)' : 'var(--ink-3)', fontFamily: 'var(--mono)' }}>
-                      {active.feel ? '❀ feel' : '中性'}
+                      {active.feel ? '♡ feel' : '中性'}
                     </span>
                   </div>
                 </div>
@@ -1544,7 +1548,7 @@ function ImportWorkbench() {
             <div className="imp-hover-body">{hoverItem.body}</div>
           ) : null}
           <div className="imp-hover-meta">
-            {hoverItem.feel && <span style={{ color: 'var(--rose-deep)' }}>❀ feel</span>}
+            {hoverItem.feel && <span style={{ color: 'var(--rose-deep)' }}>♡ feel</span>}
             {hoverItem.protected && <span style={{ color: 'var(--accent)' }}>❖ 保护</span>}
             {hoverItem.importance != null && <span>imp <b>{hoverItem.importance}</b>/10</span>}
             {hoverItem.type && hoverItem.type !== 'dynamic' && <span>· {hoverItem.type}</span>}
