@@ -93,9 +93,18 @@ function ConstellationApp() {
     if (enabledTypes.size < 4) {
       arr = arr.filter(i => enabledTypes.has(inferType(i)));
     }
-    // extraFilters 是 AND 过滤 (勾了"重要" → 只显示重要; 勾了"我写的" → 只显示我写的)
+    // extraFilters 是 AND 过滤 (按梯度独立切片)
+    if (extraFilters.has('highlight')) {
+      arr = arr.filter(i => i.highlight);
+    }
     if (extraFilters.has('fresh')) {
-      arr = arr.filter(i => i.highlight || (i.importance || 5) >= 8);
+      arr = arr.filter(i => (i.importance || 5) >= 8);
+    }
+    if (extraFilters.has('import')) {
+      arr = arr.filter(i => i.created_by === 'import');
+    }
+    if (extraFilters.has('ai')) {
+      arr = arr.filter(i => (i.created_by || 'ai') === 'ai');
     }
     if (extraFilters.has('mine')) {
       arr = arr.filter(i => i.created_by === 'user');

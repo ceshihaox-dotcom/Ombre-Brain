@@ -3435,7 +3435,10 @@ body {
   text-transform: uppercase;
   font-family: var(--mono);
 }
-.ob-card-hi-badge { color: var(--accent); background: var(--accent-3); }
+.ob-card-hi-badge { color: var(--ink-2); background: rgba(120, 120, 130, 0.10); font-size: 10.5px; }
+.ob-card-highlight-badge { color: var(--accent); background: var(--accent-3); padding: 2px 8px; border-radius: 999px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em; font-weight: 500; }
+.ob-card-pin-badge { color: #c79a4f; background: rgba(199, 154, 79, 0.12); padding: 2px 8px; border-radius: 999px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em; font-weight: 500; }
+[data-theme="dark"] .ob-card-pin-badge { color: #d8b070; background: rgba(216, 176, 112, 0.14); }
 .ob-card-feel-badge { color: var(--rose-deep); background: var(--rose-a10); }
 .ob-card-open {
   font-size: 11px;
@@ -5969,8 +5972,10 @@ body {
 .ob-cells-group-hd-icon {
   font-size: 13px;
 }
-.ob-cells-group-hd-icon.pin { color: var(--accent); }
-.ob-cells-group-hd-icon.fresh { color: var(--accent); }
+.ob-cells-group-hd-icon.pin { color: #c79a4f; }
+[data-theme="dark"] .ob-cells-group-hd-icon.pin { color: #d8b070; }
+.ob-cells-group-hd-icon.highlight { color: var(--accent); }
+.ob-cells-group-hd-icon.fresh { color: var(--ink-2); font-size: 11px; }
 .ob-cells-group-hd-icon.feel { color: var(--rose-deep); }
 .ob-cells-group-hd-icon.cold { color: var(--ink-4); }
 .ob-cells-group-hd-name {
@@ -6097,9 +6102,11 @@ body {
   padding-top: 2px;
   height: 18px;
 }
-.ob-cell-mark.pin { color: var(--accent); }
+.ob-cell-mark.pin { color: #c79a4f; }
+[data-theme="dark"] .ob-cell-mark.pin { color: #d8b070; }
+.ob-cell-mark.highlight { color: var(--accent); }
 .ob-cell-mark.feel { color: var(--rose-deep); }
-.ob-cell-mark.fresh { color: var(--accent); }
+.ob-cell-mark.fresh { color: var(--ink-2); font-size: 11px; }
 
 /* 列 3：标题 + 副信息 */
 .ob-cell-main { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
@@ -6268,9 +6275,11 @@ body {
   margin-bottom: 8px;
 }
 .ob-card-cell-mark { font-size: 13px; }
-.ob-card-cell-mark.pin { color: var(--accent); }
+.ob-card-cell-mark.pin { color: #c79a4f; }
+[data-theme="dark"] .ob-card-cell-mark.pin { color: #d8b070; }
+.ob-card-cell-mark.highlight { color: var(--accent); }
 .ob-card-cell-mark.feel { color: var(--rose-deep); }
-.ob-card-cell-mark.fresh { color: var(--accent); }
+.ob-card-cell-mark.fresh { color: var(--ink-2); font-size: 11px; }
 .ob-card-cell-tags { font-family: var(--sans); }
 .ob-card-cell-time {
   margin-left: auto;

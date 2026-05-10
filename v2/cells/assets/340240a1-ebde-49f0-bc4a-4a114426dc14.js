@@ -317,7 +317,7 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
       { id: 'all', label: '全部', tone: '', count: items.length },
       { id: 'pin', label: '❖ 钉决', tone: 'pin', count: c(i => i.protected || i.pinned) },
       { id: 'highlight', label: '★ 高亮', tone: '', count: c(i => i.highlight) },
-      { id: 'imp_high', label: '▲ 重要度高', tone: '', count: c(i => (i.importance || 5) >= 8) },
+      { id: 'imp_high', label: '▲ 重要度≥8', tone: '', count: c(i => (i.importance || 5) >= 8) },
       { id: 'import', label: '⇣ 导入', tone: '', count: c(i => i.created_by === 'import') },
       { id: 'ai', label: '◐ AI 写入', tone: '', count: c(i => (i.created_by || 'ai') === 'ai') },
       { id: 'mine', label: '✎ 亲手写', tone: '', count: c(i => i.created_by === 'user') },
@@ -429,7 +429,7 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
       const out = [
         { id: 'pin', label: '钉决', icon: '❖', tone: 'pin', items: g.pin },
         { id: 'highlight', label: '高亮', icon: '★', tone: 'highlight', items: g.highlight },
-        { id: 'fresh', label: '重要度高 (≥8)', icon: '▲', tone: 'fresh', items: g.fresh },
+        { id: 'fresh', label: '重要', icon: '▲', tone: 'fresh', items: g.fresh },
         { id: 'feel', label: 'Feel', icon: '❀', tone: 'feel', items: g.feel },
         { id: 'normal', label: '日常', icon: '·', tone: '', items: g.normal },
         { id: 'cold', label: '待消化 (<2)', icon: '◌', tone: 'cold', items: g.cold },

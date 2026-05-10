@@ -8,7 +8,7 @@ const TAG_META_V2 = {
   'AI 写入': { icon: '✦', tone: 'sage' },
   '导入': { icon: '⇣', tone: 'sage' },
   '已内化': { icon: '◐', tone: 'sage' },
-  '保护': { icon: '⛨', tone: 'amber' },
+  '保护': { icon: '❖', tone: 'amber' },
   '高亮': { icon: '★', tone: 'amber' },
   'feel(柔软)': { icon: '❀', tone: 'rose' }
 };
@@ -128,7 +128,9 @@ function getPeriod(time) {
 function DateModuleV2({ date, items, onOpenItem, onOpenDay, density, query, isToday }) {
   const [expanded, setExpanded] = useS(false);
   const f = formatDateV2(date);
-  const hi = items.filter(i => i.importance >= 8 || i.highlight).length;
+  const hi = items.filter(i => (i.importance || 5) >= 8).length;
+  const highlights = items.filter(i => i.highlight).length;
+  const pins = items.filter(i => i.protected || i.pinned).length;
   const feels = items.filter(i => i.feel).length;
   const noises = items.filter(i => i.noise).length;
   const maxImp = Math.max(...items.map(i => i.importance));
@@ -217,9 +219,11 @@ function DateModuleV2({ date, items, onOpenItem, onOpenDay, density, query, isTo
         <div className="ob-card-hd">
           <div className="ob-card-meta">
             <span className="ob-card-count">{items.length} 条记忆</span>
-            {hi > 0 && <span className="ob-card-hi-badge">含重要 · {hi}</span>}
-            {feels > 0 && <span className="ob-card-feel-badge">feel · {feels}</span>}
-            {noises > 0 && <span className="ob-card-noise-badge">噪声 · {noises}</span>}
+            {pins > 0 && <span className="ob-card-pin-badge">❖ 钉决 · {pins}</span>}
+            {highlights > 0 && <span className="ob-card-highlight-badge">★ 高亮 · {highlights}</span>}
+            {hi > 0 && <span className="ob-card-hi-badge">▲ 重要 · {hi}</span>}
+            {feels > 0 && <span className="ob-card-feel-badge">❀ feel · {feels}</span>}
+            {noises > 0 && <span className="ob-card-noise-badge">⌀ 噪声 · {noises}</span>}
           </div>
           <span className="ob-card-open">展开当日 →</span>
         </div>

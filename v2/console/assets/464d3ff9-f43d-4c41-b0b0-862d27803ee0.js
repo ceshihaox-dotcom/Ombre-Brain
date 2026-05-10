@@ -44,7 +44,9 @@ function bucketToItem(b) {
     tags: b.tags || [],
     importance: b.importance || 5,
     score: typeof b.score === 'number' ? b.score : 0,
-    protected: !!(b.protected || b.pinned),
+    // 注: 不要再 OR b.pinned — API 的 b.pinned 是 protected||highlight 的或值, 二次 OR 会假性耦合
+    protected: !!b.protected,
+    highlight: !!b.highlight,
     feel: b.type === 'feel',
     timeHint: (() => {
       // event_time / created 是 UTC ISO,转本地 "YYYY-MM-DD HH:MM"
@@ -525,9 +527,10 @@ function ImportWorkbench() {
       body: (detail && detail.content) || '',
       importance: meta.importance != null ? meta.importance : 5,
       tags,
-      protected: !!(meta.protected || meta.pinned),
+      // 注: 不再 OR meta.pinned — utils.is_protected/is_highlighted 已正确处理 legacy fallback
+      protected: !!meta.protected,
       feel: meta.type === 'feel',
-      highlight: !!(meta.highlight || meta.pinned),
+      highlight: !!meta.highlight,
       internalized: !!(meta.internalized || meta.digested),
       artifacts: [],
     };
@@ -974,7 +977,7 @@ function ImportWorkbench() {
                   <div className="imp-q-title">{q.title}</div>
                   <div className="imp-q-meta">
                     {q.feel && <span className="imp-q-feel">❀</span>}
-                    {q.protected && <span style={{ color: 'var(--accent)' }}>⛨</span>}
+                    {q.protected && <span style={{ color: 'var(--accent)' }}>❖</span>}
                     <span>imp <b>{q.importance}</b></span>
                     {q.timeHint && <span>· {q.timeHint.slice(5, 10)}</span>}
                   </div>
@@ -1217,7 +1220,7 @@ function ImportWorkbench() {
                 </div>
                 <div className="imp-attr-row">
                   <div className="imp-attr-key">类型</div>
-                  <div style={{ display: 'flex', gap: 6 }}>
+                  <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
                     {(() => {
                       const current = active.noise ? 'noise' : (active.protected ? 'permanent' : 'dynamic');
                       return [['dynamic', '动态'], ['permanent', '钉决'], ['noise', '⌀ 噪声']].map(([k, label]) => (
@@ -1230,10 +1233,18 @@ function ImportWorkbench() {
                             protected: k === 'permanent',
                           })}
                         >
-                          {k === 'permanent' && '⛨ '}{label}
+                          {k === 'permanent' && '❖ '}{label}
                         </button>
                       ));
                     })()}
+                    {/* 高亮跟动态/钉决/噪声独立, 可叠加 — score boost */}
+                    <button
+                      className={`imp-batch-pill${active.highlight ? ' on' : ''}`}
+                      title="高亮: 浮现优先 + score 加成 (跟类型独立, 可叠加; 钉决已含此效果)"
+                      onClick={() => updateActive({ highlight: !active.highlight })}
+                      disabled={active.protected}
+                      style={active.protected ? { opacity: 0.45, cursor: 'not-allowed' } : undefined}
+                    >★ 高亮{active.protected ? ' (钉决已含)' : ''}</button>
                   </div>
                 </div>
                 <div className="imp-attr-row">
@@ -1534,7 +1545,7 @@ function ImportWorkbench() {
           ) : null}
           <div className="imp-hover-meta">
             {hoverItem.feel && <span style={{ color: 'var(--rose-deep)' }}>❀ feel</span>}
-            {hoverItem.protected && <span style={{ color: 'var(--accent)' }}>⛨ 保护</span>}
+            {hoverItem.protected && <span style={{ color: 'var(--accent)' }}>❖ 保护</span>}
             {hoverItem.importance != null && <span>imp <b>{hoverItem.importance}</b>/10</span>}
             {hoverItem.type && hoverItem.type !== 'dynamic' && <span>· {hoverItem.type}</span>}
             {(hoverItem.date || hoverItem.timeHint) && <span>· {hoverItem.date || hoverItem.timeHint}</span>}

@@ -8,7 +8,7 @@ const TAG_META = {
   'AI 写入': { icon: '✦', tone: 'sage' },
   '导入': { icon: '⇣', tone: 'sage' },
   '已内化': { icon: '◐', tone: 'sage' },
-  '保护': { icon: '⛨', tone: 'amber' },
+  '保护': { icon: '❖', tone: 'amber' },
   '高亮': { icon: '★', tone: 'amber' },
   'feel(柔软)': { icon: '❀', tone: 'rose' }
 };

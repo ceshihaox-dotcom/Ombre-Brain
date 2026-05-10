@@ -457,7 +457,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
               <div className="ob-modal-edit-flags">
                 <label className={`ob-modal-edit-flag ${draft.protected ? 'on' : ''}`}>
                   <input type="checkbox" checked={draft.protected} onChange={(e) => setDraft(d => ({ ...d, protected: e.target.checked, pinned: e.target.checked }))} />
-                  <span>⛨ 保护 / 钉决</span>
+                  <span>❖ 保护 / 钉决</span>
                 </label>
                 <label className={`ob-modal-edit-flag ${draft.feel ? 'on' : ''}`}>
                   <input type="checkbox" checked={draft.feel} onChange={(e) => setDraft(d => ({ ...d, feel: e.target.checked }))} />

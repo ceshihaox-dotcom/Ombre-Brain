@@ -9,7 +9,7 @@ const CM_TAG_META = {
   'AI 写入':   { icon: '◐', tone: 'sage' },
   '导入':      { icon: '⇣', tone: 'sage' },
   '已内化':    { icon: '◐', tone: 'sage' },
-  '保护':      { icon: '⛨', tone: 'amber' },
+  '保护':      { icon: '❖', tone: 'amber' },
   '高亮':      { icon: '★', tone: 'amber' },
   'feel(柔软)': { icon: '❀', tone: 'rose' }
 };
@@ -376,7 +376,7 @@ function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate, mode,
               <div className="ob-modal-edit-flags">
                 <label className={`ob-modal-edit-flag ${draft.protected ? 'on' : ''}`}>
                   <input type="checkbox" checked={draft.protected} onChange={(e) => setDraft(d => ({ ...d, protected: e.target.checked, pinned: e.target.checked }))} />
-                  <span>⛨ 保护 / 钉决</span>
+                  <span>❖ 保护 / 钉决</span>
                 </label>
                 <label className={`ob-modal-edit-flag ${draft.feel ? 'on' : ''}`}>
                   <input type="checkbox" checked={draft.feel} onChange={(e) => setDraft(d => ({ ...d, feel: e.target.checked }))} />

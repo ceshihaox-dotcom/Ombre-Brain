@@ -34,8 +34,11 @@ function LeftPanel({
 
   // 额外过滤项的统计
   const extraCounts = cpM(() => ({
-    fresh: items.filter(i => i.highlight || (i.importance || 5) >= 8).length,
+    highlight: items.filter(i => i.highlight).length,
+    fresh: items.filter(i => (i.importance || 5) >= 8).length,
     mine: items.filter(i => i.created_by === 'user').length,
+    import: items.filter(i => i.created_by === 'import').length,
+    ai: items.filter(i => (i.created_by || 'ai') === 'ai').length,
   }), [items]);
 
   // 全部 tag (排除 AUTO_TAGS / __* + 按出现频次排序 + 含 count)
@@ -94,10 +97,13 @@ function LeftPanel({
               <span className="cs-legend-count">{typeCounts[k] || 0}</span>
             </div>
           ))}
-          {/* 新增 2 个属性筛选 — 默认不勾选, 勾选后只显示对应记忆 */}
+          {/* 新增属性筛选 — 默认不勾, 勾后只显示符合的记忆 (按梯度: 高亮 > 重要度高 > 来源) */}
           {[
-            ['fresh', 'fresh', '重要',  'imp ≥ 8 || highlight'],
-            ['mine',  'mine',  '我写的', 'created_by = user'],
+            ['highlight', 'highlight', '高亮',    'highlight = true'],
+            ['fresh',     'fresh',     '重要',    'importance ≥ 8'],
+            ['import',    'import',    '导入',    'created_by = import'],
+            ['ai',        'ai',        'AI 写入', 'created_by = ai'],
+            ['mine',      'mine',      '我写的',  'created_by = user'],
           ].map(([k, en, name, hint]) => (
             <div
               key={k}
@@ -208,7 +214,7 @@ function RightDrawer({ item, items, links, onClose, onSelect, onUpdate, onFocus,
           <span style={{ opacity: 0.5 }}>·</span>
           <span>{item.id.toUpperCase()}</span>
           {item.highlight && <><span style={{ opacity: 0.5 }}>·</span><span style={{ color: 'var(--c-gold)' }}>★ 高亮</span></>}
-          {item.protected && <><span style={{ opacity: 0.5 }}>·</span><span>⛨ 保护</span></>}
+          {item.protected && <><span style={{ opacity: 0.5 }}>·</span><span>❖ 保护</span></>}
           <button className="cs-right-close" onClick={onClose}>✕</button>
         </div>
         <h2 className="cs-right-title">{item.title}</h2>
@@ -272,7 +278,7 @@ function RightDrawer({ item, items, links, onClose, onSelect, onUpdate, onFocus,
               <span className="lbl">状态</span>
               <span className="val">
                 {item.feel ? '❀ feel ' : ''}
-                {item.protected ? '⛨ 永久 ' : ''}
+                {item.protected ? '❖ 永久 ' : ''}
                 {item.highlight ? '★ 高亮 ' : ''}
                 {!item.feel && !item.protected && !item.highlight ? '常规' : ''}
               </span>
@@ -317,7 +323,7 @@ function RightDrawer({ item, items, links, onClose, onSelect, onUpdate, onFocus,
               <span className="i">◎</span><span>{focusedId === item.id ? '退出聚焦' : '聚焦'}</span>
             </button>
             <button className="cs-right-action" onClick={() => onUpdate(item.id, { protected: !item.protected })}>
-              <span className="i">⛨</span><span>{item.protected ? '取消保护' : '保护'}</span>
+              <span className="i">❖</span><span>{item.protected ? '取消保护' : '保护'}</span>
             </button>
             <button className="cs-right-action" onClick={() => onUpdate(item.id, { archived: !item.archived })}>
               <span className="i">▤</span><span>{item.archived ? '取消归档' : '归档'}</span>

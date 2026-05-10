@@ -322,7 +322,7 @@ function WriteDrawer({ open, onClose, onSave, defaultDate, defaultTime, defaultT
                 className={`ob-write-flag ${protectFlag ? 'on protect' : ''}`}
                 onClick={() => setProtect(!protectFlag)}
               >
-                <span className="ob-write-flag-i">⛨</span>
+                <span className="ob-write-flag-i">❖</span>
                 <span>保护</span>
               </button>
             </div>

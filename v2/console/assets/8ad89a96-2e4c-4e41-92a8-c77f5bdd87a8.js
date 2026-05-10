@@ -166,7 +166,7 @@ function ImportPage({ items }) {
             <div key={it.id} className="oc-imported-item">
               <div className="oc-imported-hd">
                 <div className="oc-imported-title">
-                  {it.protected && <span style={{ color: 'var(--accent)', marginRight: 4 }}>⛨</span>}
+                  {it.protected && <span style={{ color: 'var(--accent)', marginRight: 4 }}>❖</span>}
                   {it.feel && <span style={{ color: 'var(--rose-deep)', marginRight: 4 }}>❀</span>}
                   {it.title}
                 </div>

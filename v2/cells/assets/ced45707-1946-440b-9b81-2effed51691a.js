@@ -25,9 +25,10 @@ function DayDetail({ date, items, onClose, onOpenItem, accent }) {
 
         <div className="ob-drawer-stats">
           <div><b>{sorted.length}</b><span>条目</span></div>
-          <div><b>{sorted.filter(i => i.importance >= 8 || i.highlight).length}</b><span>重要</span></div>
-          <div><b>{sorted.filter(i => i.feel).length}</b><span>feel</span></div>
-          <div><b>{sorted.filter(i => i.protected).length}</b><span>钉决</span></div>
+          <div><b>{sorted.filter(i => i.protected || i.pinned).length}</b><span>❖ 钉决</span></div>
+          <div><b>{sorted.filter(i => i.highlight).length}</b><span>★ 高亮</span></div>
+          <div><b>{sorted.filter(i => (i.importance || 5) >= 8).length}</b><span>▲ 重要</span></div>
+          <div><b>{sorted.filter(i => i.feel).length}</b><span>❀ feel</span></div>
         </div>
 
         <div className="ob-drawer-body">
