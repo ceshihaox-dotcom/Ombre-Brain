@@ -193,16 +193,16 @@ function AppV2() {
             active={!filters.highlightOnly && !filters.impHighOnly && !filters.feelOnly && !filters.protectedOnly && !filters.sourceFilter}
             onClick={() => setFilters({ highlightOnly: false, impHighOnly: false, feelOnly: false, protectedOnly: false, sourceFilter: null })}
           >全部</FilterChipV2>
-          <FilterChipV2 tone="amber" active={filters.protectedOnly}
+          <FilterChipV2 tone="pin" active={filters.protectedOnly}
             onClick={() => setFilters(f => ({ ...f, protectedOnly: !f.protectedOnly }))}
           >❖ 钉决</FilterChipV2>
-          <FilterChipV2 tone="gold" active={filters.highlightOnly}
+          <FilterChipV2 tone="highlight" active={filters.highlightOnly}
             onClick={() => setFilters(f => ({ ...f, highlightOnly: !f.highlightOnly }))}
           >★ 高亮</FilterChipV2>
-          <FilterChipV2 active={filters.impHighOnly}
+          <FilterChipV2 tone="fresh" active={filters.impHighOnly}
             onClick={() => setFilters(f => ({ ...f, impHighOnly: !f.impHighOnly }))}
           >✦ 重要度高</FilterChipV2>
-          <FilterChipV2 tone="rose" active={filters.feelOnly}
+          <FilterChipV2 tone="feel" active={filters.feelOnly}
             onClick={() => setFilters(f => ({ ...f, feelOnly: !f.feelOnly }))}
           >♡ Feel</FilterChipV2>
           {/* 来源 — 三态单选 (再点取消). 历史 'ai' 桶混了 import 跟 AI 主动写,

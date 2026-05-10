@@ -64,7 +64,7 @@ function AppV2() {
   // 这里用 server search 补漏 — 命中 ids 作为白名单,matched_in 给 dot 旁标"命中:正文"用
   const [searchHits, setSearchHits] = uSA(null); // null=未搜 / [{id, matched_in}]
   const [searchLoading, setSearchLoading] = uSA(false);
-  const [filters, setFilters] = uSA({ importantOnly: false, feelOnly: false, protectedOnly: false, noiseOnly: false, sourceFilter: null });
+  const [filters, setFilters] = uSA({ highlightOnly: false, importantOnly: false, feelOnly: false, protectedOnly: false, noiseOnly: false, sourceFilter: null });
 
   // query 变化 → 250ms debounce → 调 /api/search,拿全字段命中
   // 空 query → 清空 hits;非空 → setSearchHits(命中数组)
@@ -317,19 +317,22 @@ function AppV2() {
             />
           </div>
           <FilterChipV2
-            active={!filters.importantOnly && !filters.feelOnly && !filters.protectedOnly && !filters.noiseOnly && !filters.sourceFilter}
-            onClick={() => setFilters({ importantOnly: false, feelOnly: false, protectedOnly: false, noiseOnly: false, sourceFilter: null })}
+            active={!filters.highlightOnly && !filters.importantOnly && !filters.feelOnly && !filters.protectedOnly && !filters.noiseOnly && !filters.sourceFilter}
+            onClick={() => setFilters({ highlightOnly: false, importantOnly: false, feelOnly: false, protectedOnly: false, noiseOnly: false, sourceFilter: null })}
           >全部</FilterChipV2>
-          <FilterChipV2 tone="amber" active={filters.protectedOnly}
+          <FilterChipV2 tone="pin" active={filters.protectedOnly}
             onClick={() => setFilters(f => ({ ...f, protectedOnly: !f.protectedOnly }))}
           >❖ 钉决</FilterChipV2>
-          <FilterChipV2 tone="gold" active={filters.importantOnly}
+          <FilterChipV2 tone="highlight" active={filters.highlightOnly}
+            onClick={() => setFilters(f => ({ ...f, highlightOnly: !f.highlightOnly }))}
+          >★ 高亮</FilterChipV2>
+          <FilterChipV2 tone="fresh" active={filters.importantOnly}
             onClick={() => setFilters(f => ({ ...f, importantOnly: !f.importantOnly }))}
           >✦ 重要</FilterChipV2>
-          <FilterChipV2 tone="rose" active={filters.feelOnly}
+          <FilterChipV2 tone="feel" active={filters.feelOnly}
             onClick={() => setFilters(f => ({ ...f, feelOnly: !f.feelOnly }))}
           >♡ Feel</FilterChipV2>
-          <FilterChipV2 active={filters.noiseOnly}
+          <FilterChipV2 tone="noise" active={filters.noiseOnly}
             onClick={() => setFilters(f => ({ ...f, noiseOnly: !f.noiseOnly }))}
           >⌀ 噪声</FilterChipV2>
           {/* 来源 — 三态单选 (再点取消). 历史 'ai' 桶混了 import 跟 AI 主动写,

@@ -316,15 +316,15 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
     return [
       { id: 'all', label: '全部', tone: '', count: items.length },
       { id: 'pin', label: '❖ 钉决', tone: 'pin', count: c(i => i.protected || i.pinned) },
-      { id: 'highlight', label: '★ 高亮', tone: '', count: c(i => i.highlight) },
-      { id: 'imp_high', label: '✦ 重要度≥8', tone: '', count: c(i => (i.importance || 5) >= 8) },
+      { id: 'highlight', label: '★ 高亮', tone: 'highlight', count: c(i => i.highlight) },
+      { id: 'imp_high', label: '✦ 重要度≥8', tone: 'fresh', count: c(i => (i.importance || 5) >= 8) },
       { id: 'import', label: '⇣ 导入', tone: '', count: c(i => i.created_by === 'import') },
       { id: 'ai', label: '◐ AI 写入', tone: '', count: c(i => (i.created_by || 'ai') === 'ai') },
       { id: 'mine', label: '✎ 亲手写', tone: '', count: c(i => i.created_by === 'user') },
       { id: 'feel', label: '♡ Feel', tone: 'feel', count: c(i => i.feel) },
       { id: 'internal', label: '已内化', tone: '', count: c(i => i.internalized) },
       { id: 'cold', label: '待消化', tone: '', count: c(i => i.importance < 2) },
-      { id: 'noise', label: '⌀ 噪声', tone: '', count: c(i => i.noise) },
+      { id: 'noise', label: '⌀ 噪声', tone: 'noise', count: c(i => i.noise) },
     ];
   }, [items]);
 

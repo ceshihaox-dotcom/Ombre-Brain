@@ -374,24 +374,24 @@ function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate, mode,
             <>
               <div className="ob-modal-section">状态</div>
               <div className="ob-modal-edit-flags">
-                <label className={`ob-modal-edit-flag ${draft.protected ? 'on' : ''}`}>
+                <label className={`ob-modal-edit-flag ${draft.protected ? 'on tone-pin' : ''}`}>
                   <input type="checkbox" checked={draft.protected} onChange={(e) => setDraft(d => ({ ...d, protected: e.target.checked, pinned: e.target.checked }))} />
-                  <span>❖ 保护 / 钉决</span>
-                </label>
-                <label className={`ob-modal-edit-flag ${draft.feel ? 'on' : ''}`}>
-                  <input type="checkbox" checked={draft.feel} onChange={(e) => setDraft(d => ({ ...d, feel: e.target.checked }))} />
-                  <span>♡ feel</span>
+                  <span>❖ 钉决</span>
                 </label>
                 <label
-                  className={`ob-modal-edit-flag ${draft.highlight ? 'on' : ''} ${draft.protected ? 'is-disabled' : ''}`}
-                  title={draft.protected ? '钉决已含「重要」效果 — 取消钉决后此项才生效' : ''}
+                  className={`ob-modal-edit-flag ${draft.highlight ? 'on tone-highlight' : ''} ${draft.protected ? 'is-disabled' : ''}`}
+                  title={draft.protected ? '钉决已含「高亮」效果 — 取消钉决后此项才生效' : ''}
                 >
                   <input
                     type="checkbox"
                     checked={draft.highlight}
                     disabled={draft.protected}
                     onChange={(e) => setDraft(d => ({ ...d, highlight: e.target.checked }))} />
-                  <span>★ 高亮{draft.protected ? ' (钉决已含)' : ''}</span>
+                  <span>★ 高亮</span>
+                </label>
+                <label className={`ob-modal-edit-flag ${draft.feel ? 'on tone-feel' : ''}`}>
+                  <input type="checkbox" checked={draft.feel} onChange={(e) => setDraft(d => ({ ...d, feel: e.target.checked }))} />
+                  <span>♡ feel</span>
                 </label>
                 <label className={`ob-modal-edit-flag ${draft.internalized ? 'on' : ''}`}>
                   <input type="checkbox" checked={draft.internalized} onChange={(e) => setDraft(d => ({ ...d, internalized: e.target.checked }))} />
