@@ -3106,7 +3106,8 @@
   --amber:     #6e4f9a;
 
   /* 状态梯度色板 (深紫 → 中紫 → 浅紫泛粉 → 玫粉) — 跟冷色克制感对齐 */
-  --c-pin:       color-mix(in oklab, var(--accent) 60%, var(--ink) 40%);
+  /* c-pin: 不混 ink 改混深靛紫, 保留饱和度同时加深 — 不会发灰 */
+  --c-pin:       color-mix(in oklab, var(--accent) 65%, #2a1755 35%);
   --c-highlight: var(--accent);
   --c-fresh:     color-mix(in oklab, var(--accent) 50%, var(--rose) 50%);
   --c-feel:      var(--rose-deep);
