@@ -201,10 +201,10 @@ function AppV2() {
           >★ 高亮</FilterChipV2>
           <FilterChipV2 active={filters.impHighOnly}
             onClick={() => setFilters(f => ({ ...f, impHighOnly: !f.impHighOnly }))}
-          >▲ 重要度高</FilterChipV2>
+          >✦ 重要度高</FilterChipV2>
           <FilterChipV2 tone="rose" active={filters.feelOnly}
             onClick={() => setFilters(f => ({ ...f, feelOnly: !f.feelOnly }))}
-          >❀ Feel</FilterChipV2>
+          >♡ Feel</FilterChipV2>
           {/* 来源 — 三态单选 (再点取消). 历史 'ai' 桶混了 import 跟 AI 主动写,
               改完代码后新数据就分开了, 老的可在 modal 里手动改 */}
           <FilterChipV2 active={filters.sourceFilter === 'import'}

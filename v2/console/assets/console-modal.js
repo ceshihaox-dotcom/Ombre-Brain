@@ -11,7 +11,7 @@ const CM_TAG_META = {
   '已内化':    { icon: '◐', tone: 'sage' },
   '保护':      { icon: '❖', tone: 'amber' },
   '高亮':      { icon: '★', tone: 'amber' },
-  'feel(柔软)': { icon: '❀', tone: 'rose' }
+  'feel(柔软)': { icon: '♡', tone: 'rose' }
 };
 
 function CmTag({ name }) {
@@ -232,7 +232,7 @@ function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate, mode,
               </>
             )}
             {!editing && view.highlight && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--accent)' }}>★ 高亮</span></>}
-            {!editing && view.feel && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--rose-deep)' }}>❀ feel</span></>}
+            {!editing && view.feel && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--rose-deep)' }}>♡ feel</span></>}
             {!editing && view.protected && <><span style={{ opacity: 0.5 }}>/</span><span>❖ 钉决</span></>}
             {!editing && view.internalized && <><span style={{ opacity: 0.5 }}>/</span><span>◐ 已内化</span></>}
           </div>
@@ -380,7 +380,7 @@ function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate, mode,
                 </label>
                 <label className={`ob-modal-edit-flag ${draft.feel ? 'on' : ''}`}>
                   <input type="checkbox" checked={draft.feel} onChange={(e) => setDraft(d => ({ ...d, feel: e.target.checked }))} />
-                  <span>❀ feel</span>
+                  <span>♡ feel</span>
                 </label>
                 <label
                   className={`ob-modal-edit-flag ${draft.highlight ? 'on' : ''} ${draft.protected ? 'is-disabled' : ''}`}

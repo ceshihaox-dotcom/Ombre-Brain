@@ -3513,17 +3513,19 @@ body {
   font-size: 11px;
   letter-spacing: 0.05em;
 }
-.ob-card-hi-badge, .ob-card-feel-badge, .ob-card-noise-badge {
-  font-size: 10px; padding: 2px 8px;
+.ob-card-hi-badge, .ob-card-highlight-badge, .ob-card-pin-badge, .ob-card-feel-badge, .ob-card-noise-badge {
+  font-size: 10.5px; padding: 2px 8px;
   border-radius: 999px;
   border: 0.5px solid currentColor;
   letter-spacing: 0.05em;
   text-transform: uppercase;
   font-family: var(--mono);
 }
-.ob-card-hi-badge { color: var(--ink-2); background: rgba(120, 120, 130, 0.10); font-size: 10.5px; }
-.ob-card-highlight-badge { color: var(--accent); background: var(--accent-3); padding: 2px 8px; border-radius: 999px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em; font-weight: 500; }
-.ob-card-pin-badge { color: #c79a4f; background: rgba(199, 154, 79, 0.12); padding: 2px 8px; border-radius: 999px; font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em; font-weight: 500; }
+/* 重要 (importance>=8): 偏多, 用主色 accent */
+.ob-card-hi-badge { color: var(--accent); background: var(--accent-3); }
+/* 高亮: 稀少, 用 ink-2 灰 (不抢眼) */
+.ob-card-highlight-badge { color: var(--ink-2); background: rgba(120, 120, 130, 0.10); }
+.ob-card-pin-badge { color: #c79a4f; background: rgba(199, 154, 79, 0.12); }
 [data-theme="dark"] .ob-card-pin-badge { color: #d8b070; background: rgba(216, 176, 112, 0.14); }
 .ob-card-feel-badge { color: var(--rose-deep); background: var(--rose-a10); }
 .ob-card-noise-badge { color: var(--ink-4); background: rgba(120, 120, 130, 0.06); }
@@ -3719,7 +3721,7 @@ body {
 .ob-drawer-close:hover { background: var(--bg-2); color: var(--ink); }
 
 .ob-drawer-stats {
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   background: var(--paper);
   border-bottom: 0.5px solid var(--line);
   padding: 0 32px 18px;

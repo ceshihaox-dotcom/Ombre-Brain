@@ -252,7 +252,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
               );
             })()}
             {!editing && view.highlight && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--accent)' }}>★ 高亮</span></>}
-            {!editing && view.feel && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--rose-deep)' }}>❀ feel</span></>}
+            {!editing && view.feel && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--rose-deep)' }}>♡ feel</span></>}
             {!editing && view.protected && <><span style={{ opacity: 0.5 }}>/</span><span>❖ 钉决</span></>}
             {!editing && view.internalized && <><span style={{ opacity: 0.5 }}>/</span><span>◐ 已内化</span></>}
             {!editing && view.noise && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--ink-4)' }}>⌀ 噪声</span></>}
@@ -461,7 +461,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
                 </label>
                 <label className={`ob-modal-edit-flag ${draft.feel ? 'on' : ''}`}>
                   <input type="checkbox" checked={draft.feel} onChange={(e) => setDraft(d => ({ ...d, feel: e.target.checked }))} />
-                  <span>❀ feel</span>
+                  <span>♡ feel</span>
                 </label>
                 {/* 钉决已含 highlight 效果 (calculate_score 直接返回 protected_score, highlight_mult 走不到), 钉决时禁用此 toggle 避免双标 */}
                 <label

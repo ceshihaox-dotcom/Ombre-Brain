@@ -277,7 +277,7 @@ function RightDrawer({ item, items, links, onClose, onSelect, onUpdate, onFocus,
             <div className="cs-right-meta-cell">
               <span className="lbl">状态</span>
               <span className="val">
-                {item.feel ? '❀ feel ' : ''}
+                {item.feel ? '♡ feel ' : ''}
                 {item.protected ? '❖ 永久 ' : ''}
                 {item.highlight ? '★ 高亮 ' : ''}
                 {!item.feel && !item.protected && !item.highlight ? '常规' : ''}

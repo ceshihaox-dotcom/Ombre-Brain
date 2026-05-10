@@ -10,7 +10,7 @@ const TAG_META = {
   '已内化': { icon: '◐', tone: 'sage' },
   '保护': { icon: '❖', tone: 'amber' },
   '高亮': { icon: '★', tone: 'amber' },
-  'feel(柔软)': { icon: '❀', tone: 'rose' }
+  'feel(柔软)': { icon: '♡', tone: 'rose' }
 };
 
 function Tag({ name }) {

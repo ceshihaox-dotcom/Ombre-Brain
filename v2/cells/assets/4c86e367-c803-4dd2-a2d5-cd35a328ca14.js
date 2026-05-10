@@ -314,7 +314,7 @@ function WriteDrawer({ open, onClose, onSave, defaultDate, defaultTime, defaultT
                 className={`ob-write-flag ${feel ? 'on feel' : ''}`}
                 onClick={() => setFeel(!feel)}
               >
-                <span className="ob-write-flag-i">❀</span>
+                <span className="ob-write-flag-i">♡</span>
                 <span>feel</span>
               </button>
               <button
