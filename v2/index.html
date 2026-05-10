@@ -3105,6 +3105,12 @@
   --sage:      #8a8898;       /* 中性灰 */
   --amber:     #6e4f9a;
 
+  /* 状态梯度色板 (深紫 → 中紫 → 浅紫泛粉 → 玫粉) — 跟冷色克制感对齐 */
+  --c-pin:       color-mix(in oklab, var(--accent) 60%, var(--ink) 40%);
+  --c-highlight: var(--accent);
+  --c-fresh:     color-mix(in oklab, var(--accent) 50%, var(--rose) 50%);
+  --c-feel:      var(--rose-deep);
+
   --serif:     "Cormorant Garamond","Noto Serif SC", Georgia, serif;
   --sans:      "Inter","Noto Sans SC", -apple-system, system-ui, sans-serif;
   --mono:      "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
@@ -3361,17 +3367,16 @@ body {
 }
 .ob-chip:hover { background: var(--bg-2); color: var(--ink); }
 .ob-chip-on { background: var(--ink); color: var(--paper); }
-/* 语义 tone — 跟卡片 badge 配色一致 */
-.ob-chip-on.ob-chip-pin       { background: #c79a4f; color: var(--paper); }
-[data-theme="dark"] .ob-chip-on.ob-chip-pin { background: #d8b070; color: #14131c; }
-.ob-chip-on.ob-chip-highlight { background: var(--ink); color: var(--paper); }
-.ob-chip-on.ob-chip-fresh     { background: var(--accent); color: var(--paper); }
-.ob-chip-on.ob-chip-feel      { background: var(--rose-deep); color: var(--paper); }
+/* 语义 tone — 紫粉渐变 (深紫→中紫→浅紫粉→玫粉) */
+.ob-chip-on.ob-chip-pin       { background: var(--c-pin); color: var(--paper); }
+.ob-chip-on.ob-chip-highlight { background: var(--c-highlight); color: var(--paper); }
+.ob-chip-on.ob-chip-fresh     { background: var(--c-fresh); color: var(--paper); }
+.ob-chip-on.ob-chip-feel      { background: var(--c-feel); color: var(--paper); }
 .ob-chip-on.ob-chip-noise     { background: var(--ink-3); color: var(--paper); }
 /* 老 tone alias (向后兼容) */
-.ob-chip-on.ob-chip-rose  { background: var(--rose-deep); color: var(--paper); }
-.ob-chip-on.ob-chip-amber { background: #c79a4f; color: var(--paper); }
-.ob-chip-on.ob-chip-gold  { background: var(--accent); color: var(--paper); }
+.ob-chip-on.ob-chip-rose  { background: var(--c-feel); color: var(--paper); }
+.ob-chip-on.ob-chip-amber { background: var(--c-pin); color: var(--paper); }
+.ob-chip-on.ob-chip-gold  { background: var(--c-highlight); color: var(--paper); }
 
 /* ── 时间线 ── */
 .ob-timeline { position: relative; }
@@ -3529,14 +3534,12 @@ body {
   text-transform: uppercase;
   font-family: var(--mono);
 }
-/* 重要 (importance>=8): 偏多, 用主色 accent */
-.ob-card-hi-badge { color: var(--accent); background: var(--accent-3); }
-/* 高亮: 稀少, 用 ink-2 灰 (不抢眼) */
-.ob-card-highlight-badge { color: var(--ink-2); background: rgba(120, 120, 130, 0.10); }
-.ob-card-pin-badge { color: #c79a4f; background: rgba(199, 154, 79, 0.12); }
-[data-theme="dark"] .ob-card-pin-badge { color: #d8b070; background: rgba(216, 176, 112, 0.14); }
-.ob-card-feel-badge { color: var(--rose-deep); background: var(--rose-a10); }
-.ob-card-noise-badge { color: var(--ink-4); background: rgba(120, 120, 130, 0.06); }
+/* 紫粉渐变 — 钉决最深, feel 最粉 */
+.ob-card-pin-badge       { color: var(--c-pin);       background: color-mix(in oklab, var(--c-pin)       12%, transparent); }
+.ob-card-highlight-badge { color: var(--c-highlight); background: color-mix(in oklab, var(--c-highlight) 12%, transparent); }
+.ob-card-hi-badge        { color: var(--c-fresh);     background: color-mix(in oklab, var(--c-fresh)     12%, transparent); }
+.ob-card-feel-badge      { color: var(--c-feel);      background: var(--rose-a10); }
+.ob-card-noise-badge     { color: var(--ink-4);       background: rgba(120, 120, 130, 0.06); }
 .ob-card-open {
   font-size: 11px;
   color: var(--ink-3);
@@ -4327,21 +4330,26 @@ body {
   border-color: var(--accent);
   color: var(--ink);
 }
+/* 语义 tone — 紫粉渐变 (深紫→中紫→浅紫粉→玫粉) */
 .ob-modal-edit-flag.on.tone-pin {
-  background: rgba(199, 154, 79, 0.10);
-  border-color: #c79a4f;
-  color: #8a6a30;
-}
-[data-theme="dark"] .ob-modal-edit-flag.on.tone-pin { color: #d8b070; }
-.ob-modal-edit-flag.on.tone-feel {
-  background: var(--rose-a10);
-  border-color: var(--rose-deep);
-  color: var(--rose-deep);
+  background: color-mix(in oklab, var(--c-pin) 10%, var(--paper));
+  border-color: var(--c-pin);
+  color: var(--c-pin);
 }
 .ob-modal-edit-flag.on.tone-highlight {
-  background: color-mix(in oklch, var(--ink) 6%, var(--paper));
-  border-color: var(--ink-2);
-  color: var(--ink);
+  background: color-mix(in oklab, var(--c-highlight) 10%, var(--paper));
+  border-color: var(--c-highlight);
+  color: var(--c-highlight);
+}
+.ob-modal-edit-flag.on.tone-fresh {
+  background: color-mix(in oklab, var(--c-fresh) 12%, var(--paper));
+  border-color: var(--c-fresh);
+  color: var(--c-fresh);
+}
+.ob-modal-edit-flag.on.tone-feel {
+  background: var(--rose-a10);
+  border-color: var(--c-feel);
+  color: var(--c-feel);
 }
 .ob-modal-edit-flag.on.tone-noise {
   background: color-mix(in oklch, var(--ink-3) 12%, var(--paper));

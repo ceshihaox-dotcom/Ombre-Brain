@@ -251,10 +251,10 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
                 </>
               );
             })()}
-            {!editing && view.highlight && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--accent)' }}>★ 高亮</span></>}
-            {!editing && view.feel && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--rose-deep)' }}>♡ feel</span></>}
-            {!editing && view.protected && <><span style={{ opacity: 0.5 }}>/</span><span>❖ 钉决</span></>}
-            {!editing && view.internalized && <><span style={{ opacity: 0.5 }}>/</span><span>◐ 已内化</span></>}
+            {!editing && view.protected && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--c-pin)' }}>❖ 钉决</span></>}
+            {!editing && view.highlight && !view.protected && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--c-highlight)' }}>★ 高亮</span></>}
+            {!editing && view.feel && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--c-feel)' }}>♡ feel</span></>}
+            {!editing && view.internalized && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--ink-3)' }}>◐ 已内化</span></>}
             {!editing && view.noise && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--ink-4)' }}>⌀ 噪声</span></>}
           </div>
 
@@ -434,9 +434,9 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
               <div className="ob-modal-section">来源</div>
               <div className="ob-modal-edit-flags">
                 {[
-                  { val: 'user', label: '✎ 亲手写' },
-                  { val: 'ai', label: '◐ AI 写入' },
-                  { val: 'import', label: '⇣ 导入' },
+                  { val: 'user', label: '亲手写' },
+                  { val: 'ai', label: 'AI 写入' },
+                  { val: 'import', label: '导入' },
                 ].map(opt => (
                   <label
                     key={opt.val}
