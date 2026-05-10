@@ -301,7 +301,7 @@ function AppV2() {
             const earliest = data.reduce((m, i) => i.date < m ? i.date : m, data[0].date);
             return dayDiff(TODAY, earliest) + 1;
           })()}
-          totalHi={data.filter(i => i.importance >= 8 || i.highlight).length}
+          totalHi={data.filter(i => (i.protected || i.pinned) || i.highlight || (i.importance || 5) >= 8).length}
           totalCount={data.length}
           onWrite={() => setWriteOpen(true)}
           onJumpToday={jumpToToday}
@@ -339,13 +339,13 @@ function AppV2() {
               改完代码后新数据就分开了, 老的可在 modal 里手动改 */}
           <FilterChipV2 active={filters.sourceFilter === 'import'}
             onClick={() => setFilters(f => ({ ...f, sourceFilter: f.sourceFilter === 'import' ? null : 'import' }))}
-          >⇣ 导入</FilterChipV2>
+          >导入</FilterChipV2>
           <FilterChipV2 active={filters.sourceFilter === 'ai'}
             onClick={() => setFilters(f => ({ ...f, sourceFilter: f.sourceFilter === 'ai' ? null : 'ai' }))}
-          >◐ AI 写入</FilterChipV2>
+          >AI 写入</FilterChipV2>
           <FilterChipV2 active={filters.sourceFilter === 'user'}
             onClick={() => setFilters(f => ({ ...f, sourceFilter: f.sourceFilter === 'user' ? null : 'user' }))}
-          >✎ 亲手写</FilterChipV2>
+          >亲手写</FilterChipV2>
         </div>
 
         {/* 主题域筛选行 (默认收起, 点击展开) */}

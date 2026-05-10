@@ -242,7 +242,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
             {!editing && (() => {
               // 来源标签 — user/ai/import 三态; 历史 ai 桶有可能其实是导入(待手动改)
               const src = item.created_by || (item._meta && item._meta.created_by) || 'ai';
-              const labels = { user: '✎ 亲手写', ai: '◐ AI 写入', import: '⇣ 导入' };
+              const labels = { user: '亲手写', ai: 'AI 写入', import: '导入' };
               const tip = src === 'ai' ? 'AI 主动写入(若实为导入,可在编辑态改来源)' : '';
               return (
                 <>
