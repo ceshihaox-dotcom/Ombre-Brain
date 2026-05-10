@@ -2650,6 +2650,69 @@ async def api_backup(request):
             pass
 
 
+@mcp.custom_route("/api/cleanup-pseudo-tags", methods=["POST", "GET"])
+async def api_cleanup_pseudo_tags(request):
+    """一次性清洗 bucket.tags 里 v2 bridge 错误注入的伪 tag.
+
+    背景: v2 前端 bridge 在读端往 item.tags 注入派生 tag (亲手写/AI 写入/导入/已内化/
+    保护/重要/feel(柔软)) 用于显示, 但 ItemModal 保存时把这些 tag 一并写回后端,
+    每存一次就追加一份, 导致 bucket 文件里 tags 数组堆满冗余字符串.
+    bridge 已在写端补了剥离逻辑, 但历史污染需要这个端点一次性清理.
+
+    默认 dry-run; ?commit=true 才真改.
+    需要 OMBRE_ADMIN_TOKEN (跟其他 admin 端点一致)."""
+    from starlette.responses import JSONResponse
+
+    PSEUDO = {'亲手写', 'AI 写入', '导入', '已内化', '保护', '重要', 'feel(柔软)'}
+
+    expected = os.environ.get("OMBRE_ADMIN_TOKEN", "").strip()
+    if expected:
+        provided = request.query_params.get("token") or request.headers.get("X-Admin-Token", "")
+        if provided != expected:
+            return JSONResponse({"error": "invalid or missing admin token"}, status_code=401)
+
+    commit_mode = request.query_params.get("commit", "").lower() in ("1", "true", "yes")
+
+    all_buckets = await bucket_mgr.list_all(include_archive=True)
+    affected = []
+    errors = []
+    for b in all_buckets:
+        bid = b["id"]
+        meta = b.get("metadata", {}) or {}
+        tags = meta.get("tags") or []
+        if not isinstance(tags, list):
+            continue
+        removed = [t for t in tags if str(t) in PSEUDO]
+        if not removed:
+            continue
+        cleaned = [t for t in tags if str(t) not in PSEUDO]
+        record = {
+            "id": bid,
+            "name": meta.get("name") or bid[:12],
+            "removed": removed,
+            "before_len": len(tags),
+            "after_len": len(cleaned),
+        }
+        if commit_mode:
+            try:
+                ok = await bucket_mgr.update(bid, tags=cleaned)
+                record["written"] = bool(ok)
+            except Exception as e:
+                record["error"] = f"{type(e).__name__}: {str(e)[:160]}"
+                errors.append(record["error"])
+        affected.append(record)
+
+    return JSONResponse({
+        "mode": "commit" if commit_mode else "dry_run",
+        "scanned": len(all_buckets),
+        "affected_count": len(affected),
+        "examples": affected[:8],
+        "errors": errors[:5] if errors else None,
+        "hint": ("dry_run: 加 ?commit=true 真改" if not commit_mode
+                 else "已写盘 — 跑一次 GitHub Action 备份, 验证完就可以把这个端点删了"),
+    })
+
+
 @mcp.custom_route("/api/breath-debug", methods=["GET"])
 async def api_breath_debug(request):
     """Debug endpoint: simulate breath scoring and return per-bucket breakdown."""

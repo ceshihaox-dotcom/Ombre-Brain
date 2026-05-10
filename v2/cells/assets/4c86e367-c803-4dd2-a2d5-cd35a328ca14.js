@@ -232,7 +232,8 @@ function WriteDrawer({ open, onClose, onSave, defaultDate, defaultTime, defaultT
     setTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
   };
 
-  const allTags = ['亲手写', 'AI 写入', '已内化', '保护', '重要', 'feel(柔软)'];
+  // 注: 来源类 (亲手写/AI 写入/导入) 由 metadata.created_by 决定, 不放进可选 tag — 避免双轨制
+  const allTags = ['已内化', '保护', '重要', 'feel(柔软)'];
   const valid = title.trim().length > 0;
   const charCount = title.length + summary.length + body.length;
 

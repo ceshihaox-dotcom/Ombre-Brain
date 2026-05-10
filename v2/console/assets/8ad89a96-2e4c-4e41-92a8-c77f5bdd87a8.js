@@ -179,7 +179,7 @@ function ImportPage({ items }) {
                 {(it.tags || []).slice(0, 8).map(t => <span key={t}>#{t}</span>)}
               </div>
               <div className="oc-imported-actions">
-                <button className={`oc-imp-action${it.protected ? ' on' : ''}`}>📌 钉决</button>
+                <button className={`oc-imp-action${it.protected ? ' on' : ''}`}>❖ 钉决</button>
                 <button className="oc-imp-action">★ 重要</button>
                 <button className="oc-imp-action">🪶 噤声</button>
                 <button className="oc-imp-action danger">🗑 删除</button>

@@ -6,6 +6,7 @@ const { useState: useS, useMemo: useM, useEffect: useE, useRef: useR } = React;
 const TAG_META_V2 = {
   '亲手写': { icon: '✍︎', tone: 'sage' },
   'AI 写入': { icon: '✦', tone: 'sage' },
+  '导入': { icon: '⇣', tone: 'sage' },
   '已内化': { icon: '◐', tone: 'sage' },
   '保护': { icon: '⛨', tone: 'amber' },
   '重要': { icon: '★', tone: 'amber' },

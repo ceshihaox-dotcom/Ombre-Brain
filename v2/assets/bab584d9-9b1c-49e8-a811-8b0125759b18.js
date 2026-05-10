@@ -322,7 +322,7 @@ function AppV2() {
           >全部</FilterChipV2>
           <FilterChipV2 tone="amber" active={filters.protectedOnly}
             onClick={() => setFilters(f => ({ ...f, protectedOnly: !f.protectedOnly }))}
-          >★ 钉决</FilterChipV2>
+          >❖ 钉决</FilterChipV2>
           <FilterChipV2 tone="gold" active={filters.importantOnly}
             onClick={() => setFilters(f => ({ ...f, importantOnly: !f.importantOnly }))}
           >✦ 重要</FilterChipV2>

@@ -373,7 +373,7 @@ function HomeScreen() {
           <span
             className={'home-chip pin' + (filters.has('pin') ? ' on' : '')}
             onClick={() => toggleFilter('pin')}
-          >★ 钉决</span>
+          >❖ 钉决</span>
           <span
             className={'home-chip' + (filters.has('fresh') ? ' on' : '')}
             onClick={() => toggleFilter('fresh')}
