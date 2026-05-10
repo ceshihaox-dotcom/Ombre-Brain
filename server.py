@@ -2663,7 +2663,7 @@ async def api_cleanup_pseudo_tags(request):
     需要 OMBRE_ADMIN_TOKEN (跟其他 admin 端点一致)."""
     from starlette.responses import JSONResponse
 
-    PSEUDO = {'亲手写', 'AI 写入', '导入', '已内化', '保护', '重要', 'feel(柔软)'}
+    PSEUDO = {'亲手写', 'AI 写入', '导入', '已内化', '保护', '重要', '高亮', 'feel(柔软)'}
 
     expected = os.environ.get("OMBRE_ADMIN_TOKEN", "").strip()
     if expected:

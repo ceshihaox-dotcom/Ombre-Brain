@@ -51,7 +51,7 @@ function AppV2() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const [data, setData] = uSA(MEMORY_DATA);
   const [query, setQuery] = uSA('');
-  const [filters, setFilters] = uSA({ importantOnly: false, feelOnly: false, protectedOnly: false, sourceFilter: null });
+  const [filters, setFilters] = uSA({ highlightOnly: false, impHighOnly: false, feelOnly: false, protectedOnly: false, sourceFilter: null });
   const [openDay, setOpenDay] = uSA(null);
   const [openItem, setOpenItem] = uSA(null);
   const [writeOpen, setWriteOpen] = uSA(false);
@@ -99,7 +99,7 @@ function AppV2() {
       if (isInput) return;
 
       if (e.key === 'i' || e.key === 'I') {
-        setFilters(f => ({ ...f, importantOnly: !f.importantOnly }));
+        setFilters(f => ({ ...f, highlightOnly: !f.highlightOnly }));
       } else if (e.key === 'f' || e.key === 'F') {
         setFilters(f => ({ ...f, feelOnly: !f.feelOnly }));
       } else if (e.key === 'd' || e.key === 'D') {
@@ -190,15 +190,18 @@ function AppV2() {
             />
           </div>
           <FilterChipV2
-            active={!filters.importantOnly && !filters.feelOnly && !filters.protectedOnly && !filters.sourceFilter}
-            onClick={() => setFilters({ importantOnly: false, feelOnly: false, protectedOnly: false, sourceFilter: null })}
+            active={!filters.highlightOnly && !filters.impHighOnly && !filters.feelOnly && !filters.protectedOnly && !filters.sourceFilter}
+            onClick={() => setFilters({ highlightOnly: false, impHighOnly: false, feelOnly: false, protectedOnly: false, sourceFilter: null })}
           >全部</FilterChipV2>
           <FilterChipV2 tone="amber" active={filters.protectedOnly}
             onClick={() => setFilters(f => ({ ...f, protectedOnly: !f.protectedOnly }))}
           >❖ 钉决</FilterChipV2>
-          <FilterChipV2 tone="gold" active={filters.importantOnly}
-            onClick={() => setFilters(f => ({ ...f, importantOnly: !f.importantOnly }))}
-          >✦ 重要</FilterChipV2>
+          <FilterChipV2 tone="gold" active={filters.highlightOnly}
+            onClick={() => setFilters(f => ({ ...f, highlightOnly: !f.highlightOnly }))}
+          >★ 高亮</FilterChipV2>
+          <FilterChipV2 active={filters.impHighOnly}
+            onClick={() => setFilters(f => ({ ...f, impHighOnly: !f.impHighOnly }))}
+          >▲ 重要度高</FilterChipV2>
           <FilterChipV2 tone="rose" active={filters.feelOnly}
             onClick={() => setFilters(f => ({ ...f, feelOnly: !f.feelOnly }))}
           >❀ Feel</FilterChipV2>

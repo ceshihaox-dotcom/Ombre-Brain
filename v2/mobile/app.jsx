@@ -1024,7 +1024,7 @@ function MemFullScreen({ id }) {
 
       <div className="mem-full-body">
         <div className="mem-full-tags">
-          {m.highlight && <span className="mem-full-tag hi">★ 重要</span>}
+          {m.highlight && <span className="mem-full-tag hi">★ 高亮</span>}
           {feel && <span className="mem-full-tag feel">feel</span>}
           {isNoise(m) && <span className="mem-full-tag noise">⌀ 噪声</span>}
           {tags.map((t, i) => <span key={i} className="mem-full-tag">{t}</span>)}
@@ -2465,7 +2465,7 @@ function ReviewScreen() {
               <span className="rv-main-meta-pos"><b>{curIdx >= 0 ? curIdx + 1 : '—'}</b>/{queue.length}</span>
             </div>
             <div className="rv-main-tags">
-              {cur.highlight && <span className="rv-main-tag hi">★ 重要</span>}
+              {cur.highlight && <span className="rv-main-tag hi">★ 高亮</span>}
               {(cur.tags || []).filter(t => !String(t).startsWith('__')).map((t, i) => (
                 <span key={i} className={'rv-main-tag' + (/feel/i.test(String(t)) ? ' feel' : '')}>{t}</span>
               ))}

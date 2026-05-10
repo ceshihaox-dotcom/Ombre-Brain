@@ -251,7 +251,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
                 </>
               );
             })()}
-            {!editing && isHi && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--accent)' }}>★ 重要</span></>}
+            {!editing && view.highlight && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--accent)' }}>★ 高亮</span></>}
             {!editing && view.feel && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--rose-deep)' }}>❀ feel</span></>}
             {!editing && view.protected && <><span style={{ opacity: 0.5 }}>/</span><span>❖ 钉决</span></>}
             {!editing && view.internalized && <><span style={{ opacity: 0.5 }}>/</span><span>◐ 已内化</span></>}
@@ -474,7 +474,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
                     disabled={draft.protected}
                     onChange={(e) => setDraft(d => ({ ...d, highlight: e.target.checked }))}
                   />
-                  <span>★ 标记重要{draft.protected ? ' (钉决已含)' : ''}</span>
+                  <span>★ 高亮{draft.protected ? ' (钉决已含)' : ''}</span>
                 </label>
                 <label className={`ob-modal-edit-flag ${draft.internalized ? 'on' : ''}`}>
                   <input type="checkbox" checked={draft.internalized} onChange={(e) => setDraft(d => ({ ...d, internalized: e.target.checked }))} />
@@ -584,7 +584,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
                 <button
                   className={`ob-modal-btn ${view.highlight ? 'on' : ''}`}
                   onClick={() => toggleField('highlight')}
-                >★ {view.highlight ? '已标重要' : '标记重要'}</button>
+                >★ {view.highlight ? '已高亮' : '高亮'}</button>
                 <button className="ob-modal-btn ob-modal-btn-primary" onClick={startEdit}>编辑</button>
               </>
             )}

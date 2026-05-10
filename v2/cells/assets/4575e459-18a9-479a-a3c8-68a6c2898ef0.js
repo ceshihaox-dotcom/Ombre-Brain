@@ -9,7 +9,7 @@ const TAG_META = {
   '导入': { icon: '⇣', tone: 'sage' },
   '已内化': { icon: '◐', tone: 'sage' },
   '保护': { icon: '⛨', tone: 'amber' },
-  '重要': { icon: '★', tone: 'amber' },
+  '高亮': { icon: '★', tone: 'amber' },
   'feel(柔软)': { icon: '❀', tone: 'rose' }
 };
 
@@ -148,7 +148,8 @@ function Timeline({ items, query, filters, density, accent, onOpenItem, onOpenDa
         if (!hay.includes(q)) return false;
       }
       if (filters.protectedOnly && !it.protected) return false;
-      if (filters.importantOnly && !(it.importance >= 8 || it.highlight)) return false;
+      if (filters.highlightOnly && !it.highlight) return false;
+      if (filters.impHighOnly && !((it.importance || 5) >= 8)) return false;
       if (filters.feelOnly && !it.feel) return false;
       return true;
     });

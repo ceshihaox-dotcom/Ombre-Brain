@@ -207,7 +207,7 @@ function RightDrawer({ item, items, links, onClose, onSelect, onUpdate, onFocus,
           <span>{type}</span>
           <span style={{ opacity: 0.5 }}>·</span>
           <span>{item.id.toUpperCase()}</span>
-          {item.highlight && <><span style={{ opacity: 0.5 }}>·</span><span style={{ color: 'var(--c-gold)' }}>★ 重要</span></>}
+          {item.highlight && <><span style={{ opacity: 0.5 }}>·</span><span style={{ color: 'var(--c-gold)' }}>★ 高亮</span></>}
           {item.protected && <><span style={{ opacity: 0.5 }}>·</span><span>⛨ 保护</span></>}
           <button className="cs-right-close" onClick={onClose}>✕</button>
         </div>
@@ -273,7 +273,7 @@ function RightDrawer({ item, items, links, onClose, onSelect, onUpdate, onFocus,
               <span className="val">
                 {item.feel ? '❀ feel ' : ''}
                 {item.protected ? '⛨ 永久 ' : ''}
-                {item.highlight ? '★ 重要 ' : ''}
+                {item.highlight ? '★ 高亮 ' : ''}
                 {!item.feel && !item.protected && !item.highlight ? '常规' : ''}
               </span>
             </div>

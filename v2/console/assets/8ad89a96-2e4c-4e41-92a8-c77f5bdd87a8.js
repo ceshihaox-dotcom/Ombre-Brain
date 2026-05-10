@@ -180,7 +180,7 @@ function ImportPage({ items }) {
               </div>
               <div className="oc-imported-actions">
                 <button className={`oc-imp-action${it.protected ? ' on' : ''}`}>❖ 钉决</button>
-                <button className="oc-imp-action">★ 重要</button>
+                <button className="oc-imp-action">★ 高亮</button>
                 <button className="oc-imp-action">🪶 噤声</button>
                 <button className="oc-imp-action danger">🗑 删除</button>
               </div>

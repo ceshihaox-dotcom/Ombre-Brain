@@ -3,7 +3,7 @@
 
 (function () {
   // bridge 读端注入到 item.tags 显示用的伪 tag — 写端要把它们剥离, 否则会污染 bucket.tags
-  var PSEUDO_TAGS = { '亲手写': 1, 'AI 写入': 1, '导入': 1, '已内化': 1, '保护': 1, '重要': 1, 'feel(柔软)': 1 };
+  var PSEUDO_TAGS = { '亲手写': 1, 'AI 写入': 1, '导入': 1, '已内化': 1, '保护': 1, '重要': 1, '高亮': 1, 'feel(柔软)': 1 };
   function stripPseudoTags(tags) {
     if (!Array.isArray(tags)) return tags;
     return tags.filter(function (t) { return !PSEUDO_TAGS[String(t)]; });
@@ -27,8 +27,9 @@
     else tags.push('AI 写入');
     if (b.internalized || b.digested) tags.push('已内化');
     if (b.protected || b.pinned) tags.push('保护');
-    if ((b.importance || 5) >= 8) tags.push('重要');
+    if (b.highlight) tags.push('高亮');
     if (b.type === 'feel') tags.push('feel(柔软)');
+    // 注: 不再注入 '重要' tag — importance 是 1-10 数字, 直接看数字, 派生 tag 多余
 
     return {
       id: b.id,
@@ -42,9 +43,10 @@
       noise: !!(b.resolved && (b.importance || 5) === 1),
       resolved: !!b.resolved,
       tags: tags,
-      protected: !!(b.protected || b.pinned),
+      // 注: 不要再 OR b.pinned — API 的 b.pinned = is_protected OR is_highlighted, 二次 OR 会假性耦合
+      protected: !!b.protected,
       feel: b.type === 'feel',
-      highlight: !!(b.highlight || b.pinned),
+      highlight: !!b.highlight,
       internalized: !!(b.internalized || b.digested),
       created_by: b.created_by || '',
       domain: Array.isArray(b.domain) ? b.domain.filter(Boolean) : [],
