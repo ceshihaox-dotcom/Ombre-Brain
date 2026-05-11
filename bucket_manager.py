@@ -99,12 +99,17 @@ class BucketManager:
         # bonus 走分子,不进分母 → w_warmth=0 时零行为变化(开源版默认)。
         # 个人配置:warmth_boost=2.0 → b_valence=0.9 桶 ≈ 加 1/5 个 topic 命中分
         # 优先级: env > config.yaml > 默认 0; env 加 OMBRE_SCORING_WARMTH_BOOST 即可
+        _env_warmth = os.environ.get("OMBRE_SCORING_WARMTH_BOOST")
         try:
             self.w_warmth = float(
-                os.environ.get("OMBRE_SCORING_WARMTH_BOOST", scoring.get("warmth_boost", 0.0))
+                _env_warmth if _env_warmth is not None else scoring.get("warmth_boost", 0.0)
             )
         except (ValueError, TypeError):
             self.w_warmth = 0.0
+        logger.info(
+            f"[scoring] warmth_boost loaded: {self.w_warmth} "
+            f"(env raw={_env_warmth!r}, config yaml={scoring.get('warmth_boost', None)!r})"
+        )
 
     # ---------------------------------------------------------
     # Create a new bucket
