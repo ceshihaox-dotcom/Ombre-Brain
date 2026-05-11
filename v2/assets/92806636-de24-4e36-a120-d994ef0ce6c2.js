@@ -219,6 +219,8 @@ function WriteDrawer({ open, onClose, onSave, defaultTags }) {
   const [importance, setImportance] = uS(5);
   const [feel, setFeel] = uS(false);
   const [protectFlag, setProtect] = uS(false);
+  const [highlightFlag, setHighlight] = uS(false);
+  const [internalizedFlag, setInternalized] = uS(false);
   const [tags, setTags] = uS([]);
   const titleRef = uR(null);
 
@@ -226,7 +228,8 @@ function WriteDrawer({ open, onClose, onSave, defaultTags }) {
     if (open) {
       const now = _freshNow();  // 每次开抽屉重新取
       setTitle(''); setSummary(''); setBody(''); setImportance(5);
-      setFeel(false); setProtect(false); setTags(defaultTags || []);
+      setFeel(false); setProtect(false); setHighlight(false); setInternalized(false);
+      setTags(defaultTags || []);
       setDate(now.date); setTime(now.time);
       setTimeout(() => titleRef.current && titleRef.current.focus(), 80);
     }
@@ -238,12 +241,14 @@ function WriteDrawer({ open, onClose, onSave, defaultTags }) {
       if (e.key === 'Escape') onClose();
       if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && title.trim()) {
         e.preventDefault();
-        onSave({ title, summary, body, date, time, importance, feel, protected: protectFlag, tags });
+        onSave({ title, summary, body, date, time, importance, feel,
+                 protected: protectFlag, highlight: highlightFlag, internalized: internalizedFlag,
+                 tags });
       }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [open, title, summary, body, date, time, importance, feel, protectFlag, tags, onSave, onClose]);
+  }, [open, title, summary, body, date, time, importance, feel, protectFlag, highlightFlag, internalizedFlag, tags, onSave, onClose]);
 
   if (!open) return null;
 
@@ -251,8 +256,10 @@ function WriteDrawer({ open, onClose, onSave, defaultTags }) {
     setTags(prev => prev.includes(t) ? prev.filter(x => x !== t) : [...prev, t]);
   };
 
-  // 注: 来源类 (亲手写/AI 写入/导入) 由 metadata.created_by 决定, 不放进可选 tag — 避免双轨制
-  const allTags = ['已内化', '保护', '重要', 'feel(柔软)'];
+  // 注: 来源类 (亲手写/AI 写入/导入) 由 metadata.created_by 决定, 不放进可选 tag
+  //     钉决/高亮/已内化/feel 也都有独立 toggle, 不再放 tag — 避免双轨制
+  //     这里只保留主题域 tag(跟 ConsoleItemModal 的 allTagOptions 域 tag 部分对齐)
+  const allTags = ['编程', '工作', '恋爱', '创作', 'AI', '出行', '内心', '日常', '成长'];
   const valid = title.trim().length > 0;
   const charCount = title.length + summary.length + body.length;
 
@@ -343,7 +350,25 @@ function WriteDrawer({ open, onClose, onSave, defaultTags }) {
                 onClick={() => setProtect(!protectFlag)}
               >
                 <span className="ob-write-flag-i">❖</span>
-                <span>保护</span>
+                <span>钉决</span>
+              </button>
+              <button
+                type="button"
+                className={`ob-write-flag ${highlightFlag ? 'on highlight' : ''}`}
+                onClick={() => setHighlight(!highlightFlag)}
+                title="高亮 — breath 浮现时进核心准则区, 不锁 importance"
+              >
+                <span className="ob-write-flag-i">★</span>
+                <span>高亮</span>
+              </button>
+              <button
+                type="button"
+                className={`ob-write-flag ${internalizedFlag ? 'on internalized' : ''}`}
+                onClick={() => setInternalized(!internalizedFlag)}
+                title="已内化 — 已经消化吸收, 不再需要主动浮现"
+              >
+                <span className="ob-write-flag-i">◐</span>
+                <span>已内化</span>
               </button>
             </div>
           </div>
@@ -376,7 +401,11 @@ function WriteDrawer({ open, onClose, onSave, defaultTags }) {
           <button
             className="ob-write-save"
             disabled={!valid}
-            onClick={() => valid && onSave({ title, summary, body, date, time, importance, feel, protected: protectFlag, tags })}
+            onClick={() => valid && onSave({
+              title, summary, body, date, time, importance, feel,
+              protected: protectFlag, highlight: highlightFlag, internalized: internalizedFlag,
+              tags,
+            })}
           >
             <span>接住这一刻</span>
             <span className="ob-write-save-arrow">↵</span>

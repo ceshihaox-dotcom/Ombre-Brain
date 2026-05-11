@@ -2313,6 +2313,7 @@ async def api_bucket_create(request):
     protected = bool(body.get("protected", False))
     highlight = bool(body.get("highlight", False))
     internalized = bool(body.get("internalized", False))
+    summary = body.get("summary") or None  # 用户在 WriteDrawer 填的"一句话摘要", 漏接 → 写一条记忆摘要永远存不下来
     # type 字段 — 用户在 WriteDrawer 切 feel 时前端传 type='feel'
     # 默认 'dynamic', 合法值: dynamic / feel / permanent
     bucket_type = body.get("type", "dynamic")
@@ -2333,6 +2334,7 @@ async def api_bucket_create(request):
             event_time=event_time,
             bucket_type=bucket_type,  # feel 切换时这里写入 metadata.type='feel'
             created_by="user",  # dashboard 手动新建标记,跟 AI 写入区分
+            summary=summary,
         )
     except Exception as e:
         return JSONResponse({"error": f"create failed: {e}"}, status_code=500)

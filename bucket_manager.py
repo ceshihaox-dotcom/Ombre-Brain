@@ -289,11 +289,35 @@ class BucketManager:
         # 例外: 标噪声(resolved=True + importance=1)与 protected 语义矛盾,
         # 自动取消保护让噪声能落, 不要求用户先手动取消置顶
         marking_noise = kwargs.get("resolved") is True and kwargs.get("importance") == 1
+        # 取消噪声 = 调用方显式传 resolved=False, 且桶当前确实是噪声态(resolved=True 且 importance=1)
+        # 用于稍后从 importance_before_noise 恢复原值, 避免"误触噪声再取消"权重永久丢失
+        was_resolved_noise = (
+            kwargs.get("resolved") is False
+            and bool(post.get("resolved", False))
+            and int(post.get("importance", 5) or 5) == 1
+        )
         if marking_noise:
             kwargs["protected"] = False
+            # 备份当前 importance 以便取消噪声时恢复; 跟 protect 那套同模式
+            try:
+                cur_imp = int(post.get("importance", 5))
+                if cur_imp != 1:
+                    post["importance_before_noise"] = cur_imp
+            except (ValueError, TypeError):
+                pass
         currently_protected = bool(post.get("protected", False)) or kwargs.get("protected", False)
         if currently_protected and not marking_noise:
             kwargs.pop("importance", None)  # 静默忽略,protected 始终是 10
+
+        # frontmatter.Post 不是 dict,没有 .pop();只能用 del,且需要先判断 key 在不在
+        # 用一个本地小工具统一处理,避免每处都 try/except
+        # 定义在所有字段处理之前 — 早期路径(如取消噪声恢复)也要用
+        def _drop(key):
+            try:
+                if key in post:
+                    del post[key]
+            except Exception:
+                pass
 
         # --- Update only fields that were passed in / 只改传入的字段 ---
         if "content" in kwargs:
@@ -312,14 +336,18 @@ class BucketManager:
             post["name"] = sanitize_name(kwargs["name"])
         if "resolved" in kwargs:
             post["resolved"] = bool(kwargs["resolved"])
-        # frontmatter.Post 不是 dict,没有 .pop();只能用 del,且需要先判断 key 在不在
-        # 用一个本地小工具统一处理,避免每处都 try/except
-        def _drop(key):
-            try:
-                if key in post:
-                    del post[key]
-            except Exception:
-                pass
+            # 取消噪声: 若调用方没显式改 importance, 则从 importance_before_noise 恢复
+            # (跟"取消钉决恢复 importance"是同 pattern, 避免误触永久丢失原值)
+            if was_resolved_noise and "importance" not in kwargs:
+                backup = post.get("importance_before_noise")
+                if backup is not None:
+                    try:
+                        post["importance"] = max(1, min(10, int(backup)))
+                    except (ValueError, TypeError):
+                        pass
+            # 桶不再是噪声态了, 清掉备份
+            if not bool(kwargs["resolved"]):
+                _drop("importance_before_noise")
 
         if "protected" in kwargs:
             new_protected = bool(kwargs["protected"])
