@@ -2733,8 +2733,9 @@ async def api_breath_debug(request):
             "emotion": bucket_mgr.w_emotion,
             "time": bucket_mgr.w_time,
             "importance": bucket_mgr.w_importance,
+            "warmth": bucket_mgr.w_warmth,  # bonus 项, 不进 w_sum 分母(跟评分公式保持一致)
         }
-        w_sum = sum(w.values())
+        w_sum = w["topic"] + w["emotion"] + w["time"] + w["importance"]
 
         for bucket in all_buckets:
             meta = bucket.get("metadata", {})
@@ -2744,12 +2745,19 @@ async def api_breath_debug(request):
                 emotion = bucket_mgr._calc_emotion_score(q_valence, q_arousal, meta)
                 time_s = bucket_mgr._calc_time_score(meta)
                 imp = max(1, min(10, int(meta.get("importance", 5)))) / 10.0
+                # warmth bonus(只奖励 valence>0.5 的温暖桶, 不进分母)
+                try:
+                    b_val = float(meta.get("valence", 0.5))
+                except (ValueError, TypeError):
+                    b_val = 0.5
+                warmth = max(0.0, b_val - 0.5)
 
                 raw_total = (
                     topic * w["topic"]
                     + emotion * w["emotion"]
                     + time_s * w["time"]
                     + imp * w["importance"]
+                    + warmth * w["warmth"]
                 )
                 normalized = (raw_total / w_sum) * 100 if w_sum > 0 else 0
                 resolved = meta.get("resolved", False)
@@ -2770,6 +2778,7 @@ async def api_breath_debug(request):
                         "emotion": round(emotion, 4),
                         "time": round(time_s, 4),
                         "importance": round(imp, 4),
+                        "warmth": round(warmth, 4),
                     },
                     "weights": w,
                     "raw_total": round(raw_total, 4),

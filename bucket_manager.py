@@ -92,6 +92,19 @@ class BucketManager:
         self.w_time = scoring.get("time_proximity", 2.5)
         self.w_importance = scoring.get("importance", 1.0)
         self.content_weight = scoring.get("content_weight", 3.0)  # Added to allow better content-based matching during merge
+        # warmth_boost: 高 valence(>0.5)桶在检索时获得额外加分,跟 query 是否带情感坐标无关。
+        # 跟 emotion_resonance 不同 — emotion_resonance 是 Russell 距离,
+        # 无 query emotion 时退化为常数 0.5,对亲密时刻无帮助。
+        # warmth_boost 是"温度向"偏置:让高 valence(温暖)桶天然更易浮现。
+        # bonus 走分子,不进分母 → w_warmth=0 时零行为变化(开源版默认)。
+        # 个人配置:warmth_boost=2.0 → b_valence=0.9 桶 ≈ 加 1/5 个 topic 命中分
+        # 优先级: env > config.yaml > 默认 0; env 加 OMBRE_SCORING_WARMTH_BOOST 即可
+        try:
+            self.w_warmth = float(
+                os.environ.get("OMBRE_SCORING_WARMTH_BOOST", scoring.get("warmth_boost", 0.0))
+            )
+        except (ValueError, TypeError):
+            self.w_warmth = 0.0
 
     # ---------------------------------------------------------
     # Create a new bucket
@@ -764,6 +777,15 @@ class BucketManager:
                     + time_score * self.w_time
                     + importance_score * self.w_importance
                 )
+                # warmth_boost: 高 valence 桶加分(bonus 不进分母, 避免稀释)
+                # w_warmth=0 → 零行为变化(开源默认)
+                if self.w_warmth > 0:
+                    try:
+                        b_valence = float(meta.get("valence", 0.5))
+                    except (ValueError, TypeError):
+                        b_valence = 0.5
+                    warmth_score = max(0.0, b_valence - 0.5)  # 只奖励温暖(valence>0.5), 不惩罚冷
+                    total += warmth_score * self.w_warmth
                 # Normalize to 0~100 for readability
                 weight_sum = self.w_topic + self.w_emotion + self.w_time + self.w_importance
                 normalized = (total / weight_sum) * 100 if weight_sum > 0 else 0
