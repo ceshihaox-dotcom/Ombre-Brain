@@ -5381,10 +5381,22 @@ body {
 .ob-write-flag.on.feel .ob-write-flag-i { opacity: 1; color: var(--rose-deep); }
 .ob-write-flag.on.protect {
   background: var(--accent-3);
-  color: var(--accent);
-  border-color: var(--accent);
+  color: var(--c-pin, var(--accent));
+  border-color: var(--c-pin, var(--accent));
 }
 .ob-write-flag.on.protect .ob-write-flag-i { opacity: 1; }
+.ob-write-flag.on.highlight {
+  background: var(--accent-3);
+  color: var(--c-highlight, var(--accent));
+  border-color: var(--c-highlight, var(--accent));
+}
+.ob-write-flag.on.highlight .ob-write-flag-i { opacity: 1; }
+.ob-write-flag.on.internalized {
+  background: color-mix(in srgb, var(--ink-3) 8%, transparent);
+  color: var(--ink-3);
+  border-color: var(--ink-3);
+}
+.ob-write-flag.on.internalized .ob-write-flag-i { opacity: 1; }
 
 /* 标签 */
 .ob-write-tags-wrap {

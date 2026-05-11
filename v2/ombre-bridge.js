@@ -133,10 +133,13 @@
       name: entry.title,
       content: content,
       importance: entry.importance,
-      tags: entry.tags || [],
+      tags: stripPseudoTags(entry.tags || []),
       protected: !!entry.protected,
+      highlight: !!entry.highlight,
+      internalized: !!entry.internalized,
       event_time: eventTime,
     };
+    if (entry.summary) body.summary = entry.summary;  // 后端 /api/bucket/create 读 summary
     if (entry.feel) {
       body.type = 'feel';     // 关键: 让后端 metadata.type='feel', 否则 isFeel() 永远 false
       body.valence = 0.6;
