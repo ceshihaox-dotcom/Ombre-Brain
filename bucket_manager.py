@@ -784,13 +784,12 @@ class BucketManager:
                 )
                 # warmth_boost: 高 valence 桶加分(bonus 不进分母, 避免稀释)
                 # w_warmth=0 → 零行为变化(开源默认)
-                if self.w_warmth > 0:
-                    try:
-                        b_valence = float(meta.get("valence", 0.5))
-                    except (ValueError, TypeError):
-                        b_valence = 0.5
-                    warmth_score = max(0.0, b_valence - 0.5)  # 只奖励温暖(valence>0.5), 不惩罚冷
-                    total += warmth_score * self.w_warmth
+                try:
+                    b_valence = float(meta.get("valence", 0.5))
+                except (ValueError, TypeError):
+                    b_valence = 0.5
+                warmth_score = max(0.0, b_valence - 0.5)  # 只奖励温暖(valence>0.5), 不惩罚冷
+                total += warmth_score * self.w_warmth   # w_warmth=0 → 加 0, 无副作用
                 # Normalize to 0~100 for readability
                 weight_sum = self.w_topic + self.w_emotion + self.w_time + self.w_importance
                 normalized = (total / weight_sum) * 100 if weight_sum > 0 else 0
@@ -805,8 +804,20 @@ class BucketManager:
                 # —— 用户期望"含 query 的桶必出来",不该被 emotion/time/importance 打掉
                 # matched_in 非空 = 至少某字段 partial_ratio >= 70(_MATCH_THRESHOLD,稳健)
                 # 综合分 normalized 仍然作为排序依据,不浪费(模糊但多字段微弱命中也进)
+                #
+                # warmth 旁路 — 强温暖桶在 fuzzy_threshold 之下也能进
+                # 目的: 让"亲密时刻"在情感泛化 query("说说你喜欢我哪一点")下不被
+                # fuzzy_threshold 拦截。条件:
+                #   1) w_warmth > 0 (开源默认 0 → 零行为变化)
+                #   2) warmth_score >= 0.3 → b_valence >= 0.8 (真"温暖"桶, 不滥发)
+                #   3) normalized >= fuzzy_threshold * 0.7 → 仍需基础信号, 不光靠 valence
+                warmth_bypass = (
+                    self.w_warmth > 0
+                    and warmth_score >= 0.3
+                    and normalized >= self.fuzzy_threshold * 0.7
+                )
                 has_keyword_hit = bool(topic_match["matched_in"])
-                if has_keyword_hit or normalized >= self.fuzzy_threshold:
+                if has_keyword_hit or normalized >= self.fuzzy_threshold or warmth_bypass:
                     bucket["score"] = round(normalized, 2)
                     bucket["matched_in"] = topic_match["matched_in"]
                     bucket["field_scores"] = topic_match["field_scores"]
