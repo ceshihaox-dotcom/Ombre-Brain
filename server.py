@@ -32,6 +32,7 @@
 
 import os
 import sys
+import time
 import random
 import logging
 import asyncio
@@ -62,6 +63,19 @@ dehydrator = Dehydrator(config)                      # Dehydrator / 脱水器
 decay_engine = DecayEngine(config, bucket_mgr)       # Decay engine / 衰减引擎
 embedding_engine = EmbeddingEngine(config)            # Embedding engine / 向量化引擎
 import_engine = ImportEngine(config, bucket_mgr, dehydrator, embedding_engine)  # Import engine / 导入引擎
+
+# --- /api/buckets in-memory cache / 内存级缓存 ---
+# 每个视图(cells/network/console/mobile)启动都自己拉一遍 /api/buckets,
+# 切视图 = 重复拉 = 重复 IO 200+ 个 .md frontmatter.load. 用户切视图卡几分钟.
+# 加 15s TTL 内存缓存: 切视图秒回, 写操作主动 invalidate 避免看到旧数据.
+# MCP tool (hold/grow 等) 写桶不调 invalidate, 15s 后自然失效, 可容忍.
+_BUCKETS_CACHE = {"ts": 0.0, "payload": None}
+_BUCKETS_CACHE_TTL = 15.0  # 秒
+
+def _invalidate_buckets_cache():
+    _BUCKETS_CACHE["ts"] = 0.0
+    _BUCKETS_CACHE["payload"] = None
+
 
 # --- Create MCP server instance / 创建 MCP 服务器实例 ---
 # host="0.0.0.0" so Docker container's SSE is externally reachable
@@ -1465,8 +1479,15 @@ async def api_config_test(request):
 # =============================================================
 @mcp.custom_route("/api/buckets", methods=["GET"])
 async def api_buckets(request):
-    """List all buckets with metadata (no content for efficiency)."""
+    """List all buckets with metadata (no content for efficiency).
+
+    走 15s 内存缓存 — 多视图同时拉/用户切视图重复请求会瞬间命中,
+    避免重复 IO 200+ frontmatter.load. 写操作 endpoint 会主动 invalidate.
+    """
     from starlette.responses import JSONResponse
+    now = time.monotonic()
+    if _BUCKETS_CACHE["payload"] is not None and (now - _BUCKETS_CACHE["ts"]) < _BUCKETS_CACHE_TTL:
+        return JSONResponse(_BUCKETS_CACHE["payload"])
     try:
         all_buckets = await bucket_mgr.list_all(include_archive=True)
         result = []
@@ -1498,6 +1519,8 @@ async def api_buckets(request):
                 "content_preview": strip_wikilinks(b.get("content", ""))[:200],
             })
         result.sort(key=lambda x: x["score"], reverse=True)
+        _BUCKETS_CACHE["payload"] = result
+        _BUCKETS_CACHE["ts"] = time.monotonic()
         return JSONResponse(result)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
@@ -1564,6 +1587,7 @@ async def api_bucket_update(request):
     success = await bucket_mgr.update(bucket_id, **updates)
     if not success:
         return JSONResponse({"error": "update failed"}, status_code=500)
+    _invalidate_buckets_cache()
 
     # content 改了顺手刷 embedding
     if "content" in updates and embedding_engine and embedding_engine.enabled:
@@ -1753,6 +1777,7 @@ async def api_bucket_redehydrate_commit(request):
     success = await bucket_mgr.update(bucket_id, **update_kwargs)
     if not success:
         return JSONResponse({"error": "写回失败"}, status_code=500)
+    _invalidate_buckets_cache()
 
     # 正文变了 → 刷 embedding
     if new_content is not None and embedding_engine and embedding_engine.enabled:
@@ -2053,6 +2078,7 @@ async def api_bucket_merge_commit(request):
             embedding_engine.delete_embedding(a_id)
         except Exception:
             pass
+    _invalidate_buckets_cache()
     fresh = await bucket_mgr.get(b_id)
     return JSONResponse({
         "ok": True,
@@ -2073,6 +2099,7 @@ async def api_bucket_archive(request):
     success = await bucket_mgr.archive(bucket_id)
     if not success:
         return JSONResponse({"error": "archive failed"}, status_code=500)
+    _invalidate_buckets_cache()
     return JSONResponse({"ok": True, "id": bucket_id, "archived": True})
 
 
@@ -2088,6 +2115,7 @@ async def api_bucket_delete(request):
     success = await bucket_mgr.delete(bucket_id)
     if not success:
         return JSONResponse({"error": "delete failed"}, status_code=500)
+    _invalidate_buckets_cache()
     return JSONResponse({"ok": True, "id": bucket_id, "soft_deleted": True})
 
 
@@ -2102,6 +2130,7 @@ async def api_bucket_restore(request):
     success = await bucket_mgr.restore(bucket_id)
     if not success:
         return JSONResponse({"error": "restore failed (可能不在回收站)"}, status_code=400)
+    _invalidate_buckets_cache()
     return JSONResponse({"ok": True, "id": bucket_id, "restored": True})
 
 
@@ -2122,6 +2151,7 @@ async def api_bucket_purge(request):
             embedding_engine.delete_embedding(bucket_id)
         except Exception:
             pass
+    _invalidate_buckets_cache()
     return JSONResponse({"ok": True, "id": bucket_id, "purged": True})
 
 
@@ -2172,6 +2202,7 @@ async def api_bucket_unarchive(request):
     success = await bucket_mgr.unarchive(bucket_id)
     if not success:
         return JSONResponse({"error": "unarchive failed (not in archive?)"}, status_code=400)
+    _invalidate_buckets_cache()
     return JSONResponse({"ok": True, "id": bucket_id, "archived": False})
 
 
@@ -2357,6 +2388,7 @@ async def api_bucket_create(request):
         except Exception:
             pass
 
+    _invalidate_buckets_cache()
     fresh = await bucket_mgr.get(bucket_id)
     return JSONResponse({
         "ok": True,
