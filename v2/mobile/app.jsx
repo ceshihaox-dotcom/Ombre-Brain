@@ -221,7 +221,7 @@ function HomeScreen() {
       : buckets.filter(b => !isNoise(b));
     if (filters.has('pin'))      result = result.filter(b => b.protected || b.pinned);
     if (filters.has('hi'))       result = result.filter(b => b.highlight);
-    if (filters.has('fresh'))    result = result.filter(b => b.highlight || (b.importance || 5) >= 8);
+    if (filters.has('fresh'))    result = result.filter(b => (b.importance || 5) >= 8);
     if (filters.has('feel'))     result = result.filter(b => isFeel(b));
     if (filters.has('internal')) result = result.filter(b => b.internalized || b.digested);
     if (filters.has('cold'))     result = result.filter(b => (b.importance || 5) < 2);
