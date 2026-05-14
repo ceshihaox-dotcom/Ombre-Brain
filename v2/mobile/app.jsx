@@ -220,6 +220,7 @@ function HomeScreen() {
       ? buckets.filter(b => isNoise(b))
       : buckets.filter(b => !isNoise(b));
     if (filters.has('pin'))      result = result.filter(b => b.protected || b.pinned);
+    if (filters.has('hi'))       result = result.filter(b => b.highlight);
     if (filters.has('fresh'))    result = result.filter(b => b.highlight || (b.importance || 5) >= 8);
     if (filters.has('feel'))     result = result.filter(b => isFeel(b));
     if (filters.has('internal')) result = result.filter(b => b.internalized || b.digested);
@@ -374,6 +375,10 @@ function HomeScreen() {
             className={'home-chip pin' + (filters.has('pin') ? ' on' : '')}
             onClick={() => toggleFilter('pin')}
           >❖ 钉决</span>
+          <span
+            className={'home-chip hi' + (filters.has('hi') ? ' on' : '')}
+            onClick={() => toggleFilter('hi')}
+          >★ 高亮</span>
           <span
             className={'home-chip' + (filters.has('fresh') ? ' on' : '')}
             onClick={() => toggleFilter('fresh')}
