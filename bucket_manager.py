@@ -316,6 +316,9 @@ class BucketManager:
         )
         if marking_noise:
             kwargs["protected"] = False
+            # highlight 跟 protected 同步取消 — 标噪声(软删除)与"核心准则浮现"语义冲突,
+            # 否则桶物理移到 archive/ 后 metadata 仍是 highlight=True, 数据不一致
+            kwargs["highlight"] = False
             # 备份当前 importance 以便取消噪声时恢复; 跟 protect 那套同模式
             try:
                 cur_imp = int(post.get("importance", 5))
