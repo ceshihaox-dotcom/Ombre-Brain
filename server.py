@@ -423,16 +423,18 @@ async def breath(
         logger.error(f"Search failed / 检索失败: {e}")
         return "检索过程出错，请稍后重试。"
 
-    # --- Exclude highlighted/internalized/noise from search results ---
-    # --- 搜索模式排除置顶桶(它们在浮现模式核心准则区已可见)、已内化桶、噪声桶 ---
+    # --- Exclude highlighted/internalized/noise/feel from search results ---
+    # --- 搜索模式排除置顶桶(它们在浮现模式核心准则区已可见)、已内化桶、噪声桶、feel 桶 ---
     # 注:protected 但非 highlighted 的桶仍可被搜出(防衰减不影响搜索)
     # noise = resolved + importance=1, 用户软删除标记 → 默认从检索排除
+    # feel = 第一人称感受, 设计上只能通过 domain="feel" 独立通道读取, 不参与普通搜索/浮现
     def _is_noise(meta):
         return bool(meta.get("resolved", False) and meta.get("importance", 5) == 1)
     matches = [b for b in matches
                if not (is_highlighted(b["metadata"])
                        or is_internalized(b["metadata"])
-                       or _is_noise(b["metadata"]))]
+                       or _is_noise(b["metadata"])
+                       or b["metadata"].get("type") == "feel")]
 
     # --- Vector similarity channel: find semantically related buckets ---
     # --- 向量相似度通道：找到语义相关的桶 ---
@@ -444,7 +446,8 @@ async def breath(
                 bucket = await bucket_mgr.get(bucket_id)
                 if bucket and not (is_highlighted(bucket["metadata"])
                                    or is_internalized(bucket["metadata"])
-                                   or _is_noise(bucket["metadata"])):
+                                   or _is_noise(bucket["metadata"])
+                                   or bucket["metadata"].get("type") == "feel"):
                     bucket["score"] = round(sim_score * 100, 2)
                     bucket["vector_match"] = True
                     matches.append(bucket)
@@ -491,6 +494,7 @@ async def breath(
                 if b["id"] not in matched_ids
                 and decay_engine.calculate_score(b["metadata"]) < 2.0
                 and not is_internalized(b["metadata"])
+                and b["metadata"].get("type") != "feel"
             ]
             if low_weight:
                 drifted = random.sample(low_weight, min(random.randint(1, 3), len(low_weight)))
