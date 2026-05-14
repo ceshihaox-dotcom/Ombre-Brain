@@ -625,8 +625,10 @@ input, textarea { font: inherit; color: inherit; }
   border-radius: 50%;
   flex-shrink: 0;
 }
-.day-card-preview-pip.feel { background: var(--rose-deep); }
-.day-card-preview-pip.hi   { background: var(--accent); }
+.day-card-preview-pip.feel  { background: var(--rose-deep); }
+.day-card-preview-pip.hi    { background: var(--accent); }
+.day-card-preview-pip.pin   { background: var(--accent); box-shadow: 0 0 0 1px var(--paper), 0 0 0 1.5px var(--accent); }
+.day-card-preview-pip.fresh { background: var(--accent-2); }
 .day-card-more {
   margin-top: 6px;
   font-family: var(--mono);
@@ -829,9 +831,11 @@ input, textarea { font: inherit; color: inherit; }
   border-radius: 50%;
   display: inline-block;
 }
-.dd-pip.feel { background: var(--rose-deep); }
-.dd-pip.hi { background: var(--accent); }
-.dd-pip.ai { background: var(--ink-4); }
+.dd-pip.feel   { background: var(--rose-deep); }
+.dd-pip.hi     { background: var(--accent); }
+.dd-pip.pin    { background: var(--accent); box-shadow: 0 0 0 1px var(--paper), 0 0 0 2px var(--accent); }
+.dd-pip.fresh  { background: var(--accent-2); }
+.dd-pip.ai     { background: var(--ink-4); }
 .dd-pip.import { background: var(--accent); opacity: 0.55; }
 .dd-item-snip {
   font-family: var(--serif);
@@ -1644,7 +1648,24 @@ input, textarea { font: inherit; color: inherit; }
   font-weight: 600;
   color: var(--ink);
 }
-.cal-month + .cal-month { border-top: 0.5px dashed var(--line); }
+/* 月与月之间的过渡: 间距 + 渐隐分隔, 让多月滚动有"翻页"感而不是粘连 */
+.cal-month + .cal-month {
+  margin-top: 18px;
+  padding-top: 22px;
+  position: relative;
+}
+.cal-month + .cal-month::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 18px; right: 18px;
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%,
+    var(--line) 25%,
+    var(--line) 75%,
+    transparent 100%);
+}
+.cal-month + .cal-month .cal-month-name { opacity: 0.78; }
 
 /* ========= 屏 6 · 设置 / 回收站 / 导入 ========= */
 
@@ -2737,6 +2758,18 @@ input, textarea { font: inherit; color: inherit; }
   color: var(--amber);
 }
 .edit-toggle.pin.on .ic { color: var(--amber); }
+.edit-toggle.hi.on {
+  background: var(--accent-3);
+  border-color: var(--accent-a30);
+  color: var(--accent);
+}
+.edit-toggle.hi.on .ic { color: var(--accent); }
+.edit-toggle.internal.on {
+  background: rgba(120,120,130,0.10);
+  border-color: rgba(120,120,130,0.32);
+  color: var(--ink-3);
+}
+.edit-toggle.internal.on .ic { color: var(--ink-3); }
 .edit-toggle.noise.on {
   background: rgba(120,120,130,0.12);
   border-color: rgba(120,120,130,0.4);
