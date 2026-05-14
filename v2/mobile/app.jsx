@@ -2248,7 +2248,9 @@ function ReviewScreen() {
         const list = Array.isArray(d) ? d : [];
         // 移动端审阅区"原样保留" — 仍然按 created_by='ai' 拉, 历史正在审的桶不消失
         // (新导入桶 created_by='import', 审阅在工作台做; 后期看是否合并到这条流)
-        const aiOnly = list.filter(b => b.created_by === 'ai');
+        // 排除 resolved=True 的桶 — 桌面已标噪声/已解决/已归档的不该再回到审阅 tab
+        // /api/buckets 是 include_archive=True, 不加这条会把所有 ai 来源的 archive 桶都拉回来
+        const aiOnly = list.filter(b => b.created_by === 'ai' && !b.resolved);
         aiOnly.sort((a, b) => {
           const ta = new Date(a.event_time || a.created || 0).getTime();
           const tb = new Date(b.event_time || b.created || 0).getTime();
