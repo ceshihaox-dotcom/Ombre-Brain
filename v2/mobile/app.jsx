@@ -382,14 +382,6 @@ function HomeScreen() {
             className={'home-chip feel' + (filters.has('feel') ? ' on' : '')}
             onClick={() => toggleFilter('feel')}
           >♡ Feel</span>
-          <span
-            className={'home-chip' + (filters.has('internal') ? ' on' : '')}
-            onClick={() => toggleFilter('internal')}
-          >已内化</span>
-          <span
-            className={'home-chip' + (filters.has('cold') ? ' on' : '')}
-            onClick={() => toggleFilter('cold')}
-          >待消化</span>
           {/* 来源三态 chip — 多选 (OR). 替代旧的 "我写的" 单态.
               改造前 'ai' 混了导入跟 AI 主动写, 改后 import 单独成态 */}
           <span
@@ -409,6 +401,15 @@ function HomeScreen() {
             onClick={() => toggleFilter('noise')}
             title="只看标了噪声的(默认其它视图都隐藏)"
           >⌀ 噪声</span>
+          {/* 已内化/待消化 = 低频沉淀状态, 排在噪声之后 (按用户偏好 2026-05-14) */}
+          <span
+            className={'home-chip' + (filters.has('internal') ? ' on' : '')}
+            onClick={() => toggleFilter('internal')}
+          >已内化</span>
+          <span
+            className={'home-chip' + (filters.has('cold') ? ' on' : '')}
+            onClick={() => toggleFilter('cold')}
+          >待消化</span>
           <span
             className={'home-chip' + (tagFilters.length > 0 ? ' on' : '')}
             onClick={() => setTagSheetOpen(true)}
@@ -513,8 +514,10 @@ function HomeScreen() {
                     <div className="dd-item-title-row">
                       <span className="dd-item-title">{b.name || b.id}</span>
                       <span className="dd-item-tags">
-                        {isFeel(b) && <span className="dd-pip feel"/>}
-                        {b.highlight && <span className="dd-pip hi"/>}
+                        {(b.protected || b.pinned) && <span className="dd-pip pin" title="钉决"/>}
+                        {b.highlight && <span className="dd-pip hi" title="高亮"/>}
+                        {(b.importance || 5) >= 8 && !b.highlight && <span className="dd-pip fresh" title="重要"/>}
+                        {isFeel(b) && <span className="dd-pip feel" title="feel"/>}
                         {b.created_by === 'import' && <span className="dd-pip import"/>}
                         {b.created_by === 'ai' && <span className="dd-pip ai"/>}
                       </span>
@@ -572,8 +575,10 @@ function HomeScreen() {
                         <div key={i} className="day-card-preview-row">
                           <span className="day-card-preview-time">{fmtTime(dt)}</span>
                           <span className="day-card-preview-title">{bucketTitle(b)}</span>
-                          {isFeel(b) && <span className="day-card-preview-pip feel"/>}
-                          {b.highlight && <span className="day-card-preview-pip hi"/>}
+                          {(b.protected || b.pinned) && <span className="day-card-preview-pip pin" title="钉决"/>}
+                          {b.highlight && <span className="day-card-preview-pip hi" title="高亮"/>}
+                          {(b.importance || 5) >= 8 && !b.highlight && <span className="day-card-preview-pip fresh" title="重要"/>}
+                          {isFeel(b) && <span className="day-card-preview-pip feel" title="feel"/>}
                         </div>
                       ))}
                       {d.cnt > 2 && (
@@ -929,8 +934,10 @@ function DayDetailScreen({ dayKey }) {
               <div className="dd-item-title-row">
                 <span className="dd-item-title">{bucketTitle(b)}</span>
                 <span className="dd-item-tags">
-                  {isFeel(b) && <span className="dd-pip feel"/>}
-                  {b.highlight && <span className="dd-pip hi"/>}
+                  {(b.protected || b.pinned) && <span className="dd-pip pin" title="钉决"/>}
+                  {b.highlight && <span className="dd-pip hi" title="高亮"/>}
+                  {(b.importance || 5) >= 8 && !b.highlight && <span className="dd-pip fresh" title="重要"/>}
+                  {isFeel(b) && <span className="dd-pip feel" title="feel"/>}
                   {b.created_by === 'import' && <span className="dd-pip import"/>}
                   {b.created_by === 'ai' && <span className="dd-pip ai"/>}
                 </span>
@@ -1261,6 +1268,8 @@ function FormFields({
   onRedehydrate, redehydrating,    // 可选:编辑既有桶时传入,新建时不传
   noise, onToggleNoise,            // 可选:编辑既有桶时传入(噪声 toggle)
   createdBy, setCreatedBy,         // 可选:编辑既有桶时传入(来源三态 user/ai/import)
+  highlight, setHighlight,         // 可选:核心准则浮现 (跟 pin/protected 是独立维度)
+  internalized, setInternalized,   // 可选:已内化 (编辑时才暴露,创建新桶时不该一上来就标已内化)
 }) {
   const feel = tags.some(t => /^feel/i.test(String(t)));
   const toggleFeel = () => {
@@ -1363,6 +1372,24 @@ function FormFields({
               <span className="ic">⚲</span><span>钉决</span>
             </button>
           )}
+          {setHighlight && (
+            <button
+              className={'edit-toggle hi ' + (highlight ? 'on' : '')}
+              onClick={() => setHighlight(!highlight)}
+              title="高亮 = 作为核心准则浮现 (跟钉决独立, 钉决只防衰减不优先浮现)"
+            >
+              <span className="ic">★</span><span>高亮</span>
+            </button>
+          )}
+          {setInternalized && (
+            <button
+              className={'edit-toggle internal ' + (internalized ? 'on' : '')}
+              onClick={() => setInternalized(!internalized)}
+              title="已内化 = 这条已经成为本能,从浮现中隐藏"
+            >
+              <span className="ic">◐</span><span>已内化</span>
+            </button>
+          )}
           {onToggleNoise && (
             <button
               className={'edit-toggle noise ' + (noise ? 'on' : '')}
@@ -1415,6 +1442,8 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
   const [content, setContent] = useState('');
   const [imp, setImp] = useState(5);
   const [pin, setPin] = useState(false);
+  const [highlight, setHighlight] = useState(false);
+  const [internalized, setInternalized] = useState(false);
   const [noise, setNoise] = useState(false);
   const [tags, setTags] = useState([]);
   const [tagInput, setTagInput] = useState('');
@@ -1442,6 +1471,8 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
         setContent(d.content || '');
         setImp(m.importance || 5);
         setPin(!!m.protected);
+        setHighlight(!!m.highlight);
+        setInternalized(!!(m.internalized || m.digested));
         const initialNoise = isNoise(m);
         setNoise(initialNoise);
         originalNoiseRef.current = initialNoise;
@@ -1462,11 +1493,14 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
     const newNoise = !noise;
     const prevImp = imp;
     const prevPin = pin;
+    const prevHi = highlight;
     const newImp = newNoise ? 1 : (imp === 1 ? 5 : imp);
-    // 乐观本地更新
+    // 乐观本地更新 — 标噪声时后端 marking_noise 路径会同时清 protected + highlight,
+    // 前端必须同步, 否则保存又把 protected/highlight 推回去 (跟后端打架)
     setNoise(newNoise);
     setImp(newImp);
     if (newNoise && pin) setPin(false);
+    if (newNoise && highlight) setHighlight(false);
     try {
       const r = await fetch('/api/bucket/' + encodeURIComponent(bucketId) + '/update', {
         method: 'POST',
@@ -1483,6 +1517,7 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
       setNoise(!newNoise);
       setImp(prevImp);
       setPin(prevPin);
+      setHighlight(prevHi);
       alert('噪声标记失败: ' + e.message);
     }
   };
@@ -1498,6 +1533,8 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
         importance: imp,
         tags: tags,
         protected: pin,
+        highlight: highlight,
+        internalized: internalized,
         event_time: fromLocalDateTimeStr(eventTime),
         created_by: createdBy,
       };
@@ -1578,6 +1615,8 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
       setSummary(m.summary || '');
       setImp(m.importance || imp);
       setPin(!!m.protected);
+      setHighlight(!!m.highlight);
+      setInternalized(!!(m.internalized || m.digested));
       const newNoise = isNoise(m);
       setNoise(newNoise);
       originalNoiseRef.current = newNoise;
@@ -1636,6 +1675,8 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
               content={content} setContent={setContent}
               imp={imp} setImp={setImp}
               pin={pin} setPin={setPin}
+              highlight={highlight} setHighlight={setHighlight}
+              internalized={internalized} setInternalized={setInternalized}
               tags={tags} setTags={setTags}
               tagInput={tagInput} setTagInput={setTagInput}
               eventTime={eventTime} setEventTime={setEventTime}
@@ -1870,6 +1911,7 @@ function NewScreen() {
   const [content, setContent] = useState('');
   const [imp, setImp] = useState(5);
   const [pin, setPin] = useState(false);
+  const [highlight, setHighlight] = useState(false);
   const [tags, setTags] = useState([]);
   const [tagInput, setTagInput] = useState('');
   const [eventTime, setEventTime] = useState(() => toLocalDateTimeStr(new Date().toISOString()));
@@ -1893,6 +1935,7 @@ function NewScreen() {
           importance: imp,
           tags: tags,
           protected: pin,
+          highlight: highlight,
           event_time: fromLocalDateTimeStr(eventTime) || undefined,
         }),
       });
@@ -1938,6 +1981,7 @@ function NewScreen() {
           content={content} setContent={setContent}
           imp={imp} setImp={setImp}
           pin={pin} setPin={setPin}
+          highlight={highlight} setHighlight={setHighlight}
           tags={tags} setTags={setTags}
           tagInput={tagInput} setTagInput={setTagInput}
           eventTime={eventTime} setEventTime={setEventTime}
