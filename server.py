@@ -2922,16 +2922,50 @@ def _serve_v2(rel_path: str):
         return Response(f.read(), media_type=mime, headers={"Cache-Control": cache_header})
 
 
+# 手机 UA 嗅探: iPhone / iPod / Android 直接落到 /v2/mobile/,
+# 否则桌面页。iPad 不在里面 — iPadOS 13+ UA 是 Macintosh, 也没必要给它 mobile 窄屏 UI。
+# ?desktop=1 / ?mobile=1 query 强制覆盖。
+def _is_mobile_ua(ua: str) -> bool:
+    ua = (ua or "").lower()
+    return ("iphone" in ua) or ("ipod" in ua) or ("android" in ua)
+
+
+def _pick_v2_landing(request) -> str:
+    qs = request.query_params
+    if qs.get("desktop") == "1":
+        return "/v2/"
+    if qs.get("mobile") == "1":
+        return "/v2/mobile/"
+    ua = request.headers.get("user-agent", "")
+    return "/v2/mobile/" if _is_mobile_ua(ua) else "/v2/"
+
+
+@mcp.custom_route("/", methods=["GET"])
+async def root_landing(request):
+    """根域名: 手机 → /v2/mobile/, 桌面 → /v2/. 朋友手机访问根直接落 mobile 页, Safari 加桌面才能成 PWA."""
+    from starlette.responses import RedirectResponse
+    return RedirectResponse(url=_pick_v2_landing(request), status_code=302)
+
+
 @mcp.custom_route("/v2", methods=["GET"])
 async def v2_root(request):
     # 必须重定向到带尾斜杠,否则相对路径(./assets/...)的 base 会算错
+    # 同时嗅 UA: 手机访问 /v2 也甩到 mobile (朋友可能 bookmark 了 /v2)
     from starlette.responses import RedirectResponse
-    return RedirectResponse(url="/v2/", status_code=301)
+    return RedirectResponse(url=_pick_v2_landing(request), status_code=302)
 
 
 @mcp.custom_route("/v2/{rel:path}", methods=["GET"])
 async def v2_rel(request):
-    return _serve_v2(request.path_params.get("rel", ""))
+    rel = request.path_params.get("rel", "")
+    # 朋友可能 bookmark 了 /v2/ (桌面页), 手机进来仍要甩到 mobile。
+    # 只在"明确请求桌面首页"时拦截 (rel == "" 或 "index.html"), 子路径 (console/cells/...) 不动。
+    if rel in ("", "index.html"):
+        from starlette.responses import RedirectResponse
+        qs = request.query_params
+        if qs.get("desktop") != "1" and _is_mobile_ua(request.headers.get("user-agent", "")):
+            return RedirectResponse(url="/v2/mobile/", status_code=302)
+    return _serve_v2(rel)
 
 
 @mcp.custom_route("/api/config", methods=["GET"])
