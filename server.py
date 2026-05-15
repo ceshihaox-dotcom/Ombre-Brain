@@ -931,12 +931,14 @@ async def dream() -> str:
         logger.error(f"Dream failed to list buckets: {e}")
         return "记忆系统暂时无法访问。"
 
-    # --- Filter: recent surface-level dynamic buckets (not permanent/pinned/feel) ---
+    # --- Filter: recent surface-level dynamic buckets (not permanent/pinned/feel/noise) ---
+    # noise = resolved + importance=1, 用户软删除标记, 不应该被 AI dream 翻出来
     candidates = [
         b for b in all_buckets
         if b["metadata"].get("type") not in ("permanent", "feel")
         and not b["metadata"].get("pinned", False)
         and not b["metadata"].get("protected", False)
+        and not (b["metadata"].get("resolved", False) and b["metadata"].get("importance", 5) == 1)
     ]
 
     # --- Sort by creation time desc, take top 10 ---
@@ -2435,10 +2437,18 @@ async def api_search(request):
     except ValueError:
         limit = 20
     include_vector = request.query_params.get("include_vector", "false").lower() == "true"
+    # 默认排除噪声(resolved+importance=1, 用户软删除态);
+    # 调试/查找意图时可 include_noise=true opt-in 拉回
+    include_noise = request.query_params.get("include_noise", "false").lower() == "true"
+
+    def _is_noise(meta):
+        return bool(meta.get("resolved", False) and meta.get("importance", 5) == 1)
 
     try:
         # === 关键词通道 ===
         matches = await bucket_mgr.search(query, limit=limit)
+        if not include_noise:
+            matches = [b for b in matches if not _is_noise(b.get("metadata", {}))]
         keyword_hits = []
         for b in matches:
             meta = b.get("metadata", {})
@@ -2470,6 +2480,8 @@ async def api_search(request):
                     if not vb:
                         continue
                     vmeta = vb.get("metadata", {})
+                    if not include_noise and _is_noise(vmeta):
+                        continue
                     vector_hits.append({
                         "id": bucket_id,
                         "name": vmeta.get("name", bucket_id),
