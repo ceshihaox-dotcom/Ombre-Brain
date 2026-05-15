@@ -2901,8 +2901,25 @@ def _serve_v2(rel_path: str):
             mime = "text/javascript"
         else:
             mime = "application/octet-stream"
+    # Cache-Control: 朋友 Win wifi 反馈"切视图几分钟" 主要是每次重拉 4.3MB vendor JS + woff2。
+    # 规则: assets/ 下 hash 命名(UUID)的资源永不变, 给一年 immutable; HTML / 手改脚本 no-cache 留 ETag 短路。
+    import re as _re
+    rel_under_v2 = os.path.relpath(abs_path, base).replace("\\", "/")
+    fname = os.path.basename(rel_under_v2)
+    is_hashed_asset = (
+        "/assets/" in ("/" + rel_under_v2)
+        and bool(_re.match(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.(js|jsx|woff2)$", fname))
+    )
+    if is_hashed_asset:
+        cache_header = "public, max-age=31536000, immutable"
+    elif fname.endswith((".woff2", ".ico", ".png", ".svg")):
+        # favicon/字体非 hash 命名的也按周缓存 — 改名换版本即失效
+        cache_header = "public, max-age=604800"
+    else:
+        # index.html / ombre-bridge.js / theme-system.js / redehy-modal.{js,css} / manifest.json 等手改文件
+        cache_header = "no-cache"
     with open(abs_path, "rb") as f:
-        return Response(f.read(), media_type=mime)
+        return Response(f.read(), media_type=mime, headers={"Cache-Control": cache_header})
 
 
 @mcp.custom_route("/v2", methods=["GET"])
@@ -3261,10 +3278,14 @@ if __name__ == "__main__":
 
         # --- Add CORS middleware so remote clients (Cloudflare Tunnel / ngrok) can connect ---
         # --- 添加 CORS 中间件，让远程客户端（Cloudflare Tunnel / ngrok）能正常连接 ---
+        from starlette.middleware.gzip import GZipMiddleware
         if transport == "streamable-http":
             _app = mcp.streamable_http_app()
         else:
             _app = mcp.sse_app()
+        # gzip: vendor JS 4.3MB + 200+ 桶 JSON 都裸传输, 朋友 Win wifi 切视图几分钟。
+        # 压缩后 vendor ~1MB, JSON ~150KB, 直接 4x 提速。minimum_size=1024 跳过小响应。
+        _app.add_middleware(GZipMiddleware, minimum_size=1024)
         _app.add_middleware(
             CORSMiddleware,
             allow_origins=["*"],
@@ -3272,7 +3293,7 @@ if __name__ == "__main__":
             allow_headers=["*"],
             expose_headers=["*"],
         )
-        logger.info("CORS middleware enabled for remote transport / 已启用 CORS 中间件")
+        logger.info("CORS + GZip middleware enabled / 已启用 CORS + GZip 中间件")
         uvicorn.run(_app, host="0.0.0.0", port=8000)
     else:
         mcp.run(transport=transport)
