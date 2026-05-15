@@ -179,6 +179,7 @@ function HomeScreen() {
   const [tagFilters, setTagFilters] = useState([]);        // 标签多选 (AND)
   const [tagSheetOpen, setTagSheetOpen] = useState(false); // 标签筛选 sheet
   const [tagSearch, setTagSearch] = useState('');          // 标签搜索框
+  const bodyRef = useRef(null);                            // home-body scroll 恢复用
   // 跳全貌→back 回 home 的恢复: lazy useState 在 mount 时读一次 + 立即清 sessionStorage
   // 30 分钟内有效;过期就当没存
   const [moodInit] = useState(() => {
@@ -203,6 +204,26 @@ function HomeScreen() {
     return () => { cancel = true; };
   }, []);
 
+  // 数据加载后回到上次保存的 home 滚动位置 (从 /mem/ 或 /day/ 回来)
+  useEffect(() => {
+    if (!buckets || !bodyRef.current) return;
+    const saved = readScroll(SCROLL_KEY_HOME);
+    if (saved != null) {
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (bodyRef.current) bodyRef.current.scrollTop = saved;
+      }));
+    }
+  }, [buckets]);
+
+  const goToMem = (id) => {
+    if (bodyRef.current) saveScroll(SCROLL_KEY_HOME, bodyRef.current.scrollTop);
+    navigate('/mem/' + encodeURIComponent(id));
+  };
+  const goToDay = (k) => {
+    if (bodyRef.current) saveScroll(SCROLL_KEY_HOME, bodyRef.current.scrollTop);
+    navigate('/day/' + k);
+  };
+
   const toggleFilter = (key) => {
     setFilters(prev => {
       const next = new Set(prev);
@@ -219,7 +240,10 @@ function HomeScreen() {
     let result = filters.has('noise')
       ? buckets.filter(b => isNoise(b))
       : buckets.filter(b => !isNoise(b));
-    if (filters.has('pin'))      result = result.filter(b => b.protected || b.pinned);
+    // 注: 只看 b.protected, 不再 OR b.pinned —
+    // API 的 b.pinned = is_protected OR is_highlighted 兼容老语义, 这里 OR 会把"只高亮没钉决"误判
+    // (用户体感: 钉决取消后桶仍在钉决列表 = 它还高亮着, 而高亮 != 钉决)
+    if (filters.has('pin'))      result = result.filter(b => b.protected);
     if (filters.has('hi'))       result = result.filter(b => b.highlight);
     if (filters.has('fresh'))    result = result.filter(b => (b.importance || 5) >= 8);
     if (filters.has('feel'))     result = result.filter(b => isFeel(b));
@@ -490,7 +514,7 @@ function HomeScreen() {
         </div>
       )}
 
-      <div className="home-body">
+      <div className="home-body" ref={bodyRef}>
         {isFiltering ? (
           <>
             <div className="filter-result-meta">
@@ -512,14 +536,14 @@ function HomeScreen() {
                 <div
                   key={b.id}
                   className={'dd-item' + (b.highlight ? ' hi' : '')}
-                  onClick={() => navigate('/mem/' + encodeURIComponent(b.id))}
+                  onClick={() => goToMem(b.id)}
                 >
                   <span className="dd-item-time">{dt ? `${fmtDay(dt).num} ${fmtDay(dt).mo}` : '—'}</span>
                   <div className="dd-item-mid">
                     <div className="dd-item-title-row">
                       <span className="dd-item-title">{b.name || b.id}</span>
                       <span className="dd-item-tags">
-                        {(b.protected || b.pinned) && <span className="dd-pip pin" title="钉决"/>}
+                        {b.protected && <span className="dd-pip pin" title="钉决"/>}
                         {b.highlight && <span className="dd-pip hi" title="高亮"/>}
                         {(b.importance || 5) >= 8 && !b.highlight && <span className="dd-pip fresh" title="重要"/>}
                         {isFeel(b) && <span className="dd-pip feel" title="feel"/>}
@@ -558,7 +582,7 @@ function HomeScreen() {
               <div
                 key={d.key}
                 className={'day-card' + (d.hi ? ' hi' : '')}
-                onClick={() => navigate('/day/' + d.key)}
+                onClick={() => goToDay(d.key)}
               >
                 <div className="day-card-hd">
                   <div className="day-card-date">
@@ -580,7 +604,7 @@ function HomeScreen() {
                         <div key={i} className="day-card-preview-row">
                           <span className="day-card-preview-time">{fmtTime(dt)}</span>
                           <span className="day-card-preview-title">{bucketTitle(b)}</span>
-                          {(b.protected || b.pinned) && <span className="day-card-preview-pip pin" title="钉决"/>}
+                          {b.protected && <span className="day-card-preview-pip pin" title="钉决"/>}
                           {b.highlight && <span className="day-card-preview-pip hi" title="高亮"/>}
                           {(b.importance || 5) >= 8 && !b.highlight && <span className="day-card-preview-pip fresh" title="重要"/>}
                           {isFeel(b) && <span className="day-card-preview-pip feel" title="feel"/>}
@@ -616,6 +640,25 @@ function HomeScreen() {
 const MOOD_RADIUS = { strict: 0.20, normal: 0.35, loose: 0.60 };
 const MOOD_RESUME_KEY = 'ombre-mood-resume-v1';
 const MOOD_RESUME_TTL_MS = 30 * 60 * 1000;     // 30 分钟内回来才恢复
+
+// 屏幕级 scroll 恢复 — 跳/mem/ 后回来时滚回原位置, 对批量删除工作流很关键
+// 30 分钟内有效, 否则当作新的会话不恢复
+const SCROLL_KEY_HOME = 'ombre-home-scroll-v1';
+const SCROLL_KEY_DAY  = (k) => 'ombre-day-scroll-v1::' + k;
+const SCROLL_TTL_MS = 30 * 60 * 1000;
+function saveScroll(key, top) {
+  try { sessionStorage.setItem(key, JSON.stringify({ top, ts: Date.now() })); } catch (_) {}
+}
+function readScroll(key) {
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (!s || typeof s.top !== 'number') return null;
+    if (Date.now() - (s.ts || 0) > SCROLL_TTL_MS) return null;
+    return s.top;
+  } catch (_) { return null; }
+}
 
 function MoodEvokeOverlay({ onClose, resume }) {
   // resume = 上次跳全貌前保存的状态; 没有就用默认
@@ -856,6 +899,7 @@ function MoodEvokeOverlay({ onClose, resume }) {
 function DayDetailScreen({ dayKey }) {
   const [buckets, setBuckets] = useState(null);
   const [error, setError] = useState(null);
+  const bodyRef = useRef(null);
 
   useEffect(() => {
     let cancel = false;
@@ -864,6 +908,24 @@ function DayDetailScreen({ dayKey }) {
       .catch(e => { if (!cancel) setError(e.message); });
     return () => { cancel = true; };
   }, []);
+
+  // 数据加载完后, 回到上次保存的 scroll 位置 (从 /mem/ 回来时)
+  useEffect(() => {
+    if (!buckets || !bodyRef.current) return;
+    const saved = readScroll(SCROLL_KEY_DAY(dayKey));
+    if (saved != null) {
+      // 双 rAF 确保 DOM 实际 layout 完再 setScrollTop, 单 rAF 偶尔早一帧
+      requestAnimationFrame(() => requestAnimationFrame(() => {
+        if (bodyRef.current) bodyRef.current.scrollTop = saved;
+      }));
+    }
+  }, [buckets, dayKey]);
+
+  // 跳 /mem/ 之前存当前 scroll
+  const goToMem = (id) => {
+    if (bodyRef.current) saveScroll(SCROLL_KEY_DAY(dayKey), bodyRef.current.scrollTop);
+    navigate('/mem/' + encodeURIComponent(id));
+  };
 
   const dayInfo = useMemo(() => {
     if (!buckets) return null;
@@ -922,7 +984,7 @@ function DayDetailScreen({ dayKey }) {
         </div>
       </div>
 
-      <div className="day-detail-body">
+      <div className="day-detail-body" ref={bodyRef}>
         {dayInfo.items.length === 0 && (
           <div style={{ textAlign: 'center', color: 'var(--ink-4)', padding: '40px 0', fontFamily: 'var(--mono)', fontSize: 11, letterSpacing: '0.1em' }}>
             这天没有记忆
@@ -932,14 +994,14 @@ function DayDetailScreen({ dayKey }) {
           <div
             key={b.id}
             className={'dd-item' + (b.highlight ? ' hi' : '')}
-            onClick={() => navigate('/mem/' + encodeURIComponent(b.id))}
+            onClick={() => goToMem(b.id)}
           >
             <span className="dd-item-time">{fmtTime(dt)}</span>
             <div className="dd-item-mid">
               <div className="dd-item-title-row">
                 <span className="dd-item-title">{bucketTitle(b)}</span>
                 <span className="dd-item-tags">
-                  {(b.protected || b.pinned) && <span className="dd-pip pin" title="钉决"/>}
+                  {b.protected && <span className="dd-pip pin" title="钉决"/>}
                   {b.highlight && <span className="dd-pip hi" title="高亮"/>}
                   {(b.importance || 5) >= 8 && !b.highlight && <span className="dd-pip fresh" title="重要"/>}
                   {isFeel(b) && <span className="dd-pip feel" title="feel"/>}
