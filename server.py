@@ -328,6 +328,27 @@ async def breath(
                 logger.warning(f"Failed to dehydrate pinned bucket / 钉选桶脱水失败: {e}")
                 continue
 
+        # --- Protected-only buckets: surface as 永久参考 ---
+        # --- 钉决但未高亮 (protected=True, highlight=False):
+        #     之前 unresolved 排除 type=permanent, pinned_buckets 又要求 highlight,
+        #     protected-only 桶两边都漏 → 跟用户"钉决=应该一直在视野里"的直觉冲突.
+        #     单开一个区段, 让钉决的桶也参与浮现. ---
+        protected_only = [
+            b for b in all_buckets
+            if is_protected(b["metadata"])
+            and not is_highlighted(b["metadata"])
+            and not is_internalized(b["metadata"])
+        ]
+        protected_results = []
+        for b in protected_only:
+            try:
+                clean_meta = {k: v for k, v in b["metadata"].items() if k != "tags"}
+                summary = await dehydrator.dehydrate(strip_wikilinks(b["content"]), clean_meta)
+                protected_results.append(f"❖ [永久参考] [bucket_id:{b['id']}] {summary}")
+            except Exception as e:
+                logger.warning(f"Failed to dehydrate protected bucket / 钉决桶脱水失败: {e}")
+                continue
+
         # --- Unresolved buckets: surface top N by weight ---
         # --- 未解决桶：按权重浮现前 N 条 ---
         unresolved = [
@@ -340,7 +361,9 @@ async def breath(
 
         logger.info(
             f"Breath surfacing: {len(all_buckets)} total, "
-            f"{len(pinned_buckets)} pinned, {len(unresolved)} unresolved"
+            f"{len(pinned_buckets)} highlighted, "
+            f"{len(protected_only)} protected-only, "
+            f"{len(unresolved)} unresolved"
         )
 
         scored = sorted(
@@ -358,6 +381,8 @@ async def breath(
         # Top-1 always surfaces; rest sampled from top-20 for diversity
         token_budget = max_tokens
         for r in pinned_results:
+            token_budget -= count_tokens_approx(r)
+        for r in protected_results:
             token_budget -= count_tokens_approx(r)
 
         candidates = list(scored)
@@ -388,12 +413,14 @@ async def breath(
                 logger.warning(f"Failed to dehydrate surfaced bucket / 浮现脱水失败: {e}")
                 continue
 
-        if not pinned_results and not dynamic_results:
+        if not pinned_results and not protected_results and not dynamic_results:
             return "权重池平静，没有需要处理的记忆。"
 
         parts = []
         if pinned_results:
             parts.append("=== 核心准则 ===\n" + "\n---\n".join(pinned_results))
+        if protected_results:
+            parts.append("=== 永久参考 ===\n" + "\n---\n".join(protected_results))
         if dynamic_results:
             parts.append("=== 浮现记忆 ===\n" + "\n---\n".join(dynamic_results))
         return "\n\n".join(parts)
@@ -2191,6 +2218,111 @@ async def api_trash_list(request):
         return JSONResponse({"trash": result, "count": len(result)})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@mcp.custom_route("/api/_diagnose/{bucket_id}", methods=["GET"])
+async def api_diagnose_bucket(request):
+    """单桶诊断 — 只读, 给定 id 返回它在哪个目录 / 能否加载 / metadata / content 长度 + 诊断标记.
+    用途: 排查"id 能搜到但搜不到内容 / tag 搜不到"这类边缘 case. 浏览器直接打开看 JSON 就行.
+    """
+    from starlette.responses import JSONResponse
+    bucket_id = request.path_params["bucket_id"].strip()
+    if not bucket_id:
+        return JSONResponse({"error": "bucket_id 必填"}, status_code=400)
+
+    dirs = {
+        "permanent": bucket_mgr.permanent_dir,
+        "dynamic":   bucket_mgr.dynamic_dir,
+        "feel":      bucket_mgr.feel_dir,
+        "archive":   bucket_mgr.archive_dir,
+        "trash":     bucket_mgr.trash_dir,
+    }
+
+    hits = []
+    for tag, d in dirs.items():
+        if not os.path.exists(d):
+            continue
+        for root, _, files in os.walk(d):
+            for fname in files:
+                if not fname.endswith(".md"):
+                    continue
+                name_part = fname[:-3]
+                if name_part == bucket_id or name_part.endswith(f"_{bucket_id}"):
+                    hits.append({"location": tag, "path": os.path.join(root, fname)})
+
+    if not hits:
+        return JSONResponse({
+            "bucket_id": bucket_id,
+            "found": False,
+            "message": "5 个目录里都没找到, 桶可能已被物理删除 (purge) 或 id 不对",
+        })
+
+    out = {
+        "bucket_id": bucket_id,
+        "found": True,
+        "hit_count": len(hits),
+        "hits": [],
+    }
+    for h in hits:
+        entry = {"location": h["location"], "path": h["path"]}
+        try:
+            size = os.path.getsize(h["path"])
+            entry["file_size_bytes"] = size
+        except Exception:
+            entry["file_size_bytes"] = None
+
+        try:
+            import frontmatter
+            post = frontmatter.load(h["path"])
+            meta = dict(post.metadata)
+            content = post.content or ""
+            entry["loaded"] = True
+            entry["metadata"] = {
+                k: (meta.get(k) if k in meta else None)
+                for k in [
+                    "id", "name", "type", "domain", "tags",
+                    "importance", "valence", "arousal",
+                    "resolved", "protected", "highlight", "pinned",
+                    "internalized", "digested",
+                    "created", "last_active", "event_time",
+                    "trashed_at", "archived_at", "created_by",
+                ]
+            }
+            entry["content_length"] = len(content)
+            entry["content_preview"] = content.strip()[:300]
+            entry["content_empty"] = not content.strip()
+
+            # 诊断标记
+            diag = []
+            if h["location"] == "trash":
+                diag.append("桶在 trash, list_all 默认不含 trash → 关键字搜索看不到 (设计如此)")
+            if h["location"] == "archive":
+                diag.append("桶在 archive, breath 搜索默认 include_archive=False → 关键字搜索看不到")
+            name_v = meta.get("name", "") or ""
+            tags_v = meta.get("tags", []) or []
+            if not name_v.strip() and not tags_v and not content.strip():
+                diag.append("name + tags + content 全空 → fuzz 找不到任何匹配信号")
+            elif not name_v.strip() and not tags_v:
+                diag.append("name 和 tags 都空, 只能靠 content 模糊匹配")
+            if meta.get("resolved") and meta.get("importance", 5) == 1:
+                diag.append("resolved+importance=1 → 标了 noise (软删除), 搜索显式排除")
+            if meta.get("internalized") or meta.get("digested"):
+                diag.append("internalized=True → 搜索显式排除 (设计上已内化的桶不浮现)")
+            entry["diagnostics"] = diag
+        except Exception as e:
+            entry["loaded"] = False
+            entry["load_error"] = str(e)
+            entry["diagnostics"] = ["frontmatter 解析失败 → 这就是 'id 能见但内容空' 的真凶, 文件可能 YAML 坏掉"]
+            try:
+                with open(h["path"], "r", encoding="utf-8") as f:
+                    first_lines = [next(f, "").rstrip() for _ in range(8)]
+                entry["raw_first_lines"] = first_lines
+            except Exception as e2:
+                entry["raw_read_error"] = str(e2)
+
+        out["hits"].append(entry)
+
+    return JSONResponse(out)
 
 
 @mcp.custom_route("/api/bucket/{bucket_id}/unarchive", methods=["POST"])
