@@ -1120,10 +1120,19 @@ class BucketManager:
         Recursively search permanent/dynamic/archive for a bucket file
         matching the given ID.
         在 permanent/dynamic/archive 中递归查找指定 ID 的桶文件。
+
+        策略:
+        1. **快路径** (filename 匹配): 文件名 == <id>.md 或 <name>_<id>.md
+        2. **慢路径** (YAML id 匹配, fallback): filename 没找到时,
+           扫所有 .md frontmatter, 找 metadata id == bucket_id 的孤儿文件.
+           这处理历史 rename 失败 / 导入异常等造成的 filename ↔ YAML 不一致
+           (现象: list_all 报告该 id 存在, 但 get() 拿不到 → 用户报 "id 能搜到但内容空").
         """
         if not bucket_id:
             return None
-        for dir_path in [self.permanent_dir, self.dynamic_dir, self.archive_dir, self.feel_dir, self.trash_dir]:
+        dirs = [self.permanent_dir, self.dynamic_dir, self.archive_dir, self.feel_dir, self.trash_dir]
+        # --- Fast path: filename match ---
+        for dir_path in dirs:
             if not os.path.exists(dir_path):
                 continue
             for root, _, files in os.walk(dir_path):
@@ -1133,6 +1142,26 @@ class BucketManager:
                     name_part = fname[:-3]
                     if name_part == bucket_id or name_part.endswith(f"_{bucket_id}"):
                         return os.path.join(root, fname)
+        # --- Slow path: YAML id fallback for orphan files ---
+        # 文件名跟 YAML id 不一致的孤儿桶: 慢但能找到, 单次访问 ~50ms (200 桶级)
+        for dir_path in dirs:
+            if not os.path.exists(dir_path):
+                continue
+            for root, _, files in os.walk(dir_path):
+                for fname in files:
+                    if not fname.endswith(".md"):
+                        continue
+                    fp = os.path.join(root, fname)
+                    try:
+                        post = frontmatter.load(fp)
+                        if post.get("id") == bucket_id:
+                            logger.warning(
+                                f"Orphan bucket found via YAML fallback / 通过 YAML 找到孤儿桶: "
+                                f"id={bucket_id} filename={fname} (考虑 rename 文件让 filename 含 id 来根治)"
+                            )
+                            return fp
+                    except Exception:
+                        continue
         return None
 
     # ---------------------------------------------------------
