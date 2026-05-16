@@ -120,6 +120,11 @@ async def breath_hook(request):
         pinned = [b for b in all_buckets
                   if is_highlighted(b["metadata"])
                   and not is_internalized(b["metadata"])]
+        # 永久参考段:protected-only (跟 breath() 主路径同步, 跟用户"钉决=应该在视野"直觉对齐)
+        protected_only_hook = [b for b in all_buckets
+                               if is_protected(b["metadata"])
+                               and not is_highlighted(b["metadata"])
+                               and not is_internalized(b["metadata"])]
         # 普通浮现池:排除已经进核心准则区的 highlighted 桶,排除 permanent/feel 类型
         unresolved = [b for b in all_buckets
                       if not b["metadata"].get("resolved", False)
@@ -133,6 +138,12 @@ async def breath_hook(request):
         for b in pinned:
             summary = await dehydrator.dehydrate(strip_wikilinks(b["content"]), {k: v for k, v in b["metadata"].items() if k != "tags"})
             parts.append(f"📌 [核心准则] {summary}")
+            token_budget -= count_tokens_approx(summary)
+        for b in protected_only_hook:
+            if token_budget <= 0:
+                break
+            summary = await dehydrator.dehydrate(strip_wikilinks(b["content"]), {k: v for k, v in b["metadata"].items() if k != "tags"})
+            parts.append(f"❖ [永久参考] {summary}")
             token_budget -= count_tokens_approx(summary)
 
         # Diversity: top-1 fixed + shuffle rest from top-20
