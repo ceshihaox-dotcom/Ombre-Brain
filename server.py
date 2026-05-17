@@ -475,16 +475,21 @@ async def breath(
         logger.error(f"Search failed / 检索失败: {e}")
         return "检索过程出错，请稍后重试。"
 
-    # --- Exclude highlighted/internalized/noise/feel from search results ---
-    # --- 搜索模式排除置顶桶(它们在浮现模式核心准则区已可见)、已内化桶、噪声桶、feel 桶 ---
-    # 注:protected 但非 highlighted 的桶仍可被搜出(防衰减不影响搜索)
+    # --- Exclude internalized/noise/feel from search results ---
+    # --- 搜索模式排除 已内化桶、噪声桶、feel 桶 ---
+    # 注:protected 但非 highlighted 的桶可被搜出(防衰减不影响搜索)
     # noise = resolved + importance=1, 用户软删除标记 → 默认从检索排除
     # feel = 第一人称感受, 设计上只能通过 domain="feel" 独立通道读取, 不参与普通搜索/浮现
+    #
+    # 历史 bug 修复(2026-05): highlighted (钉选) 桶原本也被搜索排除, 设计意图是
+    # "它们在浮现模式核心准则区已可见, 避免搜索结果重复". 但实际场景下:
+    #   - 用户精准搜索 "完整指南" / "互动指南" / "关系文档" 这类高重要度桶时, 几乎都是钉选状态
+    #   - 全被排除 → 用户感受是"我的桶搜不到"
+    # 搜索和浮现是两个独立 mode (返回字符串完全不同), 不会真"重复"; 搜索应当尊重用户 query 意图.
     def _is_noise(meta):
         return bool(meta.get("resolved", False) and meta.get("importance", 5) == 1)
     matches = [b for b in matches
-               if not (is_highlighted(b["metadata"])
-                       or is_internalized(b["metadata"])
+               if not (is_internalized(b["metadata"])
                        or _is_noise(b["metadata"])
                        or b["metadata"].get("type") == "feel")]
 
@@ -496,8 +501,8 @@ async def breath(
         for bucket_id, sim_score in vector_results:
             if bucket_id not in matched_ids and sim_score > 0.5:
                 bucket = await bucket_mgr.get(bucket_id)
-                if bucket and not (is_highlighted(bucket["metadata"])
-                                   or is_internalized(bucket["metadata"])
+                # 注: 跟关键词通道对齐, 不排除 highlighted (钉选的桶搜索时也应返回)
+                if bucket and not (is_internalized(bucket["metadata"])
                                    or _is_noise(bucket["metadata"])
                                    or bucket["metadata"].get("type") == "feel"):
                     bucket["score"] = round(sim_score * 100, 2)

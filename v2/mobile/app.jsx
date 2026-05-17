@@ -171,15 +171,24 @@ function TabBar({ active }) {
 // ─────────────────────────────────────────
 
 function HomeScreen() {
+  // 挂载时一次性读取持久化的过滤状态 (从 /mem 或 /day 回来时恢复)
+  // 30 分钟 TTL, 跟 scroll 恢复同周期
+  const [filterInit] = useState(() => readHomeFilters());
+
   const [buckets, setBuckets] = useState(null);
   const [error, setError] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filters, setFilters] = useState(() => new Set());
-  const [domainFilters, setDomainFilters] = useState([]);  // 主题域多选
-  const [tagFilters, setTagFilters] = useState([]);        // 标签多选 (AND)
+  const [searchQuery, setSearchQuery] = useState(() => filterInit?.searchQuery ?? '');
+  const [filters, setFilters] = useState(() => filterInit?.filters ?? new Set());
+  const [domainFilters, setDomainFilters] = useState(() => filterInit?.domainFilters ?? []);  // 主题域多选
+  const [tagFilters, setTagFilters] = useState(() => filterInit?.tagFilters ?? []);           // 标签多选 (AND)
   const [tagSheetOpen, setTagSheetOpen] = useState(false); // 标签筛选 sheet
   const [tagSearch, setTagSearch] = useState('');          // 标签搜索框
   const bodyRef = useRef(null);                            // home-body scroll 恢复用
+
+  // 任一过滤状态变化都持久化, 让用户进出 /mem 时 filter 不丢
+  useEffect(() => {
+    saveHomeFilters({ filters, domainFilters, tagFilters, searchQuery });
+  }, [filters, domainFilters, tagFilters, searchQuery]);
   // 跳全貌→back 回 home 的恢复: lazy useState 在 mount 时读一次 + 立即清 sessionStorage
   // 30 分钟内有效;过期就当没存
   const [moodInit] = useState(() => {
@@ -657,6 +666,37 @@ function readScroll(key) {
     if (!s || typeof s.top !== 'number') return null;
     if (Date.now() - (s.ts || 0) > SCROLL_TTL_MS) return null;
     return s.top;
+  } catch (_) { return null; }
+}
+
+// home 屏的过滤状态持久化 — 解决"分类下删除一条→回 home 时 filter 被重置→看起来跳回主界面"
+// 跟 scroll 同样套路: 每次变化 save, 挂载时 read; 30 分钟 TTL 过期清.
+// 持久化范围: filters(Set chip) + domainFilters + tagFilters + searchQuery
+const HOME_FILTERS_KEY = 'ombre-home-filters-v1';
+function saveHomeFilters(state) {
+  try {
+    sessionStorage.setItem(HOME_FILTERS_KEY, JSON.stringify({
+      filters: Array.from(state.filters || []),
+      domainFilters: state.domainFilters || [],
+      tagFilters: state.tagFilters || [],
+      searchQuery: state.searchQuery || '',
+      ts: Date.now(),
+    }));
+  } catch (_) {}
+}
+function readHomeFilters() {
+  try {
+    const raw = sessionStorage.getItem(HOME_FILTERS_KEY);
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (!s) return null;
+    if (Date.now() - (s.ts || 0) > SCROLL_TTL_MS) return null;
+    return {
+      filters: new Set(Array.isArray(s.filters) ? s.filters : []),
+      domainFilters: Array.isArray(s.domainFilters) ? s.domainFilters : [],
+      tagFilters: Array.isArray(s.tagFilters) ? s.tagFilters : [],
+      searchQuery: typeof s.searchQuery === 'string' ? s.searchQuery : '',
+    };
   } catch (_) { return null; }
 }
 
@@ -1710,8 +1750,14 @@ function EditSheet({ bucketId, onClose, onSaved, onDeleted }) {
         throw new Error(err.error || `HTTP ${r.status}`);
       }
       onClose();
-      if (onDeleted) onDeleted(bucketId);
-      else window.history.back();
+      if (onDeleted) {
+        onDeleted(bucketId);
+      } else {
+        // 没传 onDeleted (MemFull 等单条详情页) → 显式回 home, 不依赖 history 栈.
+        // PWA 冷启动直接进 /mem 时 history 没"上一页", back() 行为不稳;
+        // 显式 navigate 保证一定回到列表 + 触发 scroll 恢复, 让连续删除工作流可用.
+        navigate('/');
+      }
     } catch (e) {
       setError(e.message || String(e));
       setSaving(false);
