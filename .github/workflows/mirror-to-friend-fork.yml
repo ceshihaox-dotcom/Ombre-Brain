@@ -32,7 +32,7 @@ jobs:
           persist-credentials: false  # 关键: 不让 checkout 设 extraheader 用 GITHUB_TOKEN,
                                       # 否则后续 push 用的是 github-actions[bot] 身份, 推不到外部 repo
 
-      - name: Push to friend's fork
+      - name: Strip workflows + push to friend's fork
         env:
           FRIEND_PAT: ${{ secrets.FRIEND_FORK_PAT }}
         run: |
@@ -40,9 +40,19 @@ jobs:
             echo "::error::FRIEND_FORK_PAT secret 未配置, 跳过镜像"
             exit 1
           fi
+
+          # GitHub 限制: PAT 推 .github/workflows/ 需要 workflow scope.
+          # 我们不想要那么大的 PAT 权限, 也用不着朋友 fork 跑 workflow
+          # (她只是部署源, Zeabur 直接抓代码), 所以推之前剥掉所有 workflow 文件.
+          git config user.email "actions@github.com"
+          git config user.name "Mirror Bot"
+          if [ -d .github/workflows ]; then
+            git rm -rf .github/workflows
+            git commit -m "ci: strip workflows in friend fork mirror"
+          fi
+
           # 用 x-access-token 占位用户名 + PAT 作密码, GitHub 标准认证模式
-          git push \
+          git push --force \
             "https://x-access-token:${FRIEND_PAT}@github.com/nan1103chang-tech/Ombre-Brain.git" \
-            main:main \
-            --force
+            HEAD:main
           echo "✓ 已镜像到 nan1103chang-tech/Ombre-Brain · 朋友 Zeabur 应该自动开始部署"
