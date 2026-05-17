@@ -155,10 +155,12 @@ class TestFeelLifecycle:
             name="争吵", bucket_type="dynamic",
         )
 
-        # Verify not digested yet
+        # Verify not internalized yet
+        # 字段从 digested 重命名为 internalized; bm.update 收到 digested=True
+        # 会自动转写 internalized 并清除老 digested 字段, 但 test 应直接断言新字段名
         all_b = await bm.list_all()
         source = next(b for b in all_b if b["id"] == source_id)
-        assert not source["metadata"].get("digested", False)
+        assert not source["metadata"].get("internalized", False)
 
         # Create feel referencing it
         await bm.create(
@@ -167,13 +169,14 @@ class TestFeelLifecycle:
             valence=0.5, arousal=0.4,
             name=None, bucket_type="feel",
         )
-        # Manually mark digested (simulating server.py hold logic)
-        await bm.update(source_id, digested=True)
+        # Manually mark internalized (simulating server.py hold logic).
+        # bm.update 同时接受 digested 别名 (转写到 internalized), 此处用新字段名更直观
+        await bm.update(source_id, internalized=True)
 
-        # Verify digested
+        # Verify internalized
         all_b = await bm.list_all()
         source = next(b for b in all_b if b["id"] == source_id)
-        assert source["metadata"].get("digested") is True
+        assert source["metadata"].get("internalized") is True
 
     @pytest.mark.asyncio
     async def test_feel_never_decays(self, isolated_tools):
