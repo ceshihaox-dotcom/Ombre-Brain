@@ -28,7 +28,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # full history, 避免 force push 时 GitHub 拒收
+          fetch-depth: 0          # full history, 避免 force push 时 GitHub 拒收
+          persist-credentials: false  # 关键: 不让 checkout 设 extraheader 用 GITHUB_TOKEN,
+                                      # 否则后续 push 用的是 github-actions[bot] 身份, 推不到外部 repo
 
       - name: Push to friend's fork
         env:
