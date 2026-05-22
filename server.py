@@ -2588,21 +2588,30 @@ async def api_search(request):
     # 默认排除噪声(resolved+importance=1, 用户软删除态);
     # 调试/查找意图时可 include_noise=true opt-in 拉回
     include_noise = request.query_params.get("include_noise", "false").lower() == "true"
+    # 默认排除 feel(私密沉淀, 设计上不参与 AI 检索/自动浮现; 只在 breath domain="feel" 显式入口可取);
+    # 确有需要可 include_feel=true opt-in
+    include_feel = request.query_params.get("include_feel", "false").lower() == "true"
 
     def _is_noise(meta):
         return bool(meta.get("resolved", False) and meta.get("importance", 5) == 1)
+
+    def _is_feel(meta):
+        return meta.get("type") == "feel"
 
     try:
         # === 关键词通道 ===
         matches = await bucket_mgr.search(query, limit=limit)
         if not include_noise:
             matches = [b for b in matches if not _is_noise(b.get("metadata", {}))]
+        if not include_feel:
+            matches = [b for b in matches if not _is_feel(b.get("metadata", {}))]
         keyword_hits = []
         for b in matches:
             meta = b.get("metadata", {})
             keyword_hits.append({
                 "id": b["id"],
                 "name": meta.get("name", b["id"]),
+                "type": meta.get("type", "dynamic"),  # 暴露桶类型(dynamic/feel/permanent), 供调用方按类型过滤
                 "score": b.get("score", 0),
                 "domain": meta.get("domain", []),
                 "tags": meta.get("tags", []),
@@ -2630,9 +2639,12 @@ async def api_search(request):
                     vmeta = vb.get("metadata", {})
                     if not include_noise and _is_noise(vmeta):
                         continue
+                    if not include_feel and _is_feel(vmeta):
+                        continue
                     vector_hits.append({
                         "id": bucket_id,
                         "name": vmeta.get("name", bucket_id),
+                        "type": vmeta.get("type", "dynamic"),  # 暴露桶类型, 供调用方按类型过滤
                         "similarity": round(similarity, 3),
                         "domain": vmeta.get("domain", []),
                         "tags": vmeta.get("tags", []),
