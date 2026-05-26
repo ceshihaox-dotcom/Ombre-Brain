@@ -37,6 +37,15 @@ function ConfigPage() {
   const [promptOpen, setPromptOpen] = ccS({});   // key → 折叠展开
   const [promptResetAllBusy, setPromptResetAllBusy] = ccS(false);
 
+  // 检索打分微调 (title 命中加分 / 关键词优先排序 / dryrun 日志)
+  const [scoringCfg, setScoringCfg] = ccS(null);     // { current, defaults, schema }
+  const [scoringSaving, setScoringSaving] = ccS(false);
+  const [scoringResetting, setScoringResetting] = ccS(false);
+
+  // 记忆命中频次统计 (反向看哪条记忆经常被检索)
+  const [hitStats, setHitStats] = ccS(null);         // { total_searches, items: [...] }
+  const [hitStatsLoading, setHitStatsLoading] = ccS(false);
+
   const fetchAll = async () => {
     try {
       const r = await fetch('/api/config/api');
@@ -68,7 +77,21 @@ function ConfigPage() {
       }
     } catch (e) { /* 沉默 */ }
   };
-  ccE(() => { fetchAll(); fetchStrategy(); fetchDecay(); fetchPrompts(); }, []);
+  const fetchScoring = async () => {
+    try {
+      const r = await fetch('/api/scoring-config');
+      if (r.ok) setScoringCfg(await r.json());
+    } catch (e) { /* 沉默 */ }
+  };
+  const fetchHitStats = async () => {
+    setHitStatsLoading(true);
+    try {
+      const r = await fetch('/api/hit-stats?limit=50');
+      if (r.ok) setHitStats(await r.json());
+    } catch (e) { /* 沉默 */ }
+    finally { setHitStatsLoading(false); }
+  };
+  ccE(() => { fetchAll(); fetchStrategy(); fetchDecay(); fetchPrompts(); fetchScoring(); fetchHitStats(); }, []);
 
   // ─── Prompt 编辑相关 ───
   const isPromptOverridden = (key) => promptCfg && promptCfg.overridden && promptCfg.overridden.includes(key);
@@ -204,6 +227,44 @@ function ConfigPage() {
       alert('恢复失败: ' + e.message);
     } finally {
       setDecayResetting(false);
+    }
+  };
+
+  // 改单个 scoring 参数 (title_hit_bonus / keyword_first_sort / dryrun_log)
+  const updateScoring = async (key, value) => {
+    if (!scoringCfg) return;
+    const old = scoringCfg.current[key];
+    setScoringCfg(c => ({ ...c, current: { ...c.current, [key]: value } }));
+    setScoringSaving(true);
+    try {
+      const r = await fetch('/api/scoring-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: value }),
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      if (d && d.current) setScoringCfg(c => ({ ...c, current: d.current }));
+    } catch (e) {
+      alert('保存失败: ' + e.message);
+      setScoringCfg(c => ({ ...c, current: { ...c.current, [key]: old } }));
+    } finally {
+      setScoringSaving(false);
+    }
+  };
+  const resetScoringAll = async () => {
+    if (!scoringCfg) return;
+    if (!confirm('打分微调全部关掉(回到默认零影响)?')) return;
+    setScoringResetting(true);
+    try {
+      const r = await fetch('/api/scoring-config/reset', { method: 'POST' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      if (d && d.current) setScoringCfg(c => ({ ...c, current: d.current }));
+    } catch (e) {
+      alert('恢复失败: ' + e.message);
+    } finally {
+      setScoringResetting(false);
     }
   };
 
@@ -655,6 +716,131 @@ function ConfigPage() {
             高亮 = 已偏离默认 · 改动写入 buckets/runtime_config.json, 重启自动加载
           </div>
         )}
+      </ConsoleCard>
+
+      {/* 检索打分微调 (title 命中加分 / 关键词优先 / dryrun 日志) */}
+      <ConsoleCard label="检索打分微调" sub="解决「关键词在 title 命中却被弱命中桶顶下去」· 默认全关 = 零影响">
+        {!scoringCfg && <div style={{ color: 'var(--ink-4)', fontSize: 12 }}>载入中…</div>}
+        {scoringCfg && (
+          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
+            <button
+              className="oc-btn oc-btn-ghost"
+              onClick={resetScoringAll}
+              disabled={scoringResetting}
+              style={{ fontSize: 11, padding: '3px 12px' }}
+            >{scoringResetting ? '⌛' : '↺ 全部关掉'}</button>
+          </div>
+        )}
+        {scoringCfg && scoringCfg.schema.map(item => {
+          const cur = scoringCfg.current[item.key];
+          const def = scoringCfg.defaults[item.key];
+          const isDefault = item.type === 'bool'
+            ? (!!cur === !!def)
+            : Math.abs((cur ?? 0) - (def ?? 0)) < 1e-6;
+          return (
+            <div className="oc-field" key={item.key} style={{ alignItems: 'flex-start' }}>
+              <div className="oc-field-label" style={{ paddingTop: 6 }}>{item.label}</div>
+              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  {item.type === 'bool' ? (
+                    <button
+                      onClick={() => updateScoring(item.key, !cur)}
+                      disabled={scoringSaving}
+                      className="oc-btn"
+                      style={{
+                        flex: 'none',
+                        background: cur ? 'var(--accent)' : 'transparent',
+                        color: cur ? 'var(--paper)' : 'var(--ink-3)',
+                        border: '1px solid var(--ink-4)',
+                        fontSize: 12, padding: '4px 14px', minWidth: 60,
+                      }}
+                    >{cur ? '已开' : '关'}</button>
+                  ) : (
+                    <>
+                      <input
+                        type="range"
+                        min={item.min}
+                        max={item.max}
+                        step={item.step}
+                        value={cur ?? 0}
+                        onChange={(e) => updateScoring(item.key, +e.target.value)}
+                        className="oc-decay-slider"
+                        style={{ flex: 1, accentColor: 'var(--accent)' }}
+                      />
+                      <span style={{
+                        fontFamily: 'var(--mono)', fontSize: 13,
+                        color: isDefault ? 'var(--ink-3)' : 'var(--accent)',
+                        fontWeight: isDefault ? 400 : 600,
+                        minWidth: 56, textAlign: 'right',
+                      }}>
+                        {item.step < 1 ? Number(cur ?? 0).toFixed(2) : Math.round(cur ?? 0)}
+                      </span>
+                      <button
+                        className="oc-btn oc-btn-ghost"
+                        title={`恢复默认 ${def}`}
+                        onClick={() => updateScoring(item.key, def)}
+                        disabled={isDefault || scoringSaving}
+                        style={{ fontSize: 10, padding: '2px 8px', minWidth: 32 }}
+                      >↺</button>
+                    </>
+                  )}
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--ink-4)', fontFamily: 'var(--mono)' }}>
+                  {item.hint}
+                </div>
+              </div>
+            </div>
+          );
+        })}
+        {scoringCfg && (
+          <div className="oc-field-help" style={{ paddingLeft: 126, marginTop: 10, color: 'var(--ink-4)' }}>
+            推荐起步: title 加分 +15 + dryrun 打开, 观察一天再调
+          </div>
+        )}
+      </ConsoleCard>
+
+      {/* 记忆命中频次 (反向反馈写作: 哪些桶经常被检索 / 哪些从未) */}
+      <ConsoleCard label="命中频次" sub="哪些记忆被高频检索 · 哪些从未被命中 · 反向指导 title 写作">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: 'var(--ink-4)', fontFamily: 'var(--mono)' }}>
+            {hitStats ? `累计 ${hitStats.total_searches ?? 0} 次搜索 · top ${(hitStats.items || []).length} 桶` : '载入中…'}
+          </div>
+          <button
+            className="oc-btn oc-btn-ghost"
+            onClick={fetchHitStats}
+            disabled={hitStatsLoading}
+            style={{ fontSize: 11, padding: '3px 12px' }}
+          >{hitStatsLoading ? '⌛' : '↻ 刷新'}</button>
+        </div>
+        {hitStats && hitStats.items && hitStats.items.length === 0 && (
+          <div style={{ color: 'var(--ink-4)', fontSize: 12, padding: '12px 0' }}>
+            还没有命中记录 · 搜一下记忆或让 AI 浮现就会有数据
+          </div>
+        )}
+        {hitStats && hitStats.items && hitStats.items.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+            {hitStats.items.map((it, i) => (
+              <div key={it.id} style={{
+                display: 'flex', alignItems: 'baseline', gap: 8,
+                padding: '4px 0',
+                borderBottom: i < hitStats.items.length - 1 ? '1px solid var(--ink-5, rgba(0,0,0,0.05))' : 'none',
+              }}>
+                <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent)', minWidth: 32, textAlign: 'right' }}>
+                  ×{it.count}
+                </span>
+                <span style={{ flex: 1, color: 'var(--ink-2)' }}>
+                  {it.name || it.id}
+                </span>
+                <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-4)' }}>
+                  {it.last_query ? `"${String(it.last_query).slice(0, 20)}"` : ''}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="oc-field-help" style={{ marginTop: 10, color: 'var(--ink-4)' }}>
+          统计自启动累计 · 重启后清零 · 看到 ×0 频次的桶 → 大概率 title 没写成钩子
+        </div>
       </ConsoleCard>
 
       {/* Prompt 配置 (LLM system prompt 直接编辑) */}

@@ -1325,6 +1325,35 @@ async def api_scoring_config_reset(request):
 
 
 # =============================================================
+# Hit stats — 命中频次统计 (反向反馈"哪些桶被高频检索 / 哪些从未")
+# v1: in-memory only, 重启清零 (UI 已说明)。未来可加 flush 到 hit_stats.json。
+# =============================================================
+
+@mcp.custom_route("/api/hit-stats", methods=["GET"])
+async def api_hit_stats(request):
+    """Return {total_searches, items: [{id, name, count, last_hit, last_query}, ...]} sorted by count desc.
+    Query param: limit (default 50, max 500)."""
+    from starlette.responses import JSONResponse
+    try:
+        limit = int(request.query_params.get("limit", "50"))
+    except ValueError:
+        limit = 50
+    try:
+        data = await bucket_mgr.get_hit_stats(limit=limit)
+        return JSONResponse(data)
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
+@mcp.custom_route("/api/hit-stats/reset", methods=["POST"])
+async def api_hit_stats_reset(request):
+    """清零命中统计 — 实验型: 想看"清零后再用一段时间, 哪些桶又会被命中"。"""
+    from starlette.responses import JSONResponse
+    bucket_mgr.reset_hit_stats()
+    return JSONResponse({"ok": True})
+
+
+# =============================================================
 # Prompts config — 让前端配置页直接编辑系统 prompt, 不动代码
 # 数据流: GET → 当前生效 + 出厂默认 + schema(标签/说明)
 #         POST {key: prompt_str | ""} → 写 runtime_config['prompts'] + 立刻生效

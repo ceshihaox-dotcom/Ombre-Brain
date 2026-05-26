@@ -111,6 +111,14 @@ class BucketManager:
             f"(env raw={_env_warmth!r}, config yaml={scoring.get('warmth_boost', None)!r})"
         )
 
+        # 命中频次统计 (v1 in-memory, 重启清零; 反向反馈"哪些桶被高频检索 / 哪些从未"):
+        # 结构: {bucket_id: {count, last_hit_iso, last_query}}; 总数: self._total_searches
+        # 跨 search/breath 累计 — 任何走 self.search() 的命中都计数 (含 /api/search + breath dynamic 池)。
+        # 不持久化是有意为之: 简单 + 重启 = 自然重置, 便于"清零后看哪些桶又被命中"做实验。
+        # 想要持久化可未来 flush 到 {buckets_dir}/hit_stats.json, 不影响当前接口。
+        self._hit_stats: dict = {}
+        self._total_searches: int = 0
+
         # title_hit_bonus: title 字段 partial_ratio ≥ _MATCH_THRESHOLD 时给 final normalized 加此分。
         # 解决场景: 关键词正好在 title 命中, 但桶因 time/importance 拖低总分排到弱命中之后。
         # 默认 0 → 行为完全不变(开源 / 上游兼容); 用户 runtime 设 +15~+50 试。
@@ -162,6 +170,47 @@ class BucketManager:
             "keyword_first_sort": self.keyword_first_sort,
             "dryrun_log": self.dryrun_log,
         }
+
+    async def get_hit_stats(self, limit: int = 50) -> dict:
+        """Return top-N most-hit buckets by count + total search count.
+        反向反馈写作: 哪些桶经常被检索 / 哪些从未被命中 → 看 ×0 频次的桶大概率 title 没写成钩子。
+        v1 in-memory (重启清零); 同时拿桶名补全, 找不到的桶 (已删除/归档) 也保留 id 但标 [missing]。
+        """
+        # 按 count 倒序
+        sorted_items = sorted(
+            self._hit_stats.items(),
+            key=lambda kv: kv[1].get("count", 0),
+            reverse=True,
+        )[:max(1, min(500, int(limit)))]
+
+        out = []
+        for bid, rec in sorted_items:
+            name = bid
+            try:
+                bucket = await self.get(bid)
+                if bucket:
+                    name = (bucket.get("metadata") or {}).get("name") or bid
+                else:
+                    name = f"[missing] {bid}"
+            except Exception:
+                name = bid
+            out.append({
+                "id": bid,
+                "name": name,
+                "count": rec.get("count", 0),
+                "last_hit": rec.get("last_hit_iso", ""),
+                "last_query": rec.get("last_query", ""),
+            })
+
+        return {
+            "total_searches": self._total_searches,
+            "items": out,
+        }
+
+    def reset_hit_stats(self) -> None:
+        """清空命中统计 — 用于"清零后看哪些桶又被命中"实验。"""
+        self._hit_stats.clear()
+        self._total_searches = 0
 
     # ---------------------------------------------------------
     # Create a new bucket
@@ -901,6 +950,27 @@ class BucketManager:
             )
         else:
             scored.sort(key=lambda x: x["score"], reverse=True)
+
+        # 命中频次统计累积 (v1 in-memory) — 给配置页 /api/hit-stats 反向看写作命中分布
+        try:
+            self._total_searches += 1
+            from datetime import datetime as _dt
+            now_iso = _dt.utcnow().isoformat()
+            q_trim = (query or "")[:80]
+            for b in scored[:limit]:
+                bid = b.get("id")
+                if not bid:
+                    continue
+                rec = self._hit_stats.get(bid)
+                if rec is None:
+                    rec = {"count": 0}
+                    self._hit_stats[bid] = rec
+                rec["count"] += 1
+                rec["last_hit_iso"] = now_iso
+                rec["last_query"] = q_trim
+        except Exception:
+            # 统计失败绝不影响搜索结果
+            pass
 
         # dryrun_log: 打印 top-10 详细 — 给用户调 title_hit_bonus 取值用, 也作"写作反馈"
         # (用户能看到哪些桶经常被命中、命中在哪个字段, 反向指导记忆 title 写作)。
