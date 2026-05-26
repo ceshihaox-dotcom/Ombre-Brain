@@ -138,6 +138,12 @@ class BucketManager:
         # 用于调优 title_hit_bonus 的取值, 也给用户看"哪条记忆经常被命中"做写作反馈。
         # 走 logger.info, Render 日志能直接看到。默认 False 不污染日志。
         self.dryrun_log = bool(scoring.get("dryrun_log", False))
+        # precise_match_mode: 切换打分算法 fuzzy → 严格关键词 token 命中。
+        # query 按标点/空格切 token (len ≥ 2), 每个 token 在桶各字段做严格 substring 命中,
+        # 命中分 = sum(命中 token × 字段权重), emotion/time/importance/warmth 全砍。
+        # 解决: 长 query 在 partial_ratio 下错乱 + 高 valence 桶被 warmth_boost 推得无关键词也排前。
+        # 默认 False → 维持原 fuzzy 行为, 开源/上游兼容。
+        self.precise_match_mode = bool(scoring.get("precise_match_mode", False))
 
     # Runtime-tunable scoring keys (whitelist; values type-coerced per key).
     # 跟 decay_engine.DEFAULTS 同思路 — 限定可被 /api/scoring-config 改的 key, 防误写。
@@ -145,6 +151,7 @@ class BucketManager:
         "title_hit_bonus": 0.0,        # float, 0~100
         "keyword_first_sort": False,   # bool
         "dryrun_log": False,           # bool
+        "precise_match_mode": False,   # bool — 严格关键词命中模式 (砍 emotion/time/importance/warmth)
     }
 
     def apply_runtime_scoring_overrides(self, overrides: dict) -> None:
@@ -162,11 +169,14 @@ class BucketManager:
             self.keyword_first_sort = bool(overrides["keyword_first_sort"])
         if "dryrun_log" in overrides:
             self.dryrun_log = bool(overrides["dryrun_log"])
+        if "precise_match_mode" in overrides:
+            self.precise_match_mode = bool(overrides["precise_match_mode"])
         logger.info(
             f"[scoring] runtime overrides applied: "
             f"title_hit_bonus={self.title_hit_bonus}, "
             f"keyword_first_sort={self.keyword_first_sort}, "
-            f"dryrun_log={self.dryrun_log}"
+            f"dryrun_log={self.dryrun_log}, "
+            f"precise_match_mode={self.precise_match_mode}"
         )
 
     def current_scoring_overrides(self) -> dict:
@@ -175,6 +185,79 @@ class BucketManager:
             "title_hit_bonus": self.title_hit_bonus,
             "keyword_first_sort": self.keyword_first_sort,
             "dryrun_log": self.dryrun_log,
+            "precise_match_mode": self.precise_match_mode,
+        }
+
+    # query 切 token 用正则: 中英标点 + 空白 + 全角符号
+    # 切完保留 len 2..12 的 token (太短 stopword 噪音, 太长几乎不会在桶里出现)
+    _TOKEN_SPLIT_RE = None  # lazy compile
+
+    @classmethod
+    def _split_query_tokens(cls, query: str) -> list:
+        """切 query 成关键词 tokens。中文不分词只切标点 — 4 字关键词如"又快又短"会作整 token 出来。
+        过长 token (> 12 字, 几乎不可能在任何桶里 substring 命中) 自动丢弃。
+        过短 token (< 2 字, stopword) 也丢弃。"""
+        import re
+        if cls._TOKEN_SPLIT_RE is None:
+            # 按中英标点、空白、引号、括号切; 保留普通字符
+            cls._TOKEN_SPLIT_RE = re.compile(r'[\s,。!?:;、《》「」"\'""''()()【】\[\]<>\.\!\?\:;,/\\\|·~`@#\$%\^&\*\+=\-_]+')
+        raw = cls._TOKEN_SPLIT_RE.split(query or "")
+        return [t for t in raw if 2 <= len(t) <= 12]
+
+    def _calc_precise_match(self, query: str, bucket: dict) -> dict:
+        """关键词 token 命中模式 — 严格 substring, 不走 fuzz partial_ratio。
+        每个 query token 在桶各字段做 `token in field_text`, 命中累加该字段权重。
+        Score = sum(命中 token × 字段权重); 无命中 = 0 = 不入选。
+
+        字段权重沿用 fuzzy 路径同样的值: name×3 / domain×2.5 / tags×2 / summary×1.5 / content×content_weight
+        Returns 跟 _calc_topic_match 同 shape: {score, matched_in, field_scores}
+        """
+        tokens = self._split_query_tokens(query)
+        if not tokens:
+            return {"score": 0.0, "matched_in": [], "field_scores": {}, "tokens_hit": {}}
+
+        meta = bucket.get("metadata", {}) or {}
+        name = str(meta.get("name") or "")
+        summary = str(meta.get("summary") or "")
+        content = str(bucket.get("content") or "")
+        domain_str = " ".join(meta.get("domain") or [])
+        tags_str = " ".join(meta.get("tags") or [])
+
+        fields = [
+            ("title",   name,       3.0),
+            ("domain",  domain_str, 2.5),
+            ("tag",     tags_str,   2.0),
+            ("summary", summary,    1.5),
+            ("content", content,    self.content_weight),
+        ]
+
+        total_score = 0.0
+        matched_in = []
+        tokens_hit = {}     # field -> list[tokens]
+        field_scores = {}   # field -> int (100 if any token hit in this field else 0)
+
+        for fname, ftext, fweight in fields:
+            hits = [t for t in tokens if t and t in ftext]
+            if hits:
+                matched_in.append(fname)
+                total_score += fweight * len(hits)
+                tokens_hit[fname] = hits
+                field_scores[fname] = 100
+            else:
+                field_scores[fname] = 0
+
+        # 归一化到 0~100, 跟 fuzzy 路径量纲对齐 (ombre-inject.js DEFAULT_THRESHOLD=30 等阈值能复用)
+        # 设计: 1 token 严格命中 title (×3.0) → 30 分 = 刚好过 auto-inject 默认阈值,
+        #       命中 2 个字段或 2 个 token → 50~60, 多字段多 token 累加, 100 封顶
+        raw_score = total_score
+        normalized_score = min(total_score * 10.0, 100.0)
+
+        return {
+            "score": normalized_score,
+            "raw_score": raw_score,
+            "matched_in": matched_in,
+            "field_scores": field_scores,
+            "tokens_hit": tokens_hit,
         }
 
     async def get_hit_stats(self, limit: int = 50) -> dict:
@@ -880,6 +963,21 @@ class BucketManager:
             meta = bucket.get("metadata", {})
 
             try:
+                # precise_match_mode: 走严格 token 命中, 砍 emotion/time/importance/warmth
+                # 解决"长 query + partial_ratio 失准" + "高 valence 桶被 warmth 推得无关键词也排前"
+                if self.precise_match_mode:
+                    pm = self._calc_precise_match(query, bucket)
+                    if pm["score"] > 0:
+                        # resolved 桶仍按 fuzzy 路径同样的降权处理 (× 0.3), 保持一致行为
+                        s = pm["score"] * (0.3 if meta.get("resolved", False) else 1.0)
+                        bucket["score"] = round(s, 2)
+                        bucket["matched_in"] = pm["matched_in"]
+                        bucket["field_scores"] = pm["field_scores"]
+                        bucket["tokens_hit"] = pm["tokens_hit"]
+                        bucket["_raw_score"] = pm["raw_score"]  # 给 dryrun_log 看原始累加分
+                        scored.append(bucket)
+                    continue  # 跳过原 fuzzy 路径
+
                 # Dim 1: topic relevance (fuzzy text, 0~1) + 命中字段
                 topic_match = self._calc_topic_match(query, bucket)
                 topic_score = topic_match["score"]
@@ -1013,8 +1111,9 @@ class BucketManager:
         # (用户能看到哪些桶经常被命中、命中在哪个字段, 反向指导记忆 title 写作)。
         if self.dryrun_log and scored:
             top = scored[: min(10, len(scored))]
-            preview = [
-                {
+            preview = []
+            for b in top:
+                item = {
                     "id": b.get("id", "?"),
                     "name": (b.get("metadata") or {}).get("name", "?"),
                     "score": b.get("score"),
@@ -1022,11 +1121,15 @@ class BucketManager:
                     "matched_in": b.get("matched_in", []),
                     "field_scores": b.get("field_scores", {}),
                 }
-                for b in top
-            ]
+                # precise 模式独有: token 命中详情 + 归一化前原始分(便于反推阈值/字段权重)
+                if self.precise_match_mode:
+                    item["tokens_hit"] = b.get("tokens_hit", {})
+                    item["raw_score"] = b.get("_raw_score")
+                preview.append(item)
             logger.info(
                 f"[scoring.dryrun] query={query!r} | "
-                f"cfg(bonus={self.title_hit_bonus}, kw_first={self.keyword_first_sort}) | "
+                f"cfg(bonus={self.title_hit_bonus}, kw_first={self.keyword_first_sort}, "
+                f"precise={self.precise_match_mode}) | "
                 f"top={preview}"
             )
 
