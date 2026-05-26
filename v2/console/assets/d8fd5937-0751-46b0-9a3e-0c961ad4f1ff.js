@@ -46,6 +46,11 @@ function ConfigPage() {
   const [hitStats, setHitStats] = ccS(null);         // { total_searches, items: [...] }
   const [hitStatsLoading, setHitStatsLoading] = ccS(false);
 
+  // 最近搜索追溯 ("我这次发消息浮现了哪些"用)
+  const [recentSearches, setRecentSearches] = ccS(null);   // { items: [{ts, query, top:[...]}] }
+  const [recentLoading, setRecentLoading] = ccS(false);
+  const [recentOpen, setRecentOpen] = ccS({});             // ts → bool: 展开第 N 条详情
+
   const fetchAll = async () => {
     try {
       const r = await fetch('/api/config/api');
@@ -91,7 +96,15 @@ function ConfigPage() {
     } catch (e) { /* 沉默 */ }
     finally { setHitStatsLoading(false); }
   };
-  ccE(() => { fetchAll(); fetchStrategy(); fetchDecay(); fetchPrompts(); fetchScoring(); fetchHitStats(); }, []);
+  const fetchRecentSearches = async () => {
+    setRecentLoading(true);
+    try {
+      const r = await fetch('/api/recent-searches?limit=10');
+      if (r.ok) setRecentSearches(await r.json());
+    } catch (e) { /* 沉默 */ }
+    finally { setRecentLoading(false); }
+  };
+  ccE(() => { fetchAll(); fetchStrategy(); fetchDecay(); fetchPrompts(); fetchScoring(); fetchHitStats(); fetchRecentSearches(); }, []);
 
   // ─── Prompt 编辑相关 ───
   const isPromptOverridden = (key) => promptCfg && promptCfg.overridden && promptCfg.overridden.includes(key);
@@ -840,6 +853,93 @@ function ConfigPage() {
         )}
         <div className="oc-field-help" style={{ marginTop: 10, color: 'var(--ink-4)' }}>
           统计自启动累计 · 重启后清零 · 看到 ×0 频次的桶 → 大概率 title 没写成钩子
+        </div>
+      </ConsoleCard>
+
+      {/* 最近搜索追溯 ("我这次发消息浮现了哪些"用) */}
+      <ConsoleCard label="最近搜索追溯" sub="最近 10 次 search 的 query + top 命中 · 直击「这次发消息浮现了什么」">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <div style={{ fontSize: 11, color: 'var(--ink-4)', fontFamily: 'var(--mono)' }}>
+            {recentSearches ? `共 ${(recentSearches.items || []).length} 条记录` : '载入中…'}
+          </div>
+          <button
+            className="oc-btn oc-btn-ghost"
+            onClick={fetchRecentSearches}
+            disabled={recentLoading}
+            style={{ fontSize: 11, padding: '3px 12px' }}
+          >{recentLoading ? '⌛' : '↻ 刷新'}</button>
+        </div>
+        {recentSearches && recentSearches.items && recentSearches.items.length === 0 && (
+          <div style={{ color: 'var(--ink-4)', fontSize: 12, padding: '12px 0' }}>
+            还没有搜索记录 · 发条消息或在前端搜一下记忆就有
+          </div>
+        )}
+        {recentSearches && recentSearches.items && recentSearches.items.length > 0 && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12 }}>
+            {recentSearches.items.map((tr, i) => {
+              const isOpen = !!recentOpen[tr.ts];
+              const tsShort = (tr.ts || '').slice(11, 19);  // HH:MM:SS
+              return (
+                <div key={tr.ts + '_' + i} style={{
+                  border: '1px solid var(--ink-5, rgba(0,0,0,0.08))',
+                  borderRadius: 4,
+                  background: isOpen ? 'var(--paper-2, rgba(0,0,0,0.02))' : 'transparent',
+                }}>
+                  <div
+                    onClick={() => setRecentOpen(s => ({ ...s, [tr.ts]: !s[tr.ts] }))}
+                    style={{
+                      display: 'flex', alignItems: 'baseline', gap: 8,
+                      padding: '6px 10px', cursor: 'pointer', userSelect: 'none',
+                    }}
+                  >
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-4)', minWidth: 60 }}>
+                      {tsShort} UTC
+                    </span>
+                    <span style={{ flex: 1, color: 'var(--ink-2)' }}>
+                      "{tr.query}"
+                    </span>
+                    <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-4)' }}>
+                      命中 {tr.result_count}  ·  {isOpen ? '▾' : '▸'}
+                    </span>
+                  </div>
+                  {isOpen && (
+                    <div style={{ padding: '4px 10px 10px 10px', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                      {(tr.top || []).map((h, j) => (
+                        <div key={h.id + '_' + j} style={{
+                          display: 'flex', alignItems: 'baseline', gap: 8,
+                          padding: '3px 0', fontSize: 11,
+                          borderTop: j === 0 ? 'none' : '1px dotted var(--ink-5, rgba(0,0,0,0.06))',
+                        }}>
+                          <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent)', minWidth: 36, textAlign: 'right' }}>
+                            #{j + 1}
+                          </span>
+                          <span style={{
+                            fontFamily: 'var(--mono)', fontSize: 10,
+                            color: h.title_hit ? 'var(--accent)' : 'var(--ink-3)',
+                            fontWeight: h.title_hit ? 600 : 400,
+                            minWidth: 48,
+                          }}>
+                            {Number(h.score || 0).toFixed(1)}
+                          </span>
+                          <span style={{ flex: 1, color: 'var(--ink-2)' }}>
+                            {h.name}
+                            {h.type === 'feel' && <span style={{ color: 'var(--ink-4)', marginLeft: 6 }}>[feel]</span>}
+                            {h.type === 'permanent' && <span style={{ color: 'var(--ink-4)', marginLeft: 6 }}>[钉]</span>}
+                          </span>
+                          <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-4)' }}>
+                            {(h.matched_in || []).join(',') || '—'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+        <div className="oc-field-help" style={{ marginTop: 10, color: 'var(--ink-4)' }}>
+          点条目展开看 top-10 详情 · score 紫色 = title 命中 · 自动注入触发的 search 也在这看
         </div>
       </ConsoleCard>
 

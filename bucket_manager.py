@@ -119,6 +119,12 @@ class BucketManager:
         self._hit_stats: dict = {}
         self._total_searches: int = 0
 
+        # 最近搜索追溯 (ring buffer, 容量 20): 给前端"我这次发消息浮现了哪些"用。
+        # 结构: deque([{ts, query, top: [{id, name, score, matched_in, title_hit}, ...]}, ...])
+        # 跟 dryrun_log 内容相似但是结构化 + 走 endpoint 而不是 Render 日志, 体感顺很多。
+        from collections import deque as _deque
+        self._recent_searches = _deque(maxlen=20)
+
         # title_hit_bonus: title 字段 partial_ratio ≥ _MATCH_THRESHOLD 时给 final normalized 加此分。
         # 解决场景: 关键词正好在 title 命中, 但桶因 time/importance 拖低总分排到弱命中之后。
         # 默认 0 → 行为完全不变(开源 / 上游兼容); 用户 runtime 设 +15~+50 试。
@@ -211,6 +217,16 @@ class BucketManager:
         """清空命中统计 — 用于"清零后看哪些桶又被命中"实验。"""
         self._hit_stats.clear()
         self._total_searches = 0
+
+    def get_recent_searches(self, limit: int = 10) -> list:
+        """Return list of recent search traces, newest first.
+        每条 = {ts, query, result_count, top: [{id, name, type, score, matched_in, title_hit, field_scores}]}。
+        给前端"我这次发消息浮现了哪些"看, 也方便排查"为什么这条没浮现"。"""
+        n = max(1, min(20, int(limit)))
+        # deque 是 oldest-first; 反转给 newest-first 更符合"最近"语义
+        items = list(self._recent_searches)
+        items.reverse()
+        return items[:n]
 
     # ---------------------------------------------------------
     # Create a new bucket
@@ -968,6 +984,27 @@ class BucketManager:
                 rec["count"] += 1
                 rec["last_hit_iso"] = now_iso
                 rec["last_query"] = q_trim
+
+            # 最近搜索追溯 — 给"我这次发消息浮现了哪些"用; 保留 top-10 完整命中数据。
+            trace_top = []
+            for b in scored[: min(10, limit)]:
+                bmeta = b.get("metadata") or {}
+                m_in = b.get("matched_in", [])
+                trace_top.append({
+                    "id": b.get("id", "?"),
+                    "name": bmeta.get("name") or b.get("id", "?"),
+                    "type": bmeta.get("type", "dynamic"),
+                    "score": b.get("score"),
+                    "matched_in": m_in,
+                    "title_hit": "title" in m_in,
+                    "field_scores": b.get("field_scores", {}),
+                })
+            self._recent_searches.append({
+                "ts": now_iso,
+                "query": q_trim,
+                "result_count": len(scored),
+                "top": trace_top,
+            })
         except Exception:
             # 统计失败绝不影响搜索结果
             pass
