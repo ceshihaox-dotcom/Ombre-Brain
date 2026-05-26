@@ -192,17 +192,103 @@ class BucketManager:
     # 切完保留 len 2..12 的 token (太短 stopword 噪音, 太长几乎不会在桶里出现)
     _TOKEN_SPLIT_RE = None  # lazy compile
 
+    # 内置 stopword 黑名单 — 弱语义疑问/连接词 + 测试场景 noise + 时间元数据
+    # 设计取舍: 只过滤 query 里出现频率高且语义弱的 2-3 字常用词;
+    # 像 "记忆 / 记得 / 时间 / 测试" 这种在普通对话里可能是真关键词的不加;
+    # 用户后续可走 runtime_config 扩展 (todo).
+    _BUILTIN_STOPWORDS = frozenset([
+        # 弱语义疑问/连接词
+        "什么", "怎么", "为什么", "怎样", "如何",
+        "可以", "应该", "想要", "需要",
+        "一下", "一点", "一些", "已经", "还有",
+        # 人称代词复合
+        "你的", "我的", "他的", "她的", "我们", "你们",
+        # "你还记得 X 吗" 这类 query 前缀的 n-gram noise (2-3 gram 会切出来)
+        "你还", "还记", "记得吗",
+        # 时间/测试元 (auto-inject prompt 里常见的非语义 token)
+        "现在", "当前",
+        "测试", "调用",
+    ])
+
     @classmethod
     def _split_query_tokens(cls, query: str) -> list:
-        """切 query 成关键词 tokens。中文不分词只切标点 — 4 字关键词如"又快又短"会作整 token 出来。
-        过长 token (> 12 字, 几乎不可能在任何桶里 substring 命中) 自动丢弃。
-        过短 token (< 2 字, stopword) 也丢弃。"""
+        """切 query 成关键词 tokens (中文友好):
+
+        1. 按中英标点/空白切原始 token (跟之前一样)
+        2. 长 token (≥ 4 字) 走 jieba 分词:
+           - 切出的 2+ 字真词 (如 "记得 / 自动 / 浮现") 直接保留
+           - 切出的**连续 1 字串** (如 "又 快 又 短") 拼回原文做 2-4 字滑窗 n-gram
+             → 保证 "又快又短" 这种 jieba 不认识的 4 字短语会作为完整 token 出现
+        3. 过滤 stopword + 去重保序 + len 2..12
+
+        没装 jieba 时退回原算法 (整 token 保留)。
+        """
         import re
         if cls._TOKEN_SPLIT_RE is None:
-            # 按中英标点、空白、引号、括号切; 保留普通字符
             cls._TOKEN_SPLIT_RE = re.compile(r'[\s,。!?:;、《》「」"\'""''()()【】\[\]<>\.\!\?\:;,/\\\|·~`@#\$%\^&\*\+=\-_]+')
         raw = cls._TOKEN_SPLIT_RE.split(query or "")
-        return [t for t in raw if 2 <= len(t) <= 12]
+
+        try:
+            import jieba
+            jieba_available = True
+        except ImportError:
+            jieba_available = False
+
+        tokens = []
+        for t in raw:
+            if not t:
+                continue
+            # 短 token 整词保留 (jieba 切短串容易过切, 不如保留原状)
+            if len(t) <= 3:
+                if 2 <= len(t) <= 12:
+                    tokens.append(t)
+                continue
+
+            if not jieba_available:
+                # fallback: 没 jieba 就退回原算法 (整 token 保留)
+                if 2 <= len(t) <= 12:
+                    tokens.append(t)
+                continue
+
+            # 长 token: jieba 切, 连续 1 字片段拼回做 n-gram 补充
+            cut = jieba.lcut(t)
+            run_chars = []  # 累积 jieba 切出的连续 1 字片段
+            for w in cut:
+                if len(w) == 1:
+                    run_chars.append(w)
+                    continue
+                if run_chars:
+                    tokens.extend(cls._ngram_2_4(''.join(run_chars)))
+                    run_chars = []
+                if 2 <= len(w) <= 12:
+                    tokens.append(w)
+            if run_chars:
+                tokens.extend(cls._ngram_2_4(''.join(run_chars)))
+
+        # stopword 过滤 + 去重保序
+        seen = set()
+        out = []
+        for t in tokens:
+            if not (2 <= len(t) <= 12):
+                continue
+            if t in cls._BUILTIN_STOPWORDS or t in seen:
+                continue
+            seen.add(t)
+            out.append(t)
+        return out
+
+    @staticmethod
+    def _ngram_2_4(s: str) -> list:
+        """对单一连续字符串生成所有 2/3/4 字 sliding window n-gram。
+        例: "又快又短" → ["又快","快又","又短","又快又","快又短","又快又短"]"""
+        out = []
+        L = len(s)
+        for n in (2, 3, 4):
+            if n > L:
+                break
+            for i in range(L - n + 1):
+                out.append(s[i:i + n])
+        return out
 
     def _calc_precise_match(self, query: str, bucket: dict) -> dict:
         """关键词 token 命中模式 — 严格 substring, 不走 fuzz partial_ratio。
