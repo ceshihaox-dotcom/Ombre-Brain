@@ -1157,6 +1157,15 @@ def _reload_prompts_from_runtime():
         _dh.set_prompts(prompt_overrides)
 
 
+def _reload_scoring_from_runtime():
+    """读 runtime_config['scoring'] → bucket_mgr.apply_runtime_scoring_overrides。
+    启动 + 每次 POST /api/scoring-config 后调一次, 立刻生效到下次 search()。"""
+    rc = _read_runtime_config()
+    scoring_overrides = rc.get("scoring") or {}
+    if isinstance(scoring_overrides, dict):
+        bucket_mgr.apply_runtime_scoring_overrides(scoring_overrides)
+
+
 @mcp.custom_route("/api/decay-config", methods=["GET"])
 async def api_decay_config_get(request):
     """读当前 decay 各参数当前值 + 出厂默认 + 范围/标签 schema (前端 slider 用)。"""
@@ -1223,6 +1232,95 @@ async def api_decay_config_reset(request):
     return JSONResponse({
         "ok": True,
         "current": decay_engine.current_overrides(),
+    })
+
+
+# =============================================================
+# Scoring config — 检索打分微调(title 命中加分 / 关键词优先排序 / dryrun 日志)
+# 设计: 默认全 0/False → 跟原 search 行为 100% 一致(开源/上游零变化);
+#       用户 runtime 设值才生效。pattern 完全 mirror /api/decay-config。
+# =============================================================
+
+_SCORING_SCHEMA = [
+    {
+        "key": "title_hit_bonus",
+        "label": "title 命中加分",
+        "type": "float",
+        "min": 0, "max": 100, "step": 1,
+        "hint": "query 在桶名命中时给 final score 加此分(0=关), 推荐 +15~+30; 调高让 title 命中桶顶上去",
+    },
+    {
+        "key": "keyword_first_sort",
+        "label": "关键词命中优先排序",
+        "type": "bool",
+        "hint": "开启时 title 命中的桶整体排到非 title 命中之前(bonus 不够压时的兜底)",
+    },
+    {
+        "key": "dryrun_log",
+        "label": "dryrun 日志",
+        "type": "bool",
+        "hint": "每次 search 打印 top-10 详细到服务日志, 调权重时打开看效果",
+    },
+]
+
+
+@mcp.custom_route("/api/scoring-config", methods=["GET"])
+async def api_scoring_config_get(request):
+    """读当前 scoring 参数 + 出厂默认 + schema。"""
+    from starlette.responses import JSONResponse
+    return JSONResponse({
+        "current": bucket_mgr.current_scoring_overrides(),
+        "defaults": dict(bucket_mgr.SCORING_OVERRIDE_DEFAULTS),
+        "schema": _SCORING_SCHEMA,
+    })
+
+
+@mcp.custom_route("/api/scoring-config", methods=["POST"])
+async def api_scoring_config_post(request):
+    """更新 scoring 参数。body 部分或全部 key→value, 存到 runtime_config['scoring'] 并立刻生效。"""
+    from starlette.responses import JSONResponse
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    if not isinstance(body, dict):
+        return JSONResponse({"error": "body 必须是对象"}, status_code=400)
+    rc = _read_runtime_config()
+    cur_scoring = rc.get("scoring") or {}
+    if not isinstance(cur_scoring, dict):
+        cur_scoring = {}
+    # 白名单 + 类型强制
+    for k, default in bucket_mgr.SCORING_OVERRIDE_DEFAULTS.items():
+        if k not in body:
+            continue
+        v = body[k]
+        if isinstance(default, bool):
+            cur_scoring[k] = bool(v)
+        else:
+            try:
+                cur_scoring[k] = float(v)
+            except (TypeError, ValueError):
+                pass
+    rc["scoring"] = cur_scoring
+    _write_runtime_config(rc)
+    _reload_scoring_from_runtime()
+    return JSONResponse({
+        "ok": True,
+        "current": bucket_mgr.current_scoring_overrides(),
+    })
+
+
+@mcp.custom_route("/api/scoring-config/reset", methods=["POST"])
+async def api_scoring_config_reset(request):
+    """全部恢复出厂默认 = 关掉所有 scoring 微调。清掉 runtime_config['scoring'] 后 reload。"""
+    from starlette.responses import JSONResponse
+    rc = _read_runtime_config()
+    rc["scoring"] = {}
+    _write_runtime_config(rc)
+    _reload_scoring_from_runtime()
+    return JSONResponse({
+        "ok": True,
+        "current": bucket_mgr.current_scoring_overrides(),
     })
 
 
@@ -3456,6 +3554,13 @@ if __name__ == "__main__":
         logger.info("Prompt runtime overrides applied")
     except Exception as e:
         logger.warning(f"Prompt runtime overrides apply failed (using defaults): {e}")
+
+    # runtime_config['scoring'] → bucket_mgr.apply_runtime_scoring_overrides
+    try:
+        _reload_scoring_from_runtime()
+        logger.info("Scoring runtime overrides applied")
+    except Exception as e:
+        logger.warning(f"Scoring runtime overrides apply failed (using defaults): {e}")
 
     if transport in ("sse", "streamable-http"):
         import threading

@@ -111,6 +111,58 @@ class BucketManager:
             f"(env raw={_env_warmth!r}, config yaml={scoring.get('warmth_boost', None)!r})"
         )
 
+        # title_hit_bonus: title 字段 partial_ratio ≥ _MATCH_THRESHOLD 时给 final normalized 加此分。
+        # 解决场景: 关键词正好在 title 命中, 但桶因 time/importance 拖低总分排到弱命中之后。
+        # 默认 0 → 行为完全不变(开源 / 上游兼容); 用户 runtime 设 +15~+50 试。
+        # 这是 bonus 不进分母, 直接 += normalized, 跟 warmth 同思路。
+        self.title_hit_bonus = float(scoring.get("title_hit_bonus", 0.0))
+        # keyword_first_sort: True 时 search() 结果按 (title_hit_flag desc, score desc) 二级排序。
+        # 比 title_hit_bonus 更激进: 任何 title 命中都排到所有非 title 命中前面。
+        # 默认 False; 推荐先用 title_hit_bonus 调到满意, 这个留作"实在压不上去"的核选项。
+        self.keyword_first_sort = bool(scoring.get("keyword_first_sort", False))
+        # dryrun_log: True 时每次 search() 调用打印 top-N 详细(query / 桶 id / 分数 / 命中字段 / 有无 bonus 对照)。
+        # 用于调优 title_hit_bonus 的取值, 也给用户看"哪条记忆经常被命中"做写作反馈。
+        # 走 logger.info, Render 日志能直接看到。默认 False 不污染日志。
+        self.dryrun_log = bool(scoring.get("dryrun_log", False))
+
+    # Runtime-tunable scoring keys (whitelist; values type-coerced per key).
+    # 跟 decay_engine.DEFAULTS 同思路 — 限定可被 /api/scoring-config 改的 key, 防误写。
+    SCORING_OVERRIDE_DEFAULTS = {
+        "title_hit_bonus": 0.0,        # float, 0~100
+        "keyword_first_sort": False,   # bool
+        "dryrun_log": False,           # bool
+    }
+
+    def apply_runtime_scoring_overrides(self, overrides: dict) -> None:
+        """Apply runtime scoring overrides to this instance (in-place).
+        启动 + 每次 POST /api/scoring-config 后调用一次, 立刻生效到下次 search()。
+        未在 overrides 里出现的 key 保留 __init__ 时读的值(可能来自 yaml/默认)。"""
+        if not isinstance(overrides, dict):
+            return
+        if "title_hit_bonus" in overrides:
+            try:
+                self.title_hit_bonus = max(0.0, float(overrides["title_hit_bonus"]))
+            except (TypeError, ValueError):
+                pass
+        if "keyword_first_sort" in overrides:
+            self.keyword_first_sort = bool(overrides["keyword_first_sort"])
+        if "dryrun_log" in overrides:
+            self.dryrun_log = bool(overrides["dryrun_log"])
+        logger.info(
+            f"[scoring] runtime overrides applied: "
+            f"title_hit_bonus={self.title_hit_bonus}, "
+            f"keyword_first_sort={self.keyword_first_sort}, "
+            f"dryrun_log={self.dryrun_log}"
+        )
+
+    def current_scoring_overrides(self) -> dict:
+        """Return current values of runtime-tunable scoring keys (for /api/scoring-config GET)."""
+        return {
+            "title_hit_bonus": self.title_hit_bonus,
+            "keyword_first_sort": self.keyword_first_sort,
+            "dryrun_log": self.dryrun_log,
+        }
+
     # ---------------------------------------------------------
     # Create a new bucket
     # 创建新桶
@@ -802,6 +854,13 @@ class BucketManager:
                 if meta.get("resolved", False):
                     normalized *= 0.3
 
+                # title_hit_bonus: title 字段命中(field_score ≥ _MATCH_THRESHOLD) 给 final 加分。
+                # 不进分母, 直接 += normalized。默认 0 → 无变化; 用户 runtime 调高让 title 命中桶顶上去。
+                # 解决 "关键词在 title 但桶被 time/importance 拖低 → 弱命中桶反而排前" 的痛点。
+                title_hit = "title" in topic_match["matched_in"]
+                if title_hit and self.title_hit_bonus:
+                    normalized += self.title_hit_bonus
+
                 # 入选条件:任一字段关键词命中(matched_in 非空) OR 综合分过 fuzzy_threshold
                 # 前者是为了堵"光在正文/摘要里命中,但老记忆被时间衰减拖低总分,凑不到 50 阈值"
                 # —— 用户期望"含 query 的桶必出来",不该被 emotion/time/importance 打掉
@@ -832,7 +891,38 @@ class BucketManager:
                 )
                 continue
 
-        scored.sort(key=lambda x: x["score"], reverse=True)
+        # 默认按 score 单维排序; keyword_first_sort=True 时把 title 命中的桶整体顶到前面。
+        # title bonus 不够压住的极端 case 用这条兜底(比如 bonus=20 但弱命中桶 score=90)。
+        # 排序 key 直接从 matched_in 读, 不污染 bucket dict 额外字段。
+        if self.keyword_first_sort:
+            scored.sort(
+                key=lambda x: ("title" in x.get("matched_in", []), x["score"]),
+                reverse=True,
+            )
+        else:
+            scored.sort(key=lambda x: x["score"], reverse=True)
+
+        # dryrun_log: 打印 top-10 详细 — 给用户调 title_hit_bonus 取值用, 也作"写作反馈"
+        # (用户能看到哪些桶经常被命中、命中在哪个字段, 反向指导记忆 title 写作)。
+        if self.dryrun_log and scored:
+            top = scored[: min(10, len(scored))]
+            preview = [
+                {
+                    "id": b.get("id", "?"),
+                    "name": (b.get("metadata") or {}).get("name", "?"),
+                    "score": b.get("score"),
+                    "title_hit": "title" in b.get("matched_in", []),
+                    "matched_in": b.get("matched_in", []),
+                    "field_scores": b.get("field_scores", {}),
+                }
+                for b in top
+            ]
+            logger.info(
+                f"[scoring.dryrun] query={query!r} | "
+                f"cfg(bonus={self.title_hit_bonus}, kw_first={self.keyword_first_sort}) | "
+                f"top={preview}"
+            )
+
         return scored[:limit]
 
     # ---------------------------------------------------------
