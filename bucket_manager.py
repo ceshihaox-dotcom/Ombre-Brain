@@ -1071,7 +1071,17 @@ class BucketManager:
             from datetime import datetime as _dt
             now_iso = _dt.utcnow().isoformat()
             q_trim = (query or "")[:80]
-            for b in scored[:limit]:
+
+            # trace / hit_stats 跟 /api/search 客户端视图对齐 — 排掉 feel 桶。
+            # 设计: feel 是私密沉淀, 只能走 breath domain="feel" 显式查; 不应出现在
+            # "用户能看到的搜索追溯"和"命中频次"里(否则配置页会泄漏 feel 桶名)。
+            # search() 内部仍返回 raw scored, 让 breath domain="feel" 那条专用路径能查 feel。
+            client_scored = [
+                b for b in scored
+                if (b.get("metadata") or {}).get("type") != "feel"
+            ]
+
+            for b in client_scored[:limit]:
                 bid = b.get("id")
                 if not bid:
                     continue
@@ -1085,7 +1095,7 @@ class BucketManager:
 
             # 最近搜索追溯 — 给"我这次发消息浮现了哪些"用; 保留 top-10 完整命中数据。
             trace_top = []
-            for b in scored[: min(10, limit)]:
+            for b in client_scored[: min(10, limit)]:
                 bmeta = b.get("metadata") or {}
                 m_in = b.get("matched_in", [])
                 trace_top.append({
@@ -1100,7 +1110,7 @@ class BucketManager:
             self._recent_searches.append({
                 "ts": now_iso,
                 "query": q_trim,
-                "result_count": len(scored),
+                "result_count": len(client_scored),
                 "top": trace_top,
             })
         except Exception:
