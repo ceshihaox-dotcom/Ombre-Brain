@@ -1353,6 +1353,22 @@ async def api_hit_stats_reset(request):
     return JSONResponse({"ok": True})
 
 
+@mcp.custom_route("/api/recent-searches", methods=["GET"])
+async def api_recent_searches(request):
+    """Return list of recent search traces (newest first), capped 20.
+    Query param: limit (default 10). 给前端"我这次发消息浮现了什么"看, 直击 dryrun_log 太难看的问题。"""
+    from starlette.responses import JSONResponse
+    try:
+        limit = int(request.query_params.get("limit", "10"))
+    except ValueError:
+        limit = 10
+    try:
+        items = bucket_mgr.get_recent_searches(limit=limit)
+        return JSONResponse({"items": items})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 # =============================================================
 # Prompts config — 让前端配置页直接编辑系统 prompt, 不动代码
 # 数据流: GET → 当前生效 + 出厂默认 + schema(标签/说明)
