@@ -501,8 +501,13 @@ async def breath(
         for bucket_id, sim_score in vector_results:
             if bucket_id not in matched_ids and sim_score > 0.5:
                 bucket = await bucket_mgr.get(bucket_id)
-                # 注: 跟关键词通道对齐, 不排除 highlighted (钉选的桶搜索时也应返回)
+                # 注: 排除钉选/永久参考桶 (protected 或 highlight) — 语义相似正是用户不想要的
+                #   "模糊命中占记忆位"。它们已在开窗核心准则/永久参考区读取; title 强命中的情况
+                #   已由上面关键词通道 (search()) 收进 matches, 这里只补"keyword 没命中但语义相近"
+                #   的桶, 它们不该靠这条旁路混入。
                 if bucket and not (is_internalized(bucket["metadata"])
+                                   or is_highlighted(bucket["metadata"])
+                                   or is_protected(bucket["metadata"])
                                    or _is_noise(bucket["metadata"])
                                    or bucket["metadata"].get("type") == "feel"):
                     bucket["score"] = round(sim_score * 100, 2)
@@ -1331,15 +1336,30 @@ async def api_scoring_config_reset(request):
 
 @mcp.custom_route("/api/hit-stats", methods=["GET"])
 async def api_hit_stats(request):
-    """Return {total_searches, items: [{id, name, count, last_hit, last_query}, ...]} sorted by count desc.
-    Query param: limit (default 50, max 500)."""
+    """Return {total_searches, total_buckets, hit_buckets, zero_buckets, order,
+    items: [{id, name, count, last_hit, last_query, gated, missing}, ...]}.
+    Query params:
+      limit        默认 50 (max 2000)
+      include_zero =1 把从未命中的桶也并进来 (count 0) → 冷记忆视图
+      order        desc(默认 高频在前) / asc(冷门在前)
+      exclude_gated=1 排除钉选/永久参考/feel/已内化桶 (它们 ×0 是预期)"""
     from starlette.responses import JSONResponse
+    qp = request.query_params
     try:
-        limit = int(request.query_params.get("limit", "50"))
+        limit = int(qp.get("limit", "50"))
     except ValueError:
         limit = 50
+
+    def _truthy(v):
+        return str(v).lower() in ("1", "true", "yes", "on")
+
     try:
-        data = await bucket_mgr.get_hit_stats(limit=limit)
+        data = await bucket_mgr.get_hit_stats(
+            limit=limit,
+            include_zero=_truthy(qp.get("include_zero", "")),
+            order=qp.get("order", "desc"),
+            exclude_gated=_truthy(qp.get("exclude_gated", "")),
+        )
         return JSONResponse(data)
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

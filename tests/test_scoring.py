@@ -304,6 +304,115 @@ class TestSearchScoring:
 
 
 # ============================================================
+# Pinned (highlight) buckets only enter search on a real title hit
+# 钉选(highlight)桶仅在 title 强命中时进搜索/自动注入结果
+# (开窗核心准则区已读取, 不该靠模糊/正文命中占自动注入记忆位;
+#  精准按桶名搜仍可达 —— 见 server.py 2026-05 注释 / bucket_manager.search 守卫)
+# ============================================================
+class TestPinnedSearchGate:
+    @pytest.fixture
+    async def gated_env(self, test_config, bucket_mgr):
+        # 钉选桶: 标题与正文关键词刻意错开, 便于分别命中
+        pinned_id = await bucket_mgr.create(
+            content="这里写了 量子纠缠 相关的说明文字内容",
+            tags=[], importance=10, domain=[], valence=0.5, arousal=0.3,
+            name="核心准则甲", pinned=True,
+        )
+        # 永久参考桶: protected-only(防衰减但未 highlight), 同样受守卫约束
+        protected_only_id = await bucket_mgr.create(
+            content="第三段也提到 量子纠缠 的长期参考资料",
+            tags=[], importance=10, domain=[], valence=0.5, arousal=0.3,
+            name="永久参考乙", protected=True,
+        )
+        # 普通动态桶: 正文同样含 "量子纠缠", 作为对照(应正常被搜出)
+        normal_id = await bucket_mgr.create(
+            content="另一段关于 量子纠缠 的随手记录",
+            tags=[], importance=5, domain=[], valence=0.5, arousal=0.3,
+            name="普通笔记",
+        )
+        return bucket_mgr, pinned_id, protected_only_id, normal_id
+
+    @pytest.mark.asyncio
+    async def test_pinned_returned_on_title_hit(self, gated_env):
+        """精准搜桶名(title 命中)→ 钉选/永久参考桶仍可达。"""
+        bm, pinned_id, protected_only_id, normal_id = gated_env
+        assert pinned_id in {r["id"] for r in await bm.search("核心准则甲", limit=20)}
+        assert protected_only_id in {r["id"] for r in await bm.search("永久参考乙", limit=20)}
+
+    @pytest.mark.asyncio
+    async def test_pinned_excluded_on_content_only_hit(self, gated_env):
+        """正文/模糊命中但 title 没命中 → 钉选/永久参考桶都不进结果(不占自动注入记忆位);
+        同样正文命中的普通桶照常返回。"""
+        bm, pinned_id, protected_only_id, normal_id = gated_env
+        results = await bm.search("量子纠缠", limit=20)
+        ids = {r["id"] for r in results}
+        assert pinned_id not in ids, "钉选桶不该靠正文命中混入自动注入"
+        assert protected_only_id not in ids, "永久参考桶不该靠正文命中混入自动注入"
+        assert normal_id in ids, "普通桶应正常被正文命中搜出"
+
+
+# ============================================================
+# Hit-stats persistence (P1) + cold-memory view (P2)
+# 命中统计落盘(重启不丢) + 冷记忆视图(看从未命中的桶)
+# ============================================================
+class TestHitStatsPersistence:
+    @pytest.mark.asyncio
+    async def test_counts_survive_reload(self, test_config, bucket_mgr):
+        """search 命中 → force flush → 新建 manager 应从盘里读回累计计数。"""
+        from bucket_manager import BucketManager
+        await bucket_mgr.create(content="量子纠缠 的说明", tags=[], importance=5,
+                                domain=[], name="甲")
+        await bucket_mgr.search("量子纠缠", limit=20)
+        assert bucket_mgr._total_searches == 1
+        bucket_mgr._flush_hit_stats(force=True)
+
+        # 重启模拟: 指向同一 buckets_dir 的新 manager
+        bm2 = BucketManager(test_config)
+        assert bm2._total_searches == 1
+        assert sum(r["count"] for r in (await bm2.get_hit_stats())["items"]) >= 1
+
+    @pytest.mark.asyncio
+    async def test_reset_clears_disk(self, test_config, bucket_mgr):
+        from bucket_manager import BucketManager
+        await bucket_mgr.create(content="量子纠缠 的说明", tags=[], importance=5, domain=[], name="甲")
+        await bucket_mgr.search("量子纠缠", limit=20)
+        bucket_mgr._flush_hit_stats(force=True)
+        bucket_mgr.reset_hit_stats()
+        # 删盘后新 manager 应是空表
+        bm2 = BucketManager(test_config)
+        assert bm2._total_searches == 0
+        assert (await bm2.get_hit_stats())["items"] == []
+
+
+class TestColdMemoryView:
+    @pytest.mark.asyncio
+    async def test_include_zero_surfaces_never_hit(self, bucket_mgr):
+        """include_zero=True → 从未命中的桶以 count 0 出现; exclude_gated 排除钉选。"""
+        hit_id = await bucket_mgr.create(content="量子纠缠 的说明", tags=[], importance=5,
+                                         domain=[], name="被搜的桶")
+        cold_id = await bucket_mgr.create(content="完全无关的孤独内容", tags=[], importance=5,
+                                          domain=[], name="冷落的桶")
+        pinned_id = await bucket_mgr.create(content="钉选内容 也含 量子纠缠", tags=[], importance=10,
+                                            domain=[], name="钉选桶", pinned=True)
+        await bucket_mgr.search("量子纠缠", limit=20)  # 只命中 hit_id (钉选桶被守卫挡)
+
+        data = await bucket_mgr.get_hit_stats(include_zero=True, order="asc", exclude_gated=True)
+        by_id = {r["id"]: r for r in data["items"]}
+        assert by_id[cold_id]["count"] == 0          # 冷落桶以 ×0 浮现
+        assert by_id[hit_id]["count"] >= 1           # 被搜的桶有命中
+        assert pinned_id not in by_id                # 钉选桶被 exclude_gated 排除
+        assert data["items"][0]["count"] == 0        # asc: 冷门在最前
+        assert data["zero_buckets"] >= 1
+
+    @pytest.mark.asyncio
+    async def test_default_view_excludes_zero(self, bucket_mgr):
+        """默认 (include_zero=False) 只返回命中过的桶, 不混入 ×0。"""
+        await bucket_mgr.create(content="孤独内容", tags=[], importance=5, domain=[], name="冷落的桶")
+        data = await bucket_mgr.get_hit_stats()
+        assert all(r["count"] > 0 for r in data["items"])
+
+
+# ============================================================
 # Dataset integrity checks
 # ============================================================
 class TestDatasetIntegrity:

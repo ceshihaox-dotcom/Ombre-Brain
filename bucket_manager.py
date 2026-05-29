@@ -26,10 +26,12 @@
 # ============================================================
 
 import os
+import json
 import math
 import logging
 import re
 import shutil
+import atexit
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
@@ -39,7 +41,7 @@ import frontmatter
 import jieba
 from rapidfuzz import fuzz
 
-from utils import generate_bucket_id, sanitize_name, safe_path, now_iso
+from utils import generate_bucket_id, sanitize_name, safe_path, now_iso, is_highlighted, is_protected, is_internalized
 
 logger = logging.getLogger("ombre_brain.bucket")
 
@@ -111,13 +113,19 @@ class BucketManager:
             f"(env raw={_env_warmth!r}, config yaml={scoring.get('warmth_boost', None)!r})"
         )
 
-        # 命中频次统计 (v1 in-memory, 重启清零; 反向反馈"哪些桶被高频检索 / 哪些从未"):
+        # 命中频次统计 (持久化到 {base_dir}/hit_stats.json, 重启不再清零):
         # 结构: {bucket_id: {count, last_hit_iso, last_query}}; 总数: self._total_searches
         # 跨 search/breath 累计 — 任何走 self.search() 的命中都计数 (含 /api/search + breath dynamic 池)。
-        # 不持久化是有意为之: 简单 + 重启 = 自然重置, 便于"清零后看哪些桶又被命中"做实验。
-        # 想要持久化可未来 flush 到 {buckets_dir}/hit_stats.json, 不影响当前接口。
+        # 落盘策略: search() 里打 dirty 标记, 防抖落盘 (攒够 _HITSTATS_FLUSH_EVERY 次
+        #   或 距上次 ≥ _HITSTATS_FLUSH_SECS 秒, 取先到) + atexit 兜底; 临时文件 + os.replace 原子写。
+        # reset_hit_stats() 仍可手动清零 (兼删盘文件), 保留"清零后看哪些桶又被命中"的实验能力。
+        self._hit_stats_path = os.path.join(self.base_dir, "hit_stats.json")
         self._hit_stats: dict = {}
         self._total_searches: int = 0
+        self._hit_dirty: int = 0                    # 自上次 flush 以来累计的搜索次数
+        self._hit_last_flush = datetime.utcnow()    # 上次落盘时间
+        self._load_hit_stats()
+        atexit.register(self._flush_hit_stats, True)  # 进程正常退出兜底落盘
 
         # 最近搜索追溯 (ring buffer, 容量 20): 给前端"我这次发消息浮现了哪些"用。
         # 结构: deque([{ts, query, top: [{id, name, score, matched_in, title_hit}, ...]}, ...])
@@ -346,46 +354,153 @@ class BucketManager:
             "tokens_hit": tokens_hit,
         }
 
-    async def get_hit_stats(self, limit: int = 50) -> dict:
-        """Return top-N most-hit buckets by count + total search count.
-        反向反馈写作: 哪些桶经常被检索 / 哪些从未被命中 → 看 ×0 频次的桶大概率 title 没写成钩子。
-        v1 in-memory (重启清零); 同时拿桶名补全, 找不到的桶 (已删除/归档) 也保留 id 但标 [missing]。
-        """
-        # 按 count 倒序
-        sorted_items = sorted(
-            self._hit_stats.items(),
-            key=lambda kv: kv[1].get("count", 0),
-            reverse=True,
-        )[:max(1, min(500, int(limit)))]
+    # 落盘防抖阈值: 攒够这么多次搜索, 或距上次落盘满这么多秒, 就写一次盘。
+    _HITSTATS_FLUSH_EVERY = 20
+    _HITSTATS_FLUSH_SECS = 60
 
-        out = []
-        for bid, rec in sorted_items:
-            name = bid
+    def _load_hit_stats(self) -> None:
+        """启动时从 hit_stats.json 读累计命中 (无文件/损坏则当空表, 绝不抛)。"""
+        try:
+            with open(self._hit_stats_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            if isinstance(data, dict):
+                self._total_searches = int(data.get("total_searches", 0) or 0)
+                raw = data.get("buckets", {})
+                if isinstance(raw, dict):
+                    for bid, rec in raw.items():
+                        if isinstance(rec, dict):
+                            self._hit_stats[bid] = {
+                                "count": int(rec.get("count", 0) or 0),
+                                "last_hit_iso": str(rec.get("last_hit_iso", "") or ""),
+                                "last_query": str(rec.get("last_query", "") or ""),
+                            }
+            logger.info(
+                f"[hit-stats] loaded {len(self._hit_stats)} buckets / "
+                f"{self._total_searches} searches from {self._hit_stats_path}"
+            )
+        except FileNotFoundError:
+            pass  # 首次运行, 正常
+        except Exception as e:
+            logger.warning(f"[hit-stats] load failed, starting empty: {e}")
+        self._hit_last_flush = datetime.utcnow()
+
+    def _flush_hit_stats(self, force: bool = False) -> None:
+        """原子落盘 (tmp + os.replace)。默认走防抖 (多数调用直接 return); force=True 立即写。"""
+        if not force:
+            secs = (datetime.utcnow() - self._hit_last_flush).total_seconds()
+            if self._hit_dirty < self._HITSTATS_FLUSH_EVERY and secs < self._HITSTATS_FLUSH_SECS:
+                return
+        try:
+            payload = {
+                "total_searches": self._total_searches,
+                "buckets": self._hit_stats,
+                "updated_iso": datetime.utcnow().isoformat(),
+            }
+            tmp = self._hit_stats_path + ".tmp"
+            with open(tmp, "w", encoding="utf-8") as f:
+                json.dump(payload, f, ensure_ascii=False)
+            os.replace(tmp, self._hit_stats_path)
+            self._hit_dirty = 0
+            self._hit_last_flush = datetime.utcnow()
+        except Exception as e:
+            logger.warning(f"[hit-stats] flush failed: {e}")
+
+    @staticmethod
+    def _hit_is_gated(meta: dict) -> bool:
+        """钉选/永久参考/feel/已内化: 这些桶在自动注入里本就不该常被命中
+        (钉选/永久参考已被 search 守卫挡; feel 走独立通道; internalized 隐藏),
+        所以它们 ×0 是预期, 不算"被冷落的记忆"。冷区视图默认排除/分组它们。"""
+        return bool(
+            is_protected(meta) or is_highlighted(meta)
+            or is_internalized(meta) or meta.get("type") == "feel"
+        )
+
+    async def get_hit_stats(
+        self,
+        limit: int = 50,
+        include_zero: bool = False,
+        order: str = "desc",
+        exclude_gated: bool = False,
+    ) -> dict:
+        """命中频次统计。
+        - include_zero=True: 把从未命中的桶也并进来 (count=0), 用于"冷记忆"视图。
+        - exclude_gated=True: 排除钉选/永久参考/feel/已内化桶 (它们 ×0 是预期, 见 _hit_is_gated)。
+        - order: 'desc' 高频在前(默认) / 'asc' 冷门在前。
+        反向反馈写作: ×0 且非 gated 的桶 → 大概率 title 没写成钩子, 值得改。
+        已删/归档但仍在命中表里的桶标 [missing]。"""
+        limit = max(1, min(2000, int(limit)))
+        order = "asc" if str(order).lower() == "asc" else "desc"
+
+        # 需要全量桶元数据时 (并入从未命中 / 判定 gated) 一次性拉, 避免 N+1 get()
+        meta_by_id = {}
+        if include_zero or exclude_gated:
             try:
-                bucket = await self.get(bid)
-                if bucket:
-                    name = (bucket.get("metadata") or {}).get("name") or bid
-                else:
-                    name = f"[missing] {bid}"
-            except Exception:
-                name = bid
-            out.append({
-                "id": bid,
-                "name": name,
-                "count": rec.get("count", 0),
+                for b in await self.list_all(include_archive=False):
+                    meta_by_id[b["id"]] = b.get("metadata", {}) or {}
+            except Exception as e:
+                logger.warning(f"[hit-stats] list_all for cold view failed: {e}")
+
+        ids = set(self._hit_stats.keys())
+        if include_zero:
+            ids |= set(meta_by_id.keys())
+
+        rows = []
+        zero_count = 0
+        for bid in ids:
+            rec = self._hit_stats.get(bid, {})
+            count = int(rec.get("count", 0) or 0)
+            meta = meta_by_id.get(bid)
+            if meta is not None:
+                name = meta.get("name") or bid
+                gated = self._hit_is_gated(meta)
+                missing = False
+            else:
+                # 未预载 meta (热门视图) 或桶已删/归档 → 单独 get() 补名
+                name, gated, missing = bid, False, False
+                try:
+                    bk = await self.get(bid)
+                    if bk:
+                        m = bk.get("metadata") or {}
+                        name = m.get("name") or bid
+                        gated = self._hit_is_gated(m)
+                    else:
+                        name, missing = f"[missing] {bid}", True
+                except Exception:
+                    pass
+            if exclude_gated and gated:
+                continue
+            if count == 0:
+                zero_count += 1
+            rows.append({
+                "id": bid, "name": name, "count": count,
                 "last_hit": rec.get("last_hit_iso", ""),
                 "last_query": rec.get("last_query", ""),
+                "gated": gated, "missing": missing,
             })
+
+        # 排序: 主键 count, 同 count 时按 last_hit 兜底排稳定
+        rows.sort(key=lambda r: (r["count"], r["last_hit"]), reverse=(order == "desc"))
 
         return {
             "total_searches": self._total_searches,
-            "items": out,
+            "total_buckets": (len(meta_by_id) if (include_zero or exclude_gated) else None),
+            "hit_buckets": sum(1 for r in rows if r["count"] > 0),
+            "zero_buckets": zero_count,
+            "order": order,
+            "items": rows[:limit],
         }
 
     def reset_hit_stats(self) -> None:
-        """清空命中统计 — 用于"清零后看哪些桶又被命中"实验。"""
+        """清空命中统计 — 用于"清零后看哪些桶又被命中"实验。同时删盘文件。"""
         self._hit_stats.clear()
         self._total_searches = 0
+        self._hit_dirty = 0
+        try:
+            if os.path.exists(self._hit_stats_path):
+                os.remove(self._hit_stats_path)
+        except Exception as e:
+            logger.warning(f"[hit-stats] reset remove file failed: {e}")
+        self._hit_last_flush = datetime.utcnow()
 
     def get_recent_searches(self, limit: int = 10) -> list:
         """Return list of recent search traces, newest first.
@@ -1047,6 +1162,10 @@ class BucketManager:
         scored = []
         for bucket in candidates:
             meta = bucket.get("metadata", {})
+            # 钉选/永久参考桶 (protected 或 highlight): 开窗时已在核心准则/永久参考区读取,
+            # 自动注入里只认 title 强命中, 不靠模糊/正文/情感/语义命中占记忆位。
+            # (前端"钉选"= protected OR highlight, server.py:1697; 精准按桶名搜仍可达)
+            pinned_like = is_protected(meta) or is_highlighted(meta)
 
             try:
                 # precise_match_mode: 走严格 token 命中, 砍 emotion/time/importance/warmth
@@ -1054,6 +1173,12 @@ class BucketManager:
                 if self.precise_match_mode:
                     pm = self._calc_precise_match(query, bucket)
                     if pm["score"] > 0:
+                        # 钉选/永久参考桶: 仅 title 强命中才进搜索/自动注入结果。
+                        # 它们已在开窗"核心准则/永久参考区"(breath 无参浮现 / /breath-hook)读取,
+                        # 不该再靠模糊/token 命中正文占自动注入的记忆位。但精准按桶名搜
+                        # ("完整指南" 这类)仍需可达 (见 server.py 2026-05 注释), 故放行 title 命中。
+                        if pinned_like and "title" not in pm["matched_in"]:
+                            continue
                         # resolved 桶仍按 fuzzy 路径同样的降权处理 (× 0.3), 保持一致行为
                         s = pm["score"] * (0.3 if meta.get("resolved", False) else 1.0)
                         bucket["score"] = round(s, 2)
@@ -1129,6 +1254,11 @@ class BucketManager:
                 )
                 has_keyword_hit = bool(topic_match["matched_in"])
                 if has_keyword_hit or normalized >= self.fuzzy_threshold or warmth_bypass:
+                    # 钉选/永久参考桶: 仅 title 强命中才进结果 (理由同 precise 分支)。
+                    # 挡掉 has_keyword_hit(正文/摘要模糊命中) / fuzzy_threshold / warmth_bypass
+                    # 这些模糊+情感旁路, 让它们不再凭弱信号占自动注入记忆位; title 命中仍放行。
+                    if pinned_like and "title" not in topic_match["matched_in"]:
+                        continue
                     bucket["score"] = round(normalized, 2)
                     bucket["matched_in"] = topic_match["matched_in"]
                     bucket["field_scores"] = topic_match["field_scores"]
@@ -1199,6 +1329,10 @@ class BucketManager:
                 "result_count": len(client_scored),
                 "top": trace_top,
             })
+
+            # 持久化: 打 dirty 标记并尝试落盘 (防抖, 多数调用直接 return)
+            self._hit_dirty += 1
+            self._flush_hit_stats()
         except Exception:
             # 统计失败绝不影响搜索结果
             pass

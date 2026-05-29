@@ -43,8 +43,9 @@ function ConfigPage() {
   const [scoringResetting, setScoringResetting] = ccS(false);
 
   // 记忆命中频次统计 (反向看哪条记忆经常被检索)
-  const [hitStats, setHitStats] = ccS(null);         // { total_searches, items: [...] }
+  const [hitStats, setHitStats] = ccS(null);         // { total_searches, hit_buckets, zero_buckets, items: [...] }
   const [hitStatsLoading, setHitStatsLoading] = ccS(false);
+  const [hitView, setHitView] = ccS('hot');          // 'hot' 高频在前 / 'cold' 冷门(含从未命中)在前
 
   // 最近搜索追溯 ("我这次发消息浮现了哪些"用)
   const [recentSearches, setRecentSearches] = ccS(null);   // { items: [{ts, query, top:[...]}] }
@@ -88,14 +89,20 @@ function ConfigPage() {
       if (r.ok) setScoringCfg(await r.json());
     } catch (e) { /* 沉默 */ }
   };
-  const fetchHitStats = async () => {
+  const fetchHitStats = async (view) => {
+    const mode = view || hitView;
     setHitStatsLoading(true);
     try {
-      const r = await fetch('/api/hit-stats?limit=50');
+      // 冷门视图: 并入从未命中的桶(count 0) + 排除钉选/永久参考/feel/已内化(它们 ×0 是预期) + 升序
+      const qs = mode === 'cold'
+        ? 'limit=300&include_zero=1&exclude_gated=1&order=asc'
+        : 'limit=50&order=desc';
+      const r = await fetch('/api/hit-stats?' + qs);
       if (r.ok) setHitStats(await r.json());
     } catch (e) { /* 沉默 */ }
     finally { setHitStatsLoading(false); }
   };
+  const switchHitView = (view) => { setHitView(view); fetchHitStats(view); };
   const fetchRecentSearches = async () => {
     setRecentLoading(true);
     try {
@@ -813,14 +820,31 @@ function ConfigPage() {
       </ConsoleCard>
 
       {/* 记忆命中频次 (反向反馈写作: 哪些桶经常被检索 / 哪些从未) */}
-      <ConsoleCard label="命中频次" sub="哪些记忆被高频检索 · 哪些从未被命中 · 反向指导 title 写作">
+      <ConsoleCard label="命中频次" sub="哪些记忆被高频检索 · 哪些被冷落从未命中 · 反向指导 title 写作">
+        {/* 热门 / 冷门 视图切换 */}
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          {[['hot', '🔥 高频'], ['cold', '🧊 冷落 (含从未命中)']].map(([v, label]) => (
+            <button
+              key={v}
+              className={'oc-btn ' + (hitView === v ? 'oc-btn-primary' : 'oc-btn-ghost')}
+              onClick={() => switchHitView(v)}
+              disabled={hitStatsLoading}
+              style={{ fontSize: 11, padding: '3px 12px' }}
+            >{label}</button>
+          ))}
+        </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
           <div style={{ fontSize: 11, color: 'var(--ink-4)', fontFamily: 'var(--mono)' }}>
-            {hitStats ? `累计 ${hitStats.total_searches ?? 0} 次搜索 · top ${(hitStats.items || []).length} 桶` : '载入中…'}
+            {hitStats
+              ? `累计 ${hitStats.total_searches ?? 0} 次搜索` +
+                (hitStats.total_buckets != null
+                  ? ` · 命中 ${hitStats.hit_buckets}/${hitStats.total_buckets} 桶 · 从未 ${hitStats.zero_buckets}`
+                  : ` · top ${(hitStats.items || []).length} 桶`)
+              : '载入中…'}
           </div>
           <button
             className="oc-btn oc-btn-ghost"
-            onClick={fetchHitStats}
+            onClick={() => fetchHitStats()}
             disabled={hitStatsLoading}
             style={{ fontSize: 11, padding: '3px 12px' }}
           >{hitStatsLoading ? '⌛' : '↻ 刷新'}</button>
@@ -831,28 +855,37 @@ function ConfigPage() {
           </div>
         )}
         {hitStats && hitStats.items && hitStats.items.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-            {hitStats.items.map((it, i) => (
-              <div key={it.id} style={{
-                display: 'flex', alignItems: 'baseline', gap: 8,
-                padding: '4px 0',
-                borderBottom: i < hitStats.items.length - 1 ? '1px solid var(--ink-5, rgba(0,0,0,0.05))' : 'none',
-              }}>
-                <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent)', minWidth: 32, textAlign: 'right' }}>
-                  ×{it.count}
-                </span>
-                <span style={{ flex: 1, color: 'var(--ink-2)' }}>
-                  {it.name || it.id}
-                </span>
-                <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-4)' }}>
-                  {it.last_query ? `"${String(it.last_query).slice(0, 20)}"` : ''}
-                </span>
-              </div>
-            ))}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, maxHeight: hitView === 'cold' ? 420 : 'none', overflowY: hitView === 'cold' ? 'auto' : 'visible' }}>
+            {hitStats.items.map((it, i) => {
+              const zero = (it.count || 0) === 0;
+              return (
+                <div key={it.id} title={it.id} style={{
+                  display: 'flex', alignItems: 'baseline', gap: 8,
+                  padding: '4px 0',
+                  borderBottom: i < hitStats.items.length - 1 ? '1px solid var(--ink-5, rgba(0,0,0,0.05))' : 'none',
+                  opacity: zero ? 0.7 : 1,
+                }}>
+                  <span style={{ fontFamily: 'var(--mono)', color: zero ? 'var(--ink-4)' : 'var(--accent)', minWidth: 32, textAlign: 'right' }}>
+                    ×{it.count}
+                  </span>
+                  <span style={{ flex: 1, color: 'var(--ink-2)' }}>
+                    {it.name || it.id}
+                    {it.missing && <span style={{ color: 'var(--ink-4)', marginLeft: 6 }}>[已删/归档]</span>}
+                  </span>
+                  <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-4)' }}>
+                    {zero
+                      ? '从未命中'
+                      : (it.last_query ? `"${String(it.last_query).slice(0, 20)}"` : (it.last_hit ? String(it.last_hit).slice(0, 10) : ''))}
+                  </span>
+                </div>
+              );
+            })}
           </div>
         )}
         <div className="oc-field-help" style={{ marginTop: 10, color: 'var(--ink-4)' }}>
-          统计自启动累计 · 重启后清零 · 看到 ×0 频次的桶 → 大概率 title 没写成钩子
+          {hitView === 'cold'
+            ? '冷落视图: 升序排, 已排除钉选/永久参考/feel/已内化 (它们不参与自动注入, ×0 是预期) · ×0 且你在意的桶 → 改 title/内容让它更容易被命中'
+            : '累计落盘, 重启不再清零 · 切到「冷落」看哪些在意的记忆没被重视'}
         </div>
       </ConsoleCard>
 
