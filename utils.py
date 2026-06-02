@@ -112,6 +112,11 @@ def load_config(config_path: str = None) -> dict:
     if env_buckets_dir:
         config["buckets_dir"] = env_buckets_dir
 
+    # auto_merge 开关 — OMBRE_AUTO_MERGE=false 关闭相似桶自动合并(默认 True = 上游行为不变)
+    env_auto_merge = os.environ.get("OMBRE_AUTO_MERGE", "")
+    if env_auto_merge.strip():
+        config["auto_merge"] = env_auto_merge.strip().lower() in ("1", "true", "yes", "on")
+
     # --- runtime_config.json 覆盖 (前端 config 页可改,持久盘) ---
     # 优先级:runtime_config.json > env vars > config.yaml > 默认
     # 文件位置:{buckets_dir}/runtime_config.json
