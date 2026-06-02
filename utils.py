@@ -34,6 +34,7 @@ def load_config(config_path: str = None) -> dict:
         "log_level": "INFO",
         "buckets_dir": os.path.join(os.path.dirname(os.path.abspath(__file__)), "buckets"),
         "merge_threshold": 75,
+        "auto_merge": True,   # False = 关闭相似桶自动合并(永远新建); 默认 True = 上游行为不变
         "dehydration": {
             "model": "deepseek-chat",
             "base_url": "https://api.deepseek.com/v1",
@@ -134,6 +135,8 @@ def load_config(config_path: str = None) -> dict:
             strategy = rc.get("strategy", {})
             if strategy.get("merge_threshold") is not None:
                 config["merge_threshold"] = int(strategy["merge_threshold"])
+            if strategy.get("auto_merge") is not None:
+                config["auto_merge"] = bool(strategy["auto_merge"])
             if strategy.get("max_recall") is not None:
                 config.setdefault("matching", {})["max_results"] = int(strategy["max_recall"])
     except Exception:

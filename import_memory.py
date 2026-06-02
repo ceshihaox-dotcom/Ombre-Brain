@@ -975,8 +975,12 @@ class ImportEngine:
         name = item.get("name", "")
         summary = item.get("summary", "")
 
+        # auto_merge=False → 跳过合并, 永远新建(默认 True = 上游行为不变)
         try:
-            existing = await self.bucket_mgr.search(content, limit=1, domain_filter=domain or None)
+            existing = (
+                await self.bucket_mgr.search(content, limit=1, domain_filter=domain or None)
+                if self.config.get("auto_merge", True) else []
+            )
         except Exception:
             existing = []
 

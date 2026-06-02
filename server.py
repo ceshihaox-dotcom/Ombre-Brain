@@ -233,8 +233,13 @@ async def _merge_or_create(
     检查是否有相似桶可合并，有则合并，无则新建。
     返回 (桶ID或名称, 是否合并)。
     """
+    # auto_merge=False → 跳过相似桶合并, 永远新建(默认 True = 上游行为不变)。
+    # 合并不稳: 打分被调高(precise/boosts)后会误合并不相干记忆 → 个人实例可关掉改手动去重。
     try:
-        existing = await bucket_mgr.search(content, limit=1, domain_filter=domain or None)
+        existing = (
+            await bucket_mgr.search(content, limit=1, domain_filter=domain or None)
+            if config.get("auto_merge", True) else []
+        )
     except Exception as e:
         logger.warning(f"Search for merge failed, creating new / 合并搜索失败，新建: {e}")
         existing = []
@@ -1595,11 +1600,12 @@ async def api_config_set_active(request):
 
 @mcp.custom_route("/api/config/strategy", methods=["GET"])
 async def api_config_strategy_get(request):
-    """读取当前生效的策略参数(merge_threshold / max_recall)。"""
+    """读取当前生效的策略参数(merge_threshold / max_recall / auto_merge)。"""
     from starlette.responses import JSONResponse
     return JSONResponse({
         "merge_threshold": int(config.get("merge_threshold", 75)),
         "max_recall": int(config.get("matching", {}).get("max_results", 5)),
+        "auto_merge": bool(config.get("auto_merge", True)),
     })
 
 
@@ -1621,6 +1627,10 @@ async def api_config_strategy_set(request):
             config["merge_threshold"] = v
         except (ValueError, TypeError):
             return JSONResponse({"error": "merge_threshold 必须是 0-100 整数"}, status_code=400)
+    if "auto_merge" in body:
+        v = bool(body["auto_merge"])
+        strategy["auto_merge"] = v
+        config["auto_merge"] = v
     if "max_recall" in body:
         try:
             v = max(1, min(50, int(body["max_recall"])))
