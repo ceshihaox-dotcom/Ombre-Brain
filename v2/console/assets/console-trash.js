@@ -71,12 +71,15 @@ function TrashPage({ onCountChange }) {
   const restoreAll = async () => {
     if (!items.length) return;
     if (!window.confirm(`恢复全部 ${items.length} 条?`)) return;
+    let failed = 0;
     for (const it of items) {
       try {
-        await fetch(`/api/bucket/${encodeURIComponent(it.id)}/restore`, { method: 'POST' });
-      } catch (e) { /* ignore */ }
+        const r = await fetch(`/api/bucket/${encodeURIComponent(it.id)}/restore`, { method: 'POST' });
+        if (!r.ok) failed++;
+      } catch (e) { failed++; }
     }
     await fetchTrash();
+    if (failed) alert(`全部恢复:${failed} 条失败(其余已恢复)。`);
   };
 
   const purgeAll = async () => {
@@ -86,12 +89,15 @@ function TrashPage({ onCountChange }) {
       if (typed !== null) alert('未输入"全部删除",已取消');
       return;
     }
+    let failed = 0;
     for (const it of items) {
       try {
-        await fetch(`/api/bucket/${encodeURIComponent(it.id)}/purge`, { method: 'POST' });
-      } catch (e) { /* ignore */ }
+        const r = await fetch(`/api/bucket/${encodeURIComponent(it.id)}/purge`, { method: 'POST' });
+        if (!r.ok) failed++;
+      } catch (e) { failed++; }
     }
     await fetchTrash();
+    if (failed) alert(`清空回收站:${failed} 条删除失败(其余已删)。对单条点"永久删除"可看到具体报错。`);
   };
 
   const formatTrashedAt = (s) => {
