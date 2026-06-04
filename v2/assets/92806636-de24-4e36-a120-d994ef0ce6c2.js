@@ -69,10 +69,8 @@ function MiniTimeline({ items, onJump }) {
     const valid = items.filter(i => i.date);
     if (!valid.length) return [];
     const dates = valid.map(i => i.date).sort();
-    const startStr = dates[0];
-    const endStr = dates[dates.length - 1];
-    const [sy, sm, sd] = startStr.split('-').map(Number);
-    const [ey, em, ed] = endStr.split('-').map(Number);
+    const [sy, sm, sd] = dates[0].split('-').map(Number);
+    const [ey, em, ed] = dates[dates.length - 1].split('-').map(Number);
     const start = new Date(sy, sm - 1, sd);
     const end = new Date(ey, em - 1, ed);
 
@@ -82,50 +80,57 @@ function MiniTimeline({ items, onJump }) {
       if (!byDate[it.date]) byDate[it.date] = [];
       byDate[it.date].push(it);
     }
+    const fmt = (dt) => dt.getFullYear() + '-' +
+      String(dt.getMonth() + 1).padStart(2, '0') + '-' +
+      String(dt.getDate()).padStart(2, '0');
 
-    // 自适应步长: 总跨度越大, 空日抽样越稀疏 (有记忆的天永远显示)
+    // 这是个"快速跳转进度条", 不是逐日清单。跨度大就把节点压成"区间"(N 天一段),
+    // 否则两三个月就几十个点 → 又密又难点。每个节点代表 bucketDays 天的一段。
     const totalDays = Math.round((end - start) / 86400000) + 1;
-    let emptyStep;
-    if (totalDays <= 14)       emptyStep = 1;   // 全部显示
-    else if (totalDays <= 60)  emptyStep = 3;   // 每 3 天 1 个空日点
-    else if (totalDays <= 180) emptyStep = 7;   // 每周
-    else if (totalDays <= 365) emptyStep = 14;  // 每 2 周
-    else                       emptyStep = 30;  // 每月
+    let bucketDays;
+    if (totalDays <= 30)       bucketDays = 1;   // 一月内: 一天一点
+    else if (totalDays <= 90)  bucketDays = 3;   // 三月内: 3 天一段
+    else if (totalDays <= 365) bucketDays = 7;   // 一年内: 一周一段
+    else                       bucketDays = 30;  // 超一年: 一月一段
 
-    // 从 end 倒推到 start(顶部=最新)
+    // 从 end 倒推, 每 bucketDays 天聚成一段(顶部=最新)
     const result = [];
-    const cur = new Date(end);
-    let counter = 0;
-    while (cur >= start) {
-      const ds = cur.getFullYear() + '-' +
-        String(cur.getMonth() + 1).padStart(2, '0') + '-' +
-        String(cur.getDate()).padStart(2, '0');
-      const dayItems = byDate[ds] || [];
-      // 有记忆的天必显, 没记忆的按 emptyStep 抽样
-      if (dayItems.length > 0 || counter % emptyStep === 0) {
-        result.push({ date: ds, items: dayItems });
+    const bEnd = new Date(end);
+    while (bEnd >= start) {
+      let bStart = new Date(bEnd);
+      bStart.setDate(bStart.getDate() - (bucketDays - 1));
+      if (bStart < start) bStart = new Date(start);
+      // 收集这段范围内所有 item
+      const seg = [];
+      const cur = new Date(bEnd);
+      while (cur >= bStart) {
+        const ds = fmt(cur);
+        if (byDate[ds]) seg.push(...byDate[ds]);
+        cur.setDate(cur.getDate() - 1);
       }
-      cur.setDate(cur.getDate() - 1);
-      counter++;
+      result.push({ from: fmt(bStart), to: fmt(bEnd), single: bucketDays === 1, items: seg });
+      bEnd.setDate(bEnd.getDate() - bucketDays);
     }
     return result;
   }, [items]);
 
   if (!days.length) return null;
 
-  // 节点过多缩小尺寸 (基于实际显示节点数, 不是原始天数)
-  const compact = days.length > 60;
+  // 节点过多缩小尺寸 (基于实际显示节点数)
+  const compact = days.length > 40;
 
   return (
     <div className="ob-mini" aria-label="迷你时间线">
       <div className="ob-mini-rail">
         {days.map((d, i) => {
           const top = (i / Math.max(1, days.length - 1)) * 100;
+          // 区间标签: 单日显完整日期, 多日显 "MM/DD–MM/DD"
+          const label = d.single ? d.to : `${d.from.slice(5).replace('-', '/')}–${d.to.slice(5).replace('-', '/')}`;
           if (!d.items.length) {
-            // 空日 — 灰色小点,不可点
+            // 这段没记忆 — 灰色小点,不可点
             return (
               <div
-                key={d.date}
+                key={d.to}
                 className="ob-mini-node"
                 style={{
                   top: `${top}%`,
@@ -135,7 +140,7 @@ function MiniTimeline({ items, onJump }) {
                   height: compact ? 3 : 4,
                   pointerEvents: 'none',
                 }}
-                title={`${d.date} · 无记忆`}
+                title={`${label} · 无记忆`}
               />
             );
           }
@@ -148,13 +153,13 @@ function MiniTimeline({ items, onJump }) {
           const tone = repr.feel ? 'feel' : (isHi ? 'hi' : 'norm');
           return (
             <div
-              key={d.date}
+              key={d.to}
               className={`ob-mini-node ob-mini-${tone}`}
               style={{ top: `${top}%` }}
-              onMouseEnter={() => setHover({ date: d.date, count: d.items.length, title: repr.title })}
+              onMouseEnter={() => setHover({ date: label, count: d.items.length, title: repr.title })}
               onMouseLeave={() => setHover(null)}
               onClick={() => onJump(repr)}
-              title={`${d.date} · ${d.items.length} 条`}
+              title={`${label} · ${d.items.length} 条`}
             />
           );
         })}
