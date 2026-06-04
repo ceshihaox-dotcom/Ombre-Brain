@@ -593,9 +593,13 @@ When connecting via tunnel, ensure:
 2. **在 Claude.ai 网页版添加 MCP 服务器** / Adding to Claude.ai web
    - URL 格式 / URL format: `https://<tunnel-subdomain>.trycloudflare.com/mcp`
    - 或 ngrok / or ngrok: `https://<xxxx>.ngrok-free.app/mcp`
-   - ⚠ **鉴权**：如果设了 `OMBRE_ADMIN_TOKEN`（公网部署必须设），在连接器的自定义
-     header 里加 `X-Admin-Token: <你的 token>`，否则 `/mcp` 会返回 401。
-     / If `OMBRE_ADMIN_TOKEN` is set, add a custom header `X-Admin-Token: <token>` in the connector, or `/mcp` returns 401.
+   - ⚠ **鉴权限制**：公网部署设了 `OMBRE_ADMIN_TOKEN` 后,`/mcp` 要求 `X-Admin-Token` header。
+     但 **claude.ai 网页版的自定义连接器不支持自定义 header**(只有 URL + OAuth),所以
+     **网页版无法直接连**带鉴权的 OB。要在客户端直连,请用 **Claude Desktop + `mcp-remote`**:
+     `npx -y mcp-remote https://<your-host>/mcp --header "X-Admin-Token:${OMBRE_TOKEN}"`
+     (token 放 env `OMBRE_TOKEN` 避免空格被拆);或在本机用 **stdio 模式**(无需 token)。
+     / claude.ai web custom connectors don't support custom headers, so they can't reach an
+     authed OB — use Claude Desktop + `mcp-remote --header`, or run locally in stdio mode.
    - 先访问 `/health` 验证连接 / Verify first: `https://<your-tunnel>/health` should return `{"status":"ok",...}`（`/health` 不需要 token / no token needed）
 
 3. **已知限制 / Known limitations**

@@ -38,9 +38,22 @@
 **首次打开网页**会弹窗要 `X-Admin-Token` —— 粘贴上面从 Render Environment 复制的
 `OMBRE_ADMIN_TOKEN` 值,存进浏览器 localStorage 后自动刷新,之后这台设备/浏览器就不用再输了。
 
-### 接入说明(给程序化客户端)
-- **claude.ai / Claude Desktop 等 MCP 连接器**:在连接器配置里加一个 header
-  `X-Admin-Token: <你的 OMBRE_ADMIN_TOKEN>`,否则连不上 `/mcp`。
+### 接入说明(各客户端怎么带 token)
+- **本地 stdio 模式**(Claude Desktop / Cursor 在本机直接跑 OB):**不需要 token**,鉴权只在
+  公网 HTTP 模式生效,本地无感,跟以前一样用。
+- **Claude Desktop / Cursor / Claude Code 等连远程 OB**:在 MCP 配置里加自定义 header
+  `X-Admin-Token: <token>`(支持 header 字段的客户端直接填);不支持的用 `mcp-remote` 桥:
+  ```jsonc
+  // claude_desktop_config.json
+  { "mcpServers": { "ombre-brain": {
+    "command": "npx",
+    "args": ["-y","mcp-remote","https://你的域名/mcp","--header","X-Admin-Token:${OMBRE_TOKEN}"],
+    "env": { "OMBRE_TOKEN": "<粘贴 token>" }
+  }}}
+  ```
+- **⚠ claude.ai 网页版自定义连接器**:**不支持自定义 header**(只有 URL + 可选 OAuth),
+  因此**无法**用 `X-Admin-Token` 连公网 OB。要在客户端直连请改用 **Claude Desktop + 上面的
+  mcp-remote**,或本地 stdio 模式。
 - **每日自动备份**(GitHub Actions,见下文):如果设了 `OMBRE_ADMIN_TOKEN`,
   必须在 OB 仓库的 `Settings > Secrets and variables > Actions` 里也加一个
   同名 secret `OMBRE_ADMIN_TOKEN`,值一致,否则 backup 会 401。
