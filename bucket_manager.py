@@ -91,9 +91,11 @@ class BucketManager:
         scoring = config.get("scoring_weights", {})
         self.w_topic = scoring.get("topic_relevance", 4.0)
         self.w_emotion = scoring.get("emotion_resonance", 2.0)
-        self.w_time = scoring.get("time_proximity", 2.5)
+        self.w_time = scoring.get("time_proximity", 1.5)  # 默认对齐上游 1.5(个人偏好走 scoring_weights 覆盖); 仅 fuzzy 模式生效
         self.w_importance = scoring.get("importance", 1.0)
-        self.content_weight = scoring.get("content_weight", 3.0)  # Added to allow better content-based matching during merge
+        # content_weight: 有意高于上游(1.0→3.0), 让正文命中可被搜到("我写过但搜不到"的解药)。
+        # 两种检索模式都用到, 是 fork 保留的真改进 — 已在 CHANGES 披露。
+        self.content_weight = scoring.get("content_weight", 3.0)
         # warmth_boost: 高 valence(>0.5)桶在检索时获得额外加分,跟 query 是否带情感坐标无关。
         # 跟 emotion_resonance 不同 — emotion_resonance 是 Russell 距离,
         # 无 query emotion 时退化为常数 0.5,对亲密时刻无帮助。
@@ -1490,7 +1492,9 @@ class BucketManager:
             days = max(0.0, (datetime.now() - last_active).total_seconds() / 86400)
         except (ValueError, TypeError):
             days = 30
-        return math.exp(-0.1 * days)
+        # 检索新近衰减(仅 fuzzy 模式): 对齐上游 -0.02 (~35 天半衰期)。
+        # fork 曾用 -0.1 (~7 天半衰期), 过于偏向最近, 把老记忆在搜索里埋得太快。
+        return math.exp(-0.02 * days)
 
     # ---------------------------------------------------------
     # List all buckets

@@ -1,14 +1,14 @@
 // ==UserScript==
 // @name         Claude Conversations Exporter (Ombre)
-// @namespace    https://github.com/ceshihaox-dotcom/Ombre-Brain
+// @namespace    https://github.com/ceshihaox-dotcom/OmbreBrain-folio
 // @version      0.1.0
 // @description  在 claude.ai 多选对话, 导出为 Ombre 兼容的合并 JSON (拦截 Claude 内部 API, 不依赖 DOM 抓取)
 // @author       rin
 // @match        https://claude.ai/*
 // @grant        none
 // @run-at       document-end
-// @updateURL    https://raw.githubusercontent.com/ceshihaox-dotcom/Ombre-Brain/main/tools/claude-exporter.user.js
-// @downloadURL  https://raw.githubusercontent.com/ceshihaox-dotcom/Ombre-Brain/main/tools/claude-exporter.user.js
+// @updateURL    https://raw.githubusercontent.com/ceshihaox-dotcom/OmbreBrain-folio/main/tools/claude-exporter.user.js
+// @downloadURL  https://raw.githubusercontent.com/ceshihaox-dotcom/OmbreBrain-folio/main/tools/claude-exporter.user.js
 // ==/UserScript==
 
 /*
