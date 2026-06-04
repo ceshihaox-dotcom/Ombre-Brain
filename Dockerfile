@@ -30,6 +30,12 @@ VOLUME ["/app/buckets"]
 ENV OMBRE_TRANSPORT=streamable-http
 ENV OMBRE_BUCKETS_DIR=/app/buckets
 
+# 🔴 安全: 公网 transport 必须在运行时传入 OMBRE_ADMIN_TOKEN (全局鉴权), 否则
+#   容器会【拒绝启动】。设一个强随机值:
+#   docker run -e OMBRE_ADMIN_TOKEN=$(openssl rand -hex 32) -e OMBRE_API_KEY=... -p 8000:8000 ombre-brain
+#   不设的话任何能访问该 URL 的人都能读/删你的全部记忆。
+#   (确知在私网/反代已鉴权才跳过: 再传 -e OMBRE_ALLOW_NO_AUTH=1)
+
 EXPOSE 8000
 
 CMD ["python", "server.py"]

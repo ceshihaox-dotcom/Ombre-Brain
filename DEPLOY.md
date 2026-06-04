@@ -9,6 +9,11 @@
 
 点上面按钮 → Render 会自动读 `render.yaml` → 你只需要填几个环境变量就完事:
 
+**🔴 安全(必填,不填拒绝启动)**:
+- `OMBRE_ADMIN_TOKEN` - 一个强随机值(例 `openssl rand -hex 32`)。Render 是**公开 URL**,这是唯一的门。
+  设了之后,除了静态页和 `/health`,所有 `/api/*` 和 `/mcp` 都必须带 `X-Admin-Token: <token>` header。
+  **不设这个值,公网部署会直接拒绝启动**(没有门 = 任何人可读/删你的全部记忆)。
+
 **LLM 配置(强烈建议填)** — 不填服务也能启动, 但脱水/打标会降级为本地关键词提取, 质量差很多:
 - `OMBRE_API_KEY` - 你的 LLM API key
 - `OMBRE_BASE_URL` - 例 `https://api.deepseek.com/v1`
@@ -20,13 +25,23 @@
 
 **可选**:
 - `OMBRE_EMBED_API_KEY` + `OMBRE_EMBED_BASE_URL` - embedding 模型独立配置
-- `OMBRE_ADMIN_TOKEN` - 公网部署强烈建议设
+- `OMBRE_ALLOWED_ORIGINS` - CORS 允许的浏览器跨源 origin(逗号分隔,默认仅同源,一般不用填)
 - 其他配置见 [.env.example](./.env.example)
 
 部署完成后访问:
 - 主网页: `https://your-app.onrender.com/v2/`
 - 控制台: `https://your-app.onrender.com/v2/console/`
 - 手机端: `https://your-app.onrender.com/v2/mobile/`
+
+**首次打开网页**会弹窗要 `X-Admin-Token` —— 输入你设的 `OMBRE_ADMIN_TOKEN`,
+存进浏览器 localStorage 后自动刷新,之后这台设备/浏览器就不用再输了。
+
+### 接入说明(给程序化客户端)
+- **claude.ai / Claude Desktop 等 MCP 连接器**:在连接器配置里加一个 header
+  `X-Admin-Token: <你的 OMBRE_ADMIN_TOKEN>`,否则连不上 `/mcp`。
+- **每日自动备份**(GitHub Actions,见下文):如果设了 `OMBRE_ADMIN_TOKEN`,
+  必须在 OB 仓库的 `Settings > Secrets and variables > Actions` 里也加一个
+  同名 secret `OMBRE_ADMIN_TOKEN`,值一致,否则 backup 会 401。
 
 ---
 

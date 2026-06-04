@@ -41,8 +41,15 @@ services:
       - key: OMBRE_EMBED_BASE_URL
         sync: false
 
-      # ─── 管理员 token (可选, 公网部署强烈建议) ───
+      # ─── 🔴 管理员 token (必填! 全局鉴权) ───
+      # Render 是公开 URL —— 不设这个服务会【拒绝启动】。部署后到
+      # Dashboard > Environment 填一个强随机值 (例 openssl rand -hex 32)。
+      # 没有它任何人都能读/删你的全部记忆。前端 dashboard 首次访问会提示输同一个值。
       - key: OMBRE_ADMIN_TOKEN
+        sync: false
+
+      # ─── CORS 允许的浏览器跨源 origin (可选, 逗号分隔, 默认仅同源) ───
+      - key: OMBRE_ALLOWED_ORIGINS
         sync: false
 
       # ─── 自动备份 (可选, 强烈推荐云部署用户配) ───

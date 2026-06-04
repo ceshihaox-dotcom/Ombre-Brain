@@ -28,6 +28,18 @@ A long-term emotional memory system for AI assistants. Tags memories using Russe
 
 用 GitHub 账号登录 Render → 按提示部署。它会自动读本仓的 `render.yaml`，**已经帮你配好了持久磁盘**（数据重启不丢）。
 
+> ### 🔴 必做：设 `OMBRE_ADMIN_TOKEN`（否则服务拒绝启动）
+> Render 给你的是一个**公开 URL**。OB 现在有全局鉴权：除了静态网页和 `/health`，所有
+> `/api/*` 和 `/mcp` 都必须带 `X-Admin-Token` header。
+> **公网部署没设这个 token 会直接拒绝启动** —— 因为没有门 = 任何拿到 URL 的人都能
+> 读取/删除你的全部记忆（含私密日记），还能改提示词、换 LLM 地址截走数据。
+>
+> 到 Render → 你的服务 → **Environment**,加一个：
+> - `OMBRE_ADMIN_TOKEN` = 一个强随机值（例 `openssl rand -hex 32`,或任意长随机串）
+>
+> 第一次打开网页时会弹窗要这个 token,输入后存在浏览器里,之后就不用再输。
+> 程序化客户端（claude.ai 连接器等）需在请求里配 `X-Admin-Token` header。详见 [DEPLOY.md](./DEPLOY.md)。
+
 ### 第二步：填 LLM 配置（建议填，留空会降级为本地关键词提取、质量差很多）
 
 部署后到 Render → 你的服务 → **Environment**，填三个：
@@ -551,12 +563,17 @@ Feel is not an event log — it's **what the model carries away**: a feeling, an
 | 域名无法访问 / Domain unreachable | `OMBRE_TRANSPORT` 未设置，服务以 stdio 模式启动，不监听任何端口 / Service started in stdio mode — no port is listened | **Variables 标签页确认设置 `OMBRE_TRANSPORT=streamable-http`，然后重新部署** |
 | 构建失败 / Build failed | Dockerfile 未被识别 / Dockerfile not detected | 确认仓库根目录有 `Dockerfile`（大小写敏感） |
 | 服务启动后立刻退出 | `OMBRE_TRANSPORT` 被覆盖为 `stdio` | 检查 Variables 里有没有多余的 `OMBRE_TRANSPORT=stdio`，删掉即可 |
+| 启动即退出 + 日志「REFUSING TO START / 拒绝启动」 | HTTP 模式下没设 `OMBRE_ADMIN_TOKEN`（全局鉴权必需） | Variables 里加 `OMBRE_ADMIN_TOKEN`=强随机值后重启（确知私网/反代已鉴权才用 `OMBRE_ALLOW_NO_AUTH=1` 豁免） |
+| 网页能打开但 `/api` 全 401 / 一直弹 token 框 | 输入的 token 跟 `OMBRE_ADMIN_TOKEN` 不一致 | 确认浏览器输入的值 == 服务端 env 的值（清掉 localStorage 重输） |
 | 重启后记忆丢失 / Data lost on restart | Volume 未挂载 | Volumes 标签页挂载到 `/app/buckets` |
 
 ### 使用 Cloudflare Tunnel 或 ngrok 连接 / Connecting via Cloudflare Tunnel or ngrok
 
-> ℹ️ 自 v1.1 起，server.py 在 HTTP 模式下已自动添加 CORS 中间件，无需额外配置。
-> Since v1.1, server.py automatically enables CORS middleware in HTTP mode — no extra config needed.
+> ℹ️ HTTP 模式下 server.py 自动启用 CORS + 全局鉴权中间件。CORS 默认**仅同源**
+> （claude.ai / MCP 客户端是服务端调用，不走浏览器 CORS，不受影响）；只有从另一个域名的
+> **网页 JS** 直接打 `/api` 才需要在 `OMBRE_ALLOWED_ORIGINS` 里加该 origin。
+> Since HTTP mode, server.py enables CORS + global auth. CORS is same-origin by default; set
+> `OMBRE_ALLOWED_ORIGINS` only if browser JS on another domain calls `/api` directly.
 
 使用隧道连接时，确保以下条件满足：
 When connecting via tunnel, ensure:
@@ -573,7 +590,10 @@ When connecting via tunnel, ensure:
 2. **在 Claude.ai 网页版添加 MCP 服务器** / Adding to Claude.ai web
    - URL 格式 / URL format: `https://<tunnel-subdomain>.trycloudflare.com/mcp`
    - 或 ngrok / or ngrok: `https://<xxxx>.ngrok-free.app/mcp`
-   - 先访问 `/health` 验证连接 / Verify first: `https://<your-tunnel>/health` should return `{"status":"ok",...}`
+   - ⚠ **鉴权**：如果设了 `OMBRE_ADMIN_TOKEN`（公网部署必须设），在连接器的自定义
+     header 里加 `X-Admin-Token: <你的 token>`，否则 `/mcp` 会返回 401。
+     / If `OMBRE_ADMIN_TOKEN` is set, add a custom header `X-Admin-Token: <token>` in the connector, or `/mcp` returns 401.
+   - 先访问 `/health` 验证连接 / Verify first: `https://<your-tunnel>/health` should return `{"status":"ok",...}`（`/health` 不需要 token / no token needed）
 
 3. **已知限制 / Known limitations**
    - Cloudflare Tunnel 免费版有空闲超时（约 10 分钟），系统内置保活 ping 可缓解但不能完全消除

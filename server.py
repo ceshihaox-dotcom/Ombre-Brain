@@ -3667,6 +3667,33 @@ if __name__ == "__main__":
         )
 
     if transport in ("sse", "streamable-http"):
+        # ============================================================
+        # fail-safe: 公网 transport 必须设 OMBRE_ADMIN_TOKEN, 否则拒绝启动。
+        # 保护一键部署的用户 —— 没有这道门, 任何拿到 URL 的人可读光/删光全部记忆。
+        # stdio 模式 (本地 MCP 客户端) 不受影响。可用 OMBRE_ALLOW_NO_AUTH=1 显式豁免
+        # (仅限你确定服务在私网 / 反代后面已有鉴权时)。
+        # ============================================================
+        if not os.environ.get("OMBRE_ADMIN_TOKEN", "").strip():
+            if os.environ.get("OMBRE_ALLOW_NO_AUTH", "").strip() == "1":
+                logger.warning(
+                    "⚠⚠⚠ OMBRE_ADMIN_TOKEN 未设, 但 OMBRE_ALLOW_NO_AUTH=1 —— 服务在无鉴权模式下启动。"
+                    " 任何能访问此 URL 的人都能读/删你的全部记忆。仅限私网/反代已鉴权场景!"
+                )
+            else:
+                logger.error(
+                    "\n" + "=" * 64 + "\n"
+                    "🔴 拒绝启动: 公网 transport (%s) 必须设置 OMBRE_ADMIN_TOKEN。\n"
+                    "   没有它, 任何拿到本服务 URL 的人都能读取/删除你的全部记忆\n"
+                    "   (含私密 feel), 还能改系统提示词 / 换 LLM 地址截走数据。\n"
+                    "   → 在部署平台 (Render/Railway/Docker) 设一个强随机 OMBRE_ADMIN_TOKEN。\n"
+                    "   REFUSING TO START: a public transport requires OMBRE_ADMIN_TOKEN.\n"
+                    "   Set a strong random OMBRE_ADMIN_TOKEN in your env, then redeploy.\n"
+                    "   (本地无鉴权调试可设 OMBRE_ALLOW_NO_AUTH=1 显式豁免。)\n"
+                    + "=" * 64,
+                    transport,
+                )
+                sys.exit(1)
+
         import threading
         import uvicorn
         from starlette.middleware.cors import CORSMiddleware
@@ -3698,17 +3725,78 @@ if __name__ == "__main__":
             _app = mcp.streamable_http_app()
         else:
             _app = mcp.sse_app()
+
+        # ============================================================
+        # 全局鉴权中间件 (AuthGate) —— 默认拒绝 (default-deny)
+        # ------------------------------------------------------------
+        # 公网部署时, 除了静态 UI 页 + /health 外, 一切请求 (/api/*, /mcp,
+        # *-hook) 都必须带正确的 X-Admin-Token header, 否则 401。
+        #   · 只收 header, 不收 ?token= —— query 会进访问日志 / Referer / 浏览器历史。
+        #   · 用 hmac.compare_digest 比对, 防时序侧信道。
+        #   · 静态页 (/, /v2/*, /dashboard, favicon, manifest) 放行: 浏览器导航
+        #     不会带自定义 header, 页面/JS/CSS/字体必须能加载; 真正的数据全部走
+        #     /api/* (前端 fetch 会自动补 header), 静态页本身不含记忆内容。
+        #   · 敏感前缀 (/api /mcp *-hook) 优先要门, 即便被未知/伪装路径绕也拦得住。
+        #   · 配合下方启动期 fail-safe (公网无 token 直接拒启), expected 正常不会为空;
+        #     万一为空, 这里对要门路径一律 401 (fail-closed, 绝不放行裸奔)。
+        # ============================================================
+        import hmac as _hmac
+        from starlette.middleware.base import BaseHTTPMiddleware
+        from starlette.responses import JSONResponse as _AuthJSONResponse
+
+        _PUBLIC_EXACT = {"/", "/health", "/dashboard"}
+        _PUBLIC_PREFIXES = ("/v2", "/favicon", "/manifest")
+
+        def _is_public_path(path: str) -> bool:
+            if path in _PUBLIC_EXACT:
+                return True
+            return any(path == p or path.startswith(p + "/") or path.startswith(p) for p in _PUBLIC_PREFIXES)
+
+        class AuthGate(BaseHTTPMiddleware):
+            async def dispatch(self, request, call_next):
+                path = request.url.path
+                sensitive = (
+                    path.startswith("/api")
+                    or path.startswith("/mcp")
+                    or path in ("/breath-hook", "/dream-hook")
+                )
+                # 非敏感: 预检 OPTIONS / 已知静态页放行 (default-deny: 未知路由仍要门)
+                if not sensitive and (request.method == "OPTIONS" or _is_public_path(path)):
+                    return await call_next(request)
+                # 要门
+                expected = os.environ.get("OMBRE_ADMIN_TOKEN", "").strip()
+                provided = request.headers.get("X-Admin-Token", "")
+                if expected and provided and _hmac.compare_digest(provided, expected):
+                    return await call_next(request)
+                return _AuthJSONResponse(
+                    {"error": "unauthorized — missing or invalid X-Admin-Token"},
+                    status_code=401,
+                )
+
+        # add_middleware 后加的在外层 → 先加 AuthGate (内层), 最后加 CORS (外层),
+        # 让 CORS 先处理跨源预检 OPTIONS, 不会被 AuthGate 误拦。
+        _app.add_middleware(AuthGate)
+
         # gzip: vendor JS 4.3MB + 200+ 桶 JSON 都裸传输, 朋友 Win wifi 切视图几分钟。
         # 压缩后 vendor ~1MB, JSON ~150KB, 直接 4x 提速。minimum_size=1024 跳过小响应。
         _app.add_middleware(GZipMiddleware, minimum_size=1024)
+
+        # CORS: 原本 allow_origins=["*"] 任何网页 JS 都能跨源读响应 (没鉴权时是大洞)。
+        # 收紧到 OMBRE_ALLOWED_ORIGINS (逗号分隔) 解析的白名单; 默认空 = 仅同源
+        # (dashboard 由本服务同源伺服; pixel-ai / claude.ai 都是服务端调用, 无浏览器 CORS)。
+        _cors_raw = os.environ.get("OMBRE_ALLOWED_ORIGINS", "").strip()
+        _allowed_origins = [o.strip() for o in _cors_raw.split(",") if o.strip()]
         _app.add_middleware(
             CORSMiddleware,
-            allow_origins=["*"],
+            allow_origins=_allowed_origins,
             allow_methods=["*"],
             allow_headers=["*"],
             expose_headers=["*"],
         )
-        logger.info("CORS + GZip middleware enabled / 已启用 CORS + GZip 中间件")
+        logger.info(
+            "AuthGate + CORS + GZip middleware enabled / 已启用 鉴权 + CORS + GZip 中间件"
+            f" (CORS origins={_allowed_origins or '同源 only'})"
+        )
         uvicorn.run(_app, host="0.0.0.0", port=8000)
     else:
         mcp.run(transport=transport)
