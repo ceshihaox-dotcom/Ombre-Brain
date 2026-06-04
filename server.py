@@ -2729,6 +2729,8 @@ async def api_search(request):
       q: 搜索词(必填)
       limit: 最多返回多少条 keyword 命中,默认 20
       include_vector: 'true' 时附带向量(语义)结果,默认 'false' (避免污染纯关键词搜索体验)
+      exclude_pinned: 'true' 时排除钉选(highlight/protected)记忆,默认 'false'。
+                      auto-inject 用 —— 钉选开窗已浮现, 注入再命中=重复噪声; 手动搜索别传(仍要找得到)
 
     Response shape:
       {
@@ -2764,12 +2766,19 @@ async def api_search(request):
     # 默认排除 feel(私密沉淀, 设计上不参与 AI 检索/自动浮现; 只在 breath domain="feel" 显式入口可取);
     # 确有需要可 include_feel=true opt-in
     include_feel = request.query_params.get("include_feel", "false").lower() == "true"
+    # 默认不排钉选(手动搜索仍要能找到钉选记忆); auto-inject 传 exclude_pinned=true 才排。
+    # 理由: 钉选(highlight / protected)开窗时已由 breath-hook 必定浮现进上下文,
+    #       日常对话自动注入再命中同一批 = 重复噪声。排掉降噪。(调用方见 ombre-inject.js)
+    exclude_pinned = request.query_params.get("exclude_pinned", "false").lower() == "true"
 
     def _is_noise(meta):
         return bool(meta.get("resolved", False) and meta.get("importance", 5) == 1)
 
     def _is_feel(meta):
         return meta.get("type") == "feel"
+
+    def _is_pinned(meta):
+        return is_highlighted(meta) or is_protected(meta)
 
     try:
         # === 关键词通道 ===
@@ -2778,6 +2787,8 @@ async def api_search(request):
             matches = [b for b in matches if not _is_noise(b.get("metadata", {}))]
         if not include_feel:
             matches = [b for b in matches if not _is_feel(b.get("metadata", {}))]
+        if exclude_pinned:
+            matches = [b for b in matches if not _is_pinned(b.get("metadata", {}))]
         keyword_hits = []
         for b in matches:
             meta = b.get("metadata", {})
@@ -2813,6 +2824,8 @@ async def api_search(request):
                     if not include_noise and _is_noise(vmeta):
                         continue
                     if not include_feel and _is_feel(vmeta):
+                        continue
+                    if exclude_pinned and _is_pinned(vmeta):
                         continue
                     vector_hits.append({
                         "id": bucket_id,
@@ -2908,7 +2921,7 @@ async def api_backup(request):
 
     repo_url = os.environ.get("OMBRE_BACKUP_REPO", "").strip()
     token    = os.environ.get("OMBRE_BACKUP_TOKEN", "").strip()
-    user     = os.environ.get("OMBRE_BACKUP_USER", "").strip()
+    user     = os.environ.get("OMBRE_BACKUP_USER", "ombre-bot").strip()  # 默认 ombre-bot → 文档可标"可选"
     if not (repo_url and token and user):
         return JSONResponse({"error": "OMBRE_BACKUP_REPO/TOKEN/USER 至少一个未设"}, status_code=500)
 
@@ -3636,6 +3649,22 @@ if __name__ == "__main__":
         logger.info("Scoring runtime overrides applied")
     except Exception as e:
         logger.warning(f"Scoring runtime overrides apply failed (using defaults): {e}")
+
+    # --- 数据安全自检: off-site 自动备份是否配置 ---
+    # 持久盘扛重启, 但盘本身损坏/误删/平台事故会全损(维护者亲历过一次数据丢失)。
+    # 推 buckets 到私有 git 的自动备份是唯一的"第二层"保命 —— 没配就显眼提醒, 别让用户裸奔。
+    _backup_ready = all(
+        os.environ.get(k, "").strip()
+        for k in ("OMBRE_BACKUP_REPO", "OMBRE_BACKUP_TOKEN")  # USER 有默认值, 非必需
+    )
+    if _backup_ready:
+        logger.info("✓ 自动备份已配置 — 记忆数据有 off-site 兜底")
+    else:
+        logger.warning(
+            "⚠⚠ 未配置自动备份 (OMBRE_BACKUP_REPO/TOKEN/USER)。"
+            " 数据当前只靠单块持久盘 —— 盘损坏/误删/平台事故将无法恢复。"
+            " 强烈建议按 DEPLOY.md「自动备份配置」设一个 off-site 备份(几分钟, 救命)。"
+        )
 
     if transport in ("sse", "streamable-http"):
         import threading

@@ -1,119 +1,57 @@
 # Ombre Brain
 
-一个给 Claude 用的长期情绪记忆系统。基于 Russell 效价/唤醒度坐标打标，Obsidian 做存储层，MCP 接入，带遗忘曲线和向量语义检索。
+一个给 AI 用的长期情绪记忆系统。基于 Russell 效价/唤醒度坐标打标，Obsidian 做存储层，MCP 接入，带遗忘曲线和向量语义检索。
 
-A long-term emotional memory system for Claude. Tags memories using Russell's valence/arousal coordinates, stores them as Obsidian-compatible Markdown, connects via MCP, with forgetting curve and vector semantic search.
+A long-term emotional memory system for AI assistants. Tags memories using Russell's valence/arousal coordinates, stores them as Obsidian-compatible Markdown, connects via MCP, with forgetting curve and vector semantic search.
 
-> **⚠️ 备用链接 / Backup link**
-> Gitea 备用地址（GitHub 访问有问题时用）：
-> **https://git.p0lar1s.uk/P0lar1s/Ombre_Brain**
+> ### 🌿 这是一个优化分支 (an optimized fork)
+> 本项目 fork 自 **[P0luz/Ombre-Brain](https://github.com/P0luz/Ombre-Brain)**（原作者），已获授权开源。
+>
+> **核心记忆机制（衰减公式 / 做梦 / feel / 记忆桶 / 情感权重）与原作者完全一致、未改动。** 我在其上做的是：① 全套新前端体验 ② 一批便利功能 ③ 检索/排序的命中精度优化（尤其中文场景）。改了哪些、为什么，全部透明列在 [CHANGES.md](./CHANGES.md)。
+>
+> **如果你不需要这些前端/便利功能，请直接支持[原作者的版本](https://github.com/P0luz/Ombre-Brain)。**
+>
+> 📋 [CHANGES.md](./CHANGES.md) 改了什么 · 🚀 [DEPLOY.md](./DEPLOY.md) 云部署+备份 · 🔄 [MIGRATION.md](./MIGRATION.md) 从上游迁移
+>
+> 💡 第一次接触 Ombre-Brain？记忆模型 / 衰减 / 做梦这些**核心概念建议先读[原作者的 README](https://github.com/P0luz/Ombre-Brain)**，讲得很完整；本仓的概念说明沿用其设计。
 
 ---
 
-## 快速开始 / Quick Start（Docker Hub 预构建镜像，最简单）
+## 快速开始 / Quick Start（Render 一键部署，最省事，不用装 Docker）
 
-> 不需要 clone 代码，不需要 build，三步搞定。
-> 完全不会？没关系，往下看，一步一步跟着做。
+> 对大多数人（尤其不太折腾技术的）这是最简单的方式 —— 不用装 Docker、不用碰命令行，填几个环境变量就跑起来。
+> （想本地跑 / 自己改代码？跳到下面[「从源码部署」](#从源码部署--deploy-from-sourcedocker)。）
 
-### 第零步：装 Docker Desktop
+### 第一步：点一键部署
 
-1. 打开 [docker.com/products/docker-desktop](https://www.docker.com/products/docker-desktop/)
-2. 下载对应你系统的版本（Mac / Windows / Linux）
-3. 安装、打开，看到 Docker 图标在状态栏里就行了
-4. **Windows 用户**：安装时会提示启用 WSL 2，点同意，重启电脑
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/ceshihaox-dotcom/OmbreBrain-folio)
 
-### 第一步：打开终端
+用 GitHub 账号登录 Render → 按提示部署。它会自动读本仓的 `render.yaml`，**已经帮你配好了持久磁盘**（数据重启不丢）。
 
-| 系统 | 怎么打开 |
-|---|---|
-| **Mac** | 按 `⌘ + 空格`，输入 `终端` 或 `Terminal`，回车 |
-| **Windows** | 按 `Win + R`，输入 `cmd`，回车；或搜索「PowerShell」 |
-| **Linux** | `Ctrl + Alt + T` |
+### 第二步：填 LLM 配置（建议填，留空会降级为本地关键词提取、质量差很多）
 
-打开后你会看到一个黑色/白色的窗口，可以输入命令。下面所有代码块里的内容，都是**复制粘贴到这个窗口里，然后按回车**。
+部署后到 Render → 你的服务 → **Environment**，填三个：
 
-### 第二步：创建一个工作文件夹
+- `OMBRE_API_KEY` — 你的 LLM API key（DeepSeek / Gemini / Claude 等任意 OpenAI 兼容的都行）
+- `OMBRE_BASE_URL` — 例 `https://api.deepseek.com/v1`
+- `OMBRE_MODEL` — 例 `deepseek-chat`
 
-```bash
-mkdir ombre-brain && cd ombre-brain
-```
+> 免费 key：[DeepSeek](https://platform.deepseek.com/) 或 [Google AI Studio](https://aistudio.google.com/apikey)。
 
-> 这会在你当前位置创建一个叫 `ombre-brain` 的文件夹，并进入它。
+### 第三步：⚠️ 配置自动备份（强烈建议，请别跳过）
 
-### 第三步：获取 API Key（免费）
+> 持久盘能扛住"重启"，但盘本身万一损坏 / 误删 / 平台出事，数据就**全没了** —— 本项目维护者就亲历过一次、丢了 7 天的记忆。所以请务必加上 **off-site 自动备份**（把记忆推到你自己的一个私有 git 仓），几分钟搞定，是唯一靠得住的"第二层"。
+>
+> 完整步骤见 **[DEPLOY.md「自动备份配置」](./DEPLOY.md)**。
+> 配完**一定要去 GitHub Actions 手动触发一次确认它真的跑通**，否则很容易"以为配好了、其实一次都没备份"。
 
-1. 打开 [aistudio.google.com/apikey](https://aistudio.google.com/apikey)
-2. 用 Google 账号登录
-3. 点击 **「Create API key」**
-4. 复制生成的 key（一长串字母数字），待会要用
+### 第四步：打开 + 接入 AI
 
-> 没有 Google 账号？也行，API Key 留空也能跑，只是脱水压缩效果差一点。
+部署完成后：
 
-### 第四步：创建配置文件并启动
-
-**一行一行复制粘贴执行：**
-
-```bash
-# 下载用户版 compose 文件
-curl -O https://raw.githubusercontent.com/P0luz/Ombre-Brain/main/docker-compose.user.yml
-```
-
-```bash
-# 创建 .env 文件——把 your-key-here 换成第三步拿到的 key
-echo "OMBRE_API_KEY=your-key-here" > .env
-```
-
-```bash
-# 拉取镜像并启动（第一次会下载约 500MB，等一会儿）
-docker compose -f docker-compose.user.yml up -d
-```
-
-### 第五步：验证
-
-```bash
-curl http://localhost:8000/health
-```
-
-看到类似这样的输出就是成功了：
-```json
-{"status":"ok","buckets":0,"decay_engine":"stopped"}
-```
-
-浏览器打开前端 Dashboard：**http://localhost:8000/dashboard**
-
-> 如果你用的是 `docker-compose.user.yml` 默认端口，地址就是 `http://localhost:8000/dashboard`。
-> 如果你改了端口映射（比如 `18001:8000`），则是 `http://localhost:18001/dashboard`。
-
-> **看到错误？** 检查 Docker Desktop 是否正在运行（状态栏有图标）。
-
-### 第六步：接入 Claude
-
-在 Claude Desktop 的配置文件里加上这段（Mac: `~/Library/Application Support/Claude/claude_desktop_config.json`）：
-
-```json
-{
-  "mcpServers": {
-    "ombre-brain": {
-      "type": "streamable-http",
-      "url": "http://localhost:8000/mcp"
-    }
-  }
-}
-```
-
-重启 Claude Desktop，你应该能在工具列表里看到 `breath`、`hold`、`grow` 等工具了。
-
-> **想挂载 Obsidian？** 用任意文本编辑器打开 `docker-compose.user.yml`，把 `./buckets:/data` 改成你的 Vault 路径，例如：
-> ```yaml
-> - /Users/你的用户名/Documents/Obsidian Vault/Ombre Brain:/data
-> ```
-> 然后 `docker compose -f docker-compose.user.yml down && docker compose -f docker-compose.user.yml up -d` 重启。
-
-> **后续更新镜像：**
-> ```bash
-> docker pull p0luz/ombre-brain:latest
-> docker compose -f docker-compose.user.yml down && docker compose -f docker-compose.user.yml up -d
-> ```
+- 主网页：`https://你的服务.onrender.com/v2/`
+- 手机端：`https://你的服务.onrender.com/v2/mobile/`（可在手机浏览器"添加到主屏幕"当 App 用）
+- 接入 Claude Desktop / Claude.ai：见下方[「接入 Claude」](#接入-claude-desktop--connect-to-claude-desktop)章节，MCP 地址填 `https://你的服务.onrender.com/mcp`
 
 ---
 
@@ -125,11 +63,9 @@ curl http://localhost:8000/health
 
 **第一步：拉取代码**
 
-(💡 如果主链接访问有困难，可用备用 Gitea 地址：https://git.p0lar1s.uk/P0lar1s/Ombre_Brain)
-
 ```bash
-git clone https://github.com/P0luz/Ombre-Brain.git
-cd Ombre-Brain
+git clone https://github.com/ceshihaox-dotcom/OmbreBrain-folio.git
+cd OmbreBrain-folio
 ```
 
 **第二步：创建 `.env` 文件**
@@ -198,7 +134,7 @@ docker logs ombre-brain
 
 看到 `Uvicorn running on http://0.0.0.0:8000` 说明成功了。
 
-浏览器打开前端 Dashboard：**http://localhost:18001/dashboard**（`docker-compose.yml` 默认端口映射 `18001:8000`）
+浏览器打开前端 Dashboard：**http://localhost:18001/v2/**（`docker-compose.yml` 默认端口映射 `18001:8000`）
 
 ---
 
@@ -212,9 +148,7 @@ docker logs ombre-brain
 
 ---
 
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/P0luz/Ombre-Brain)
-[![Deploy on Zeabur](https://zeabur.com/button.svg)](https://zeabur.com/templates/OMBRE-BRAIN?referralCode=P0luz)
-[![Docker Hub](https://img.shields.io/docker/v/p0luz/ombre-brain?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/p0luz/ombre-brain)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/ceshihaox-dotcom/OmbreBrain-folio)
 
 ---
 
@@ -330,8 +264,8 @@ breath(query="今天很累")
 ### 步骤 / Steps
 
 ```bash
-git clone https://github.com/P0luz/Ombre-Brain.git
-cd Ombre-Brain
+git clone https://github.com/ceshihaox-dotcom/OmbreBrain-folio.git
+cd OmbreBrain-folio
 
 python -m venv .venv
 source .venv/bin/activate  # Windows: .venv\Scripts\activate
@@ -539,32 +473,17 @@ Feel is not an event log — it's **what the model carries away**: a feeling, an
 | `backfill_embeddings.py` | 为存量桶批量生成 embedding / Batch-generate embeddings for existing buckets |
 | `write_memory.py` | 手动写入记忆，绕过 MCP / Manually write memories, bypass MCP |
 | `migrate_to_domains.py` | 迁移平铺文件到域子目录 / Migrate flat files to domain subdirs |
-| `reclassify_domains.py` | 基于关键词重分类 / Reclassify by keywords |
+| `migrate_from_upstream.py` | 从上游迁入：老字段→新字段升级 / Migrate from upstream (field upgrade) |
+| `reverse_compat_migrate.py` | 切回上游前：新字段→老字段回填 / Back-fill to upstream-compatible fields |
 | `reclassify_api.py` | 用 API 重打标未分类桶 / Re-tag uncategorized buckets via API |
-| `test_tools.py` | MCP 工具集成测试（8 项） / MCP tool integration tests (8 tests) |
+| `test_tools.py` | MCP 工具集成测试（6 步：5 工具 + 清理） / MCP tool integration tests |
 | `test_smoke.py` | 冒烟测试 / Smoke test |
 
 ## 部署 / Deploy
 
-### Docker Hub 预构建镜像
+### Render（推荐云部署）
 
-[![Docker Hub](https://img.shields.io/docker/v/p0luz/ombre-brain?label=Docker%20Hub&logo=docker)](https://hub.docker.com/r/p0luz/ombre-brain)
-
-不用 clone 代码、不用 build，直接拉取预构建镜像：
-
-```bash
-docker pull p0luz/ombre-brain:latest
-curl -O https://raw.githubusercontent.com/P0luz/Ombre-Brain/main/docker-compose.user.yml
-echo "OMBRE_API_KEY=你的key" > .env
-docker compose -f docker-compose.user.yml up -d
-```
-
-验证：`curl http://localhost:8000/health`
-Dashboard：浏览器打开 `http://localhost:8000/dashboard`
-
-### Render
-
-[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/P0luz/Ombre-Brain)
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/ceshihaox-dotcom/OmbreBrain-folio)
 
 > ⚠️ **免费层不可用**：Render 免费层**不支持持久化磁盘**，服务重启后记忆数据会丢失，且会在无流量时休眠。**必须使用 Starter（$7/mo）或以上**才能正常使用。
 > **Free tier won't work**: Render free tier has **no persistent disk** — all memory data is lost on restart. It also sleeps on inactivity. **Starter plan ($7/mo) or above is required.**
@@ -573,14 +492,14 @@ Dashboard：浏览器打开 `http://localhost:8000/dashboard`
 1. （可选）设置 `OMBRE_API_KEY`：任何 OpenAI 兼容 API 的 key，不填则自动降级为本地关键词提取
 2. （可选）设置 `OMBRE_BASE_URL`：API 地址，支持任意 OpenAI 化地址，如 `https://api.deepseek.com/v1` / `http://123.1.1.1:7689/v1` / `http://your-ollama:11434/v1`
 3. Render 自动挂载持久化磁盘到 `/opt/render/project/src/buckets`
-4. Dashboard：`https://<你的服务名>.onrender.com/dashboard`
+4. Dashboard：`https://<你的服务名>.onrender.com/v2/`
 5. 部署后 MCP URL：`https://<你的服务名>.onrender.com/mcp`
 
 `render.yaml` is included. After clicking the button:
 1. (Optional) `OMBRE_API_KEY`: any OpenAI-compatible key; omit to fall back to local keyword extraction
 2. (Optional) `OMBRE_BASE_URL`: any OpenAI-compatible endpoint, e.g. `https://api.deepseek.com/v1`, `http://123.1.1.1:7689/v1`, `http://your-ollama:11434/v1`
 3. Persistent disk auto-mounts at `/opt/render/project/src/buckets`
-4. Dashboard: `https://<your-service>.onrender.com/dashboard`
+4. Dashboard: `https://<your-service>.onrender.com/v2/`
 5. MCP URL after deploy: `https://<your-service>.onrender.com/mcp`
 
 ### Zeabur
@@ -592,10 +511,10 @@ Dashboard：浏览器打开 `http://localhost:8000/dashboard`
 
 1. **创建项目 / Create project**
    - 打开 [zeabur.com](https://zeabur.com) → 购买一台服务器 → **New Project** → **Deploy from GitHub**
-   - 先 Fork 本仓库到自己 GitHub 账号，然后在 Zeabur 选择 `你的用户名/Ombre-Brain`
+   - 先 Fork 本仓库到自己 GitHub 账号，然后在 Zeabur 选择 `你的用户名/OmbreBrain-folio`
    - Zeabur 会自动检测到根目录的 `Dockerfile` 并使用 Docker 方式构建
    - Go to [zeabur.com](https://zeabur.com) → buy a server → **New Project** → **Deploy from GitHub**
-   - Fork this repo first, then select `your-username/Ombre-Brain` in Zeabur
+   - Fork this repo first, then select `your-username/OmbreBrain-folio` in Zeabur
    - Zeabur auto-detects the `Dockerfile` in root and builds via Docker
 
 2. **设置环境变量 / Set environment variables**（服务页面 → **Variables** 标签页）
@@ -621,7 +540,7 @@ Dashboard：浏览器打开 `http://localhost:8000/dashboard`
 5. **验证 / Verify**
    - 访问 `https://<你的域名>.zeabur.app/health`，应返回 JSON
    - Visit `https://<your-domain>.zeabur.app/health` — should return JSON
-   - Dashboard：`https://<你的域名>.zeabur.app/dashboard`
+   - Dashboard：`https://<你的域名>.zeabur.app/v2/`
    - 最终 MCP 地址 / MCP URL：`https://<你的域名>.zeabur.app/mcp`
 
 **常见问题 / Troubleshooting：**
@@ -689,24 +608,10 @@ If using Claude Code, `.claude/settings.json` configures a `SessionStart` hook t
 
 Different update procedures depending on your deployment method.
 
-### Docker Hub 预构建镜像用户 / Docker Hub Pre-built Image
-
-```bash
-# 拉取最新镜像
-docker pull p0luz/ombre-brain:latest
-
-# 重启容器（记忆数据在 volume 里，不会丢失）
-docker compose -f docker-compose.user.yml down
-docker compose -f docker-compose.user.yml up -d
-```
-
-> 你的记忆数据挂载在 `./buckets:/data`，pull + restart 不会影响已有数据。
-> Your memory data is mounted at `./buckets:/data` — pull + restart won't affect existing data.
-
 ### 从源码部署用户 / Source Code Deploy (Docker)
 
 ```bash
-cd Ombre-Brain
+cd OmbreBrain-folio
 
 # 拉取最新代码
 git pull origin main
@@ -723,7 +628,7 @@ docker compose up -d
 ### 本地 Python 用户 / Local Python (no Docker)
 
 ```bash
-cd Ombre-Brain
+cd OmbreBrain-folio
 
 # 拉取最新代码
 git pull origin main
@@ -759,7 +664,7 @@ Zeabur 也连接了你的 GitHub 仓库：
 ### VPS / 自有服务器 / Self-hosted VPS
 
 ```bash
-cd Ombre-Brain
+cd OmbreBrain-folio
 
 # 拉取最新代码
 git pull origin main
@@ -782,6 +687,26 @@ sudo systemctl restart ombre-brain   # 示例
 > - Updates never affect your memory data (stored in volumes or buckets directory)
 > - If `requirements.txt` changed, Docker rebuild handles it automatically; non-Docker users need `pip install -r requirements.txt`
 > - After updating, visit `/health` to verify the service is running
+
+---
+
+## 关于本 fork (About this fork)
+
+这是 [P0luz/Ombre-Brain](https://github.com/P0luz/Ombre-Brain) 的一个优化分支版本。**核心记忆机制（衰减公式 / 做梦 / feel / 记忆桶 / 情感权重）与原作者完全一致、未改动**；我主要做了前端体验、便利功能，以及检索/排序的命中精度优化（尤其中文）。改了哪些、为什么，全部透明列在 [CHANGES.md](./CHANGES.md)。已获得原作者授权开源。
+
+This is an optimized fork of the upstream. **The core memory mechanism (decay / dreaming / feel / bucket model / emotion weighting) is identical to upstream and unchanged** — my changes are the frontend experience, convenience features, and retrieval/ranking precision tuning (especially for Chinese). Every change is transparently listed in [CHANGES.md](./CHANGES.md). Open-sourced with the original author's permission.
+
+本 fork 特有文档 / Fork-specific docs:
+
+- 📋 **[CHANGES.md](./CHANGES.md)** — 完整功能清单 + 跟上游的差异说明 (透明披露所有改动)
+- 🚀 **[DEPLOY.md](./DEPLOY.md)** — 一键部署到 Render + 自动备份配置
+- 🔄 **[MIGRATION.md](./MIGRATION.md)** — 从上游版本迁移过来的操作指南 + 兼容工具
+
+一键部署到 Render / One-click deploy:
+
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/ceshihaox-dotcom/OmbreBrain-folio)
+
+---
 
 ## License
 

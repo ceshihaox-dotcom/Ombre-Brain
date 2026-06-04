@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Ombre Brain 手动记忆写入工具
-用途：在 Copilot 端直接写入记忆文件，绕过 MCP 和 API 调用
+用途：在命令行直接写入记忆文件，绕过 MCP 和 API 调用
 用法：
   python3 write_memory.py --name "记忆名" --content "内容" --domain "情感" --tags "标签1,标签2"
   或交互模式：python3 write_memory.py
@@ -12,7 +12,28 @@ import uuid
 import argparse
 from datetime import datetime
 
-VAULT_DIR = os.path.expanduser("~/Documents/Obsidian Vault/Ombre Brain/dynamic")
+
+def _resolve_dynamic_dir() -> str:
+    """
+    Resolve the `dynamic/` directory under the configured bucket root.
+    Priority: $OMBRE_BUCKETS_DIR > config.yaml > built-in default.
+    优先级：环境变量 > config.yaml > 内置默认。
+    """
+    env_dir = os.environ.get("OMBRE_BUCKETS_DIR", "").strip()
+    if env_dir:
+        return os.path.join(os.path.expanduser(env_dir), "dynamic")
+    try:
+        from utils import load_config  # local import to avoid hard dep when missing
+        cfg = load_config()
+        return os.path.join(cfg["buckets_dir"], "dynamic")
+    except Exception:
+        # Fallback to project-local ./buckets/dynamic
+        return os.path.join(
+            os.path.dirname(os.path.abspath(__file__)), "buckets", "dynamic"
+        )
+
+
+VAULT_DIR = _resolve_dynamic_dir()
 
 
 def gen_id():
@@ -36,7 +57,7 @@ def write_memory(
     tags_yaml = "\n".join(f"- {t}" for t in tags)
 
     md = f"""---
-activation_count: 1
+activation_count: 0
 arousal: {arousal}
 created: '{now}'
 domain:
