@@ -41,12 +41,14 @@ services:
       - key: OMBRE_EMBED_BASE_URL
         sync: false
 
-      # ─── 🔴 管理员 token (必填! 全局鉴权) ───
-      # Render 是公开 URL —— 不设这个服务会【拒绝启动】。部署后到
-      # Dashboard > Environment 填一个强随机值 (例 openssl rand -hex 32)。
-      # 没有它任何人都能读/删你的全部记忆。前端 dashboard 首次访问会提示输同一个值。
+      # ─── 🔑 管理员 token (全局鉴权, Render 自动生成, 你啥都不用填) ───
+      # generateValue: Render 在首次部署时自动生成一个强随机值并固定下来。
+      # → 默认就是安全的, 不会裸奔, 也不用你自己想密码。
+      # 用网页 dashboard / 接 claude.ai 时, 到 Dashboard > Environment 复制这个
+      # OMBRE_ADMIN_TOKEN 的值: 前端首次访问会弹窗让你粘贴; MCP 连接器配成
+      # X-Admin-Token header。没有它任何人都能读/删你的全部记忆。
       - key: OMBRE_ADMIN_TOKEN
-        sync: false
+        generateValue: true
 
       # ─── CORS 允许的浏览器跨源 origin (可选, 逗号分隔, 默认仅同源) ───
       - key: OMBRE_ALLOWED_ORIGINS

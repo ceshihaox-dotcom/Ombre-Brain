@@ -9,10 +9,12 @@
 
 点上面按钮 → Render 会自动读 `render.yaml` → 你只需要填几个环境变量就完事:
 
-**🔴 安全(必填,不填拒绝启动)**:
-- `OMBRE_ADMIN_TOKEN` - 一个强随机值(例 `openssl rand -hex 32`)。Render 是**公开 URL**,这是唯一的门。
-  设了之后,除了静态页和 `/health`,所有 `/api/*` 和 `/mcp` 都必须带 `X-Admin-Token: <token>` header。
-  **不设这个值,公网部署会直接拒绝启动**(没有门 = 任何人可读/删你的全部记忆)。
+**🔑 安全(Render 自动搞定,你不用填)**:
+- `OMBRE_ADMIN_TOKEN` - **Render 会自动生成**一个强随机值(`render.yaml` 里 `generateValue: true`)。
+  这是全局鉴权的门:除了静态页和 `/health`,所有 `/api/*` 和 `/mcp` 都必须带 `X-Admin-Token: <token>` header。
+  → **默认就安全,不会裸奔,也不用你自己想密码。** 想用网页 / 接 claude.ai 时,到
+  Render → 你的服务 → **Environment**,复制 `OMBRE_ADMIN_TOKEN` 的值(下面会用到)。
+  (Docker / 手动部署没有自动生成,必须自己设一个,否则公网模式拒绝启动;确知私网/反代已鉴权可设 `OMBRE_ALLOW_NO_AUTH=1` 显式裸跑。)
 
 **LLM 配置(强烈建议填)** — 不填服务也能启动, 但脱水/打标会降级为本地关键词提取, 质量差很多:
 - `OMBRE_API_KEY` - 你的 LLM API key
@@ -33,8 +35,8 @@
 - 控制台: `https://your-app.onrender.com/v2/console/`
 - 手机端: `https://your-app.onrender.com/v2/mobile/`
 
-**首次打开网页**会弹窗要 `X-Admin-Token` —— 输入你设的 `OMBRE_ADMIN_TOKEN`,
-存进浏览器 localStorage 后自动刷新,之后这台设备/浏览器就不用再输了。
+**首次打开网页**会弹窗要 `X-Admin-Token` —— 粘贴上面从 Render Environment 复制的
+`OMBRE_ADMIN_TOKEN` 值,存进浏览器 localStorage 后自动刷新,之后这台设备/浏览器就不用再输了。
 
 ### 接入说明(给程序化客户端)
 - **claude.ai / Claude Desktop 等 MCP 连接器**:在连接器配置里加一个 header

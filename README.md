@@ -28,17 +28,20 @@ A long-term emotional memory system for AI assistants. Tags memories using Russe
 
 用 GitHub 账号登录 Render → 按提示部署。它会自动读本仓的 `render.yaml`，**已经帮你配好了持久磁盘**（数据重启不丢）。
 
-> ### 🔴 必做：设 `OMBRE_ADMIN_TOKEN`（否则服务拒绝启动）
-> Render 给你的是一个**公开 URL**。OB 现在有全局鉴权：除了静态网页和 `/health`，所有
-> `/api/*` 和 `/mcp` 都必须带 `X-Admin-Token` header。
-> **公网部署没设这个 token 会直接拒绝启动** —— 因为没有门 = 任何拿到 URL 的人都能
-> 读取/删除你的全部记忆（含私密日记），还能改提示词、换 LLM 地址截走数据。
+> ### 🔑 关于鉴权（Render 自动搞定，你不用做）
+> Render 给你的是一个**公开 URL**,所以 OB 有全局鉴权:除了静态网页和 `/health`,所有
+> `/api/*` 和 `/mcp` 都必须带 `X-Admin-Token` header,否则任何拿到 URL 的人都能读/删你的
+> 全部记忆(含私密日记)、改提示词、换 LLM 地址截走数据。
 >
-> 到 Render → 你的服务 → **Environment**,加一个：
-> - `OMBRE_ADMIN_TOKEN` = 一个强随机值（例 `openssl rand -hex 32`,或任意长随机串）
+> **好消息:Render 会自动帮你生成这个 token**(`render.yaml` 里 `generateValue: true`)——
+> 默认就是安全的,你**啥都不用填**。
 >
-> 第一次打开网页时会弹窗要这个 token,输入后存在浏览器里,之后就不用再输。
-> 程序化客户端（claude.ai 连接器等）需在请求里配 `X-Admin-Token` header。详见 [DEPLOY.md](./DEPLOY.md)。
+> 只有当你要**用网页 dashboard 或接 claude.ai** 时才需要它:到 Render → 你的服务 →
+> **Environment** → 复制 `OMBRE_ADMIN_TOKEN` 的值。第一次打开网页会弹窗让你粘贴,存浏览器后
+> 就不用再输;claude.ai 等连接器配成 `X-Admin-Token` header(见 [DEPLOY.md](./DEPLOY.md))。
+>
+> (Docker / 手动部署没有自动生成 —— 必须自己设 `OMBRE_ADMIN_TOKEN`,否则公网模式拒绝启动;
+> 确知在私网/反代已鉴权才裸跑可设 `OMBRE_ALLOW_NO_AUTH=1`。)
 
 ### 第二步：填 LLM 配置（建议填，留空会降级为本地关键词提取、质量差很多）
 
