@@ -802,7 +802,7 @@ async def trace(
     content: str = "",
     delete: bool = False,
 ) -> str:
-    """修改记忆元数据或内容。resolved=1沉底/0激活,protected=1防衰减/0取消,highlight=1浮现优先/0取消,internalized=1隐藏(保留但不浮现)/0取消,event_time=纠正事件实际发生时间(YYYY-MM-DD 或 ISO,空字符串=清除该字段),content=替换桶正文,delete=True删除。只传需改的,-1或空=不改。pinned 是 protected+highlight 的旧组合别名;digested 是 internalized 旧名,仍可用。"""
+    """修改记忆元数据或内容。resolved=1归档(移入归档区→不再浮现、也不再被检索;可在 dashboard 归档区查看/恢复)/0取消归档标记,protected=1防衰减/0取消,highlight=1浮现优先/0取消,internalized=1隐藏(留在原地但不浮现/不检索)/0取消,event_time=纠正事件实际发生时间(YYYY-MM-DD 或 ISO,空字符串=清除该字段),content=替换桶正文,delete=True删除。只传需改的,-1或空=不改。pinned 是 protected+highlight 的旧组合别名;digested 是 internalized 旧名,仍可用。"""
 
     if not bucket_id or not bucket_id.strip():
         return "请提供有效的 bucket_id。"
@@ -887,9 +887,9 @@ async def trace(
     # 特别提示 resolved 状态变化的语义
     if "resolved" in updates:
         if updates["resolved"]:
-            changed += " → 已沉底，只在关键词触发时重新浮现"
+            changed += " → 已归档，不再参与浮现/检索（可在 dashboard 归档区查看或恢复）"
         else:
-            changed += " → 已重新激活，将参与浮现排序"
+            changed += " → 已取消归档标记，将重新参与浮现排序"
     if "internalized" in updates:
         if updates["internalized"]:
             changed += " → 已内化，保留但不再浮现"
@@ -1252,6 +1252,13 @@ async def api_decay_config_reset(request):
 # =============================================================
 
 _SCORING_SCHEMA = [
+    {
+        "key": "content_weight",
+        "label": "正文检索权重",
+        "type": "float",
+        "min": 0, "max": 10, "step": 0.5,
+        "hint": "正文字段在检索里的权重(默认 1.0 对齐上游)。调高(如 3.0)让'正文里写过的内容'也能被搜到('我写过却搜不到'的解药); 太高可能让正文相似但主题不同的桶误命中",
+    },
     {
         "key": "title_hit_bonus",
         "label": "title 命中加分",
