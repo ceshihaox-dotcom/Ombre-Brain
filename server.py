@@ -3768,6 +3768,24 @@ if __name__ == "__main__":
                 provided = request.headers.get("X-Admin-Token", "")
                 if expected and provided and _hmac.compare_digest(provided, expected):
                     return await call_next(request)
+                # --- /mcp URL-key 旁路 (opt-in, 仅 /mcp 这一条口子) ---
+                # claude.ai 网页连接器只有 URL 字段、配不了自定义 header → 给 /mcp 开一条
+                # "URL 带密钥"的口子, 让网页版也能连带鉴权的 OB。
+                #   · 独立 env OMBRE_MCP_URL_KEY (≠ ADMIN_TOKEN): 泄漏 URL key 只给 MCP 读写删
+                #     记忆的能力, 不暴露守 /api/* 销毁/config/profile 的强 header token, 可独立轮换。
+                #   · 默认不设 = 纯 header 模式不变, /api/* 永不受此影响。
+                #   · 机制 (a) query ?key=<KEY> (最少代码; 若 claude.ai 后续 streamable-http POST
+                #     不保留 query, 再退"路径段"方案 b)。compare_digest 防时序侧信道。
+                #   · key 已在 uvicorn access log 过滤器里脱敏 (见下方 _MaskUrlKeyFilter), 不进日志。
+                if path.startswith("/mcp"):
+                    url_key_expected = os.environ.get("OMBRE_MCP_URL_KEY", "").strip()
+                    url_key_provided = request.query_params.get("key", "")
+                    if (
+                        url_key_expected
+                        and url_key_provided
+                        and _hmac.compare_digest(url_key_provided, url_key_expected)
+                    ):
+                        return await call_next(request)
                 return _AuthJSONResponse(
                     {"error": "unauthorized — missing or invalid X-Admin-Token"},
                     status_code=401,
@@ -3797,6 +3815,29 @@ if __name__ == "__main__":
             "AuthGate + CORS + GZip middleware enabled / 已启用 鉴权 + CORS + GZip 中间件"
             f" (CORS origins={_allowed_origins or '同源 only'})"
         )
+
+        # uvicorn access log 默认把 query string 写进日志行 → 会把 /mcp?key=<OMBRE_MCP_URL_KEY>
+        # 明文留在日志里 (泄漏隐患)。装一个过滤器把 query 里 key= 的值脱敏成 key=***。
+        # 仅作用于日志渲染, 不影响鉴权比对。lookbehind [?&] 确保只命中真正的 query 参数 key,
+        # 不误伤 "...monkey=" 之类子串。
+        import logging as _logging
+        import re as _re
+        _MASK_KEY_RE = _re.compile(r'(?<=[?&])key=[^&\s"\']+')
+
+        class _MaskUrlKeyFilter(_logging.Filter):
+            def filter(self, record):
+                try:
+                    if record.args and isinstance(record.args, tuple):
+                        record.args = tuple(
+                            (_MASK_KEY_RE.sub("key=***", a) if isinstance(a, str) else a)
+                            for a in record.args
+                        )
+                except Exception:
+                    pass
+                return True
+
+        _logging.getLogger("uvicorn.access").addFilter(_MaskUrlKeyFilter())
+
         uvicorn.run(_app, host="0.0.0.0", port=8000)
     else:
         mcp.run(transport=transport)

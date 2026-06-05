@@ -51,9 +51,22 @@
     "env": { "OMBRE_TOKEN": "<粘贴 token>" }
   }}}
   ```
-- **⚠ claude.ai 网页版自定义连接器**:**不支持自定义 header**(只有 URL + 可选 OAuth),
-  因此**无法**用 `X-Admin-Token` 连公网 OB。要在客户端直连请改用 **Claude Desktop + 上面的
-  mcp-remote**,或本地 stdio 模式。
+- **claude.ai 网页版自定义连接器**:**不支持自定义 header**(只有 URL + 可选 OAuth),
+  所以不能用 `X-Admin-Token` 连。两条路:
+  - **(推荐) Claude Desktop + 上面的 mcp-remote**,或本地 stdio 模式 —— 安全性最高。
+  - **(可选 · Option ① · 把密钥放进 URL)** 如果你就是想用 claude.ai 网页版连:设一个
+    **独立**的环境变量 `OMBRE_MCP_URL_KEY`(随机字符串,**别**跟 `OMBRE_ADMIN_TOKEN` 用同一个值),
+    然后在 claude.ai 连接器里填 URL:
+    ```
+    https://你的域名/mcp?key=<OMBRE_MCP_URL_KEY 的值>
+    ```
+    - **默认不设 `OMBRE_MCP_URL_KEY` = 这条口子关闭**,行为跟以前完全一样(纯 header)。
+    - **它比 header 弱**:URL 里的密钥可能被人看到(分享截图 / 浏览器历史)。所以它**只开 `/mcp`**
+      (读写删记忆),**打不开** `/api/*`(销毁/换模型/改配置那些仍只认 `X-Admin-Token`)。
+      正因为权限更小,它跟主 token 分开、**可以单独轮换**(泄漏了只换这一个,不动主 token)。
+    - **轮换**:在 Render Environment 改 `OMBRE_MCP_URL_KEY` 的值 → 重启 → 旧 URL 立刻失效,
+      把新 URL 重新填进 claude.ai 连接器即可。
+    - 服务端已对访问日志里的 `?key=` 做脱敏(不会把密钥写进 uvicorn access log)。
 - **每日自动备份**(GitHub Actions,见下文):如果设了 `OMBRE_ADMIN_TOKEN`,
   必须在 OB 仓库的 `Settings > Secrets and variables > Actions` 里也加一个
   同名 secret `OMBRE_ADMIN_TOKEN`,值一致,否则 backup 会 401。
