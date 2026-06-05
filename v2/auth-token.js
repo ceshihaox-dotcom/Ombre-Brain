@@ -2,18 +2,29 @@
 // Ombre Brain —— 全局鉴权 token 注入 (所有 v2 页面在 <head> 最前加载)
 // ------------------------------------------------------------
 // OB 服务端现在要求 X-Admin-Token (除静态页 / /health 外的 /api/* + /mcp 都要门)。
-// 这里包一层 window.fetch:
+// 这里同时包 window.fetch 和 XMLHttpRequest:
 //   · 给同源 /api/ (及 /mcp) 请求自动带上 localStorage['ombre-admin-token'];
-//   · 拿到 401 时弹一次 prompt 让你输 token, 存进 localStorage 后刷新页面。
-// 必须在任何业务 fetch 之前执行 —— 所以用普通 <script> 放在 <head> 最前
-// (早于 babel / React 应用代码)。
+//   · fetch 拿到 401 时弹一次 prompt 让你输 token, 存进 localStorage 后刷新页面。
+// ⚠ 必须两者都包: 主站点走 fetch, 但工作台(console)等页面用 XMLHttpRequest —— 只包 fetch
+//   会让 XHR 请求漏带 token → 401 (历史 bug)。
+// 必须在任何业务请求之前执行 —— 所以用普通 <script> 放在 <head> 最前。
 // ============================================================
 (function () {
   if (window.__obAuthPatched) return;
   window.__obAuthPatched = true;
 
   var KEY = 'ombre-admin-token';
-  var _fetch = window.fetch.bind(window);
+
+  function getToken() {
+    try { return localStorage.getItem(KEY); } catch (e) { return null; }
+  }
+
+  // 同源需要鉴权的请求: /api/* 或 /mcp。兼容相对/绝对 URL、有无前导斜杠。
+  // (^|/) 边界防误伤 "therapi/" 之类把 api 当子串。
+  function needsToken(url) {
+    if (!url || typeof url !== 'string') return false;
+    return /(^|\/)(api|mcp)(\/|$|\?|#)/.test(url);
+  }
 
   function urlOf(input) {
     try {
@@ -23,13 +34,14 @@
     return '';
   }
 
+  // --- 1) 包 window.fetch ---
+  var _fetch = window.fetch.bind(window);
   window.fetch = function (input, init) {
     var url = urlOf(input);
-    var needsToken = url.indexOf('/api/') !== -1 || url.indexOf('/mcp') !== -1;
+    var need = needsToken(url);
 
-    if (needsToken) {
-      var token = null;
-      try { token = localStorage.getItem(KEY); } catch (e) {}
+    if (need) {
+      var token = getToken();
       if (token) {
         init = init || {};
         var h = new Headers(init.headers || {});
@@ -39,7 +51,7 @@
     }
 
     return _fetch(input, init).then(function (res) {
-      if (res && res.status === 401 && needsToken && !window.__obAuthPrompting) {
+      if (res && res.status === 401 && need && !window.__obAuthPrompting) {
         window.__obAuthPrompting = true;
         try {
           var entered = window.prompt(
@@ -57,4 +69,28 @@
       return res;
     });
   };
+
+  // --- 2) 包 XMLHttpRequest (工作台等用 XHR 的页面也要带 token) ---
+  try {
+    var XHR = window.XMLHttpRequest;
+    if (XHR && XHR.prototype && XHR.prototype.open && XHR.prototype.send) {
+      var _open = XHR.prototype.open;
+      var _send = XHR.prototype.send;
+      XHR.prototype.open = function (method, url) {
+        try { this.__obUrl = url; } catch (e) {}
+        return _open.apply(this, arguments);
+      };
+      XHR.prototype.send = function () {
+        try {
+          if (needsToken(this.__obUrl)) {
+            var t = getToken();
+            if (t) {
+              try { this.setRequestHeader('X-Admin-Token', t); } catch (e) {}
+            }
+          }
+        } catch (e) {}
+        return _send.apply(this, arguments);
+      };
+    }
+  } catch (e) {}
 })();
