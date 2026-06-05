@@ -600,12 +600,13 @@ When connecting via tunnel, ensure:
      (token 放 env `OMBRE_TOKEN` 避免空格被拆);或在本机用 **stdio 模式**(无需 token)。
      / claude.ai web custom connectors don't support custom headers, so they can't reach an
      authed OB — use Claude Desktop + `mcp-remote --header`, or run locally in stdio mode.
-   - 💡 **可选 · 想用 claude.ai 网页版直连**:设独立 env `OMBRE_MCP_URL_KEY`(别跟
-     `OMBRE_ADMIN_TOKEN` 同值),连接器 URL 填 `https://<your-host>/mcp?key=<KEY>`。这条口子
-     **只开 `/mcp`**(读写删记忆)、打不开 `/api/*`,密钥在 URL 里比 header 弱、可单独轮换。
-     默认不设 = 关闭。详见 [DEPLOY.md](./DEPLOY.md) 的 Option ①。
+   - 💡 **可选 · 想用 claude.ai 网页版直连**:设独立 env `OMBRE_MCP_URL_KEY`(URL 安全随机串,
+     别跟 `OMBRE_ADMIN_TOKEN` 同值),连接器 URL 二选一:`https://<host>/<KEY>/mcp`(推荐,密钥在
+     路径里最稳)或 `https://<host>/mcp?key=<KEY>`。这条口子**只开 `/mcp`**(读写删记忆)、打不开
+     `/api/*`,密钥在 URL 里比 header 弱、可单独轮换;默认不设 = 关闭。详见 [DEPLOY.md](./DEPLOY.md) Option ①。
      / Optional: to connect from claude.ai web, set a separate `OMBRE_MCP_URL_KEY` and use
-     `https://<your-host>/mcp?key=<KEY>` (opens `/mcp` only, weaker than header — see DEPLOY.md).
+     `https://<host>/<KEY>/mcp` (recommended) or `https://<host>/mcp?key=<KEY>` (opens `/mcp` only,
+     weaker than header — see DEPLOY.md).
    - 先访问 `/health` 验证连接 / Verify first: `https://<your-tunnel>/health` should return `{"status":"ok",...}`（`/health` 不需要 token / no token needed）
 
 3. **已知限制 / Known limitations**
