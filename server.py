@@ -3755,6 +3755,10 @@ if __name__ == "__main__":
         class AuthGate(BaseHTTPMiddleware):
             async def dispatch(self, request, call_next):
                 path = request.url.path
+                # 路径段方案 (b): 外层 McpUrlKeyPath 已用 compare_digest 校验过 /<key>/mcp
+                # 的密钥并剥成 /mcp + 打标 → 这里直接放行 (它只会给 /mcp 打标, 不碰 /api/*)。
+                if request.scope.get("_mcp_url_key_ok"):
+                    return await call_next(request)
                 sensitive = (
                     path.startswith("/api")
                     or path.startswith("/mcp")
@@ -3774,8 +3778,11 @@ if __name__ == "__main__":
                 #   · 独立 env OMBRE_MCP_URL_KEY (≠ ADMIN_TOKEN): 泄漏 URL key 只给 MCP 读写删
                 #     记忆的能力, 不暴露守 /api/* 销毁/config/profile 的强 header token, 可独立轮换。
                 #   · 默认不设 = 纯 header 模式不变, /api/* 永不受此影响。
-                #   · 机制 (a) query ?key=<KEY> (最少代码; 若 claude.ai 后续 streamable-http POST
-                #     不保留 query, 再退"路径段"方案 b)。compare_digest 防时序侧信道。
+                #   · 两种 URL 形态并存, 连接器二选一即可:
+                #     (a) query: https://host/mcp?key=<KEY>   ← 此处校验
+                #     (b) path : https://host/<KEY>/mcp       ← 外层 McpUrlKeyPath 校验+改写
+                #     (b) 不依赖客户端在后续请求保留 query, 对 claude.ai 这类未知行为更稳。
+                #   · compare_digest 防时序侧信道。
                 #   · key 已在 uvicorn access log 过滤器里脱敏 (见下方 _MaskUrlKeyFilter), 不进日志。
                 if path.startswith("/mcp"):
                     url_key_expected = os.environ.get("OMBRE_MCP_URL_KEY", "").strip()
@@ -3790,6 +3797,36 @@ if __name__ == "__main__":
                     {"error": "unauthorized — missing or invalid X-Admin-Token"},
                     status_code=401,
                 )
+
+        # 路径段 URL-key 方案 (b): 纯 ASGI 中间件, 放在最外层 (最先看到原始 path)。
+        # 把密钥放进【路径段】—— 连接器 URL = https://host/<KEY>/mcp。密钥永远在 URL 路径里,
+        # 客户端每次请求都必然带上, 不依赖 query 保留 → 对 claude.ai 这类未知行为更稳。
+        # 命中(compare_digest)后剥掉 /<KEY> 前缀、把 path 改写回 /mcp 交给内层, 并打 scope 标记
+        # 让 AuthGate 放行。只认 /<KEY>/mcp(及其子路径), 绝不碰 /<KEY>/api 之类 → 仍只开 /mcp。
+        # ⚠ 路径段方案要求 KEY 是 URL 安全的单段 (hex / 字母数字, 无 / 与特殊字符)。
+        class McpUrlKeyPath:
+            def __init__(self, app):
+                self.app = app
+
+            async def __call__(self, scope, receive, send):
+                if scope.get("type") == "http":
+                    key = os.environ.get("OMBRE_MCP_URL_KEY", "").strip()
+                    path = scope.get("path", "")
+                    if key and path.startswith("/"):
+                        parts = path.split("/", 2)  # ["", "<seg>", "rest..."]
+                        seg = parts[1] if len(parts) > 1 else ""
+                        rest = "/" + parts[2] if len(parts) > 2 else ""
+                        # 必须形如 /<seg>/mcp 或 /<seg>/mcp/... 且 <seg> 是正确密钥
+                        if (
+                            seg
+                            and (rest == "/mcp" or rest.startswith("/mcp/"))
+                            and _hmac.compare_digest(seg, key)
+                        ):
+                            scope = dict(scope)
+                            scope["path"] = rest
+                            scope["raw_path"] = rest.encode("latin-1")
+                            scope["_mcp_url_key_ok"] = True
+                await self.app(scope, receive, send)
 
         # add_middleware 后加的在外层 → 先加 AuthGate (内层), 最后加 CORS (外层),
         # 让 CORS 先处理跨源预检 OPTIONS, 不会被 AuthGate 误拦。
@@ -3811,27 +3848,33 @@ if __name__ == "__main__":
             allow_headers=["*"],
             expose_headers=["*"],
         )
+        # 最后加 = 最外层: 先于一切看到原始 path, 校验/改写路径段密钥 (/<KEY>/mcp)。
+        _app.add_middleware(McpUrlKeyPath)
         logger.info(
             "AuthGate + CORS + GZip middleware enabled / 已启用 鉴权 + CORS + GZip 中间件"
             f" (CORS origins={_allowed_origins or '同源 only'})"
         )
 
-        # uvicorn access log 默认把 query string 写进日志行 → 会把 /mcp?key=<OMBRE_MCP_URL_KEY>
-        # 明文留在日志里 (泄漏隐患)。装一个过滤器把 query 里 key= 的值脱敏成 key=***。
-        # 仅作用于日志渲染, 不影响鉴权比对。lookbehind [?&] 确保只命中真正的 query 参数 key,
-        # 不误伤 "...monkey=" 之类子串。
+        # uvicorn access log 默认把请求行 (含 query string + path) 写进日志 → 会把
+        # /mcp?key=<KEY> (query 方案) 或 /<KEY>/mcp (path 方案) 里的密钥明文留在日志 (泄漏隐患)。
+        # 装一个过滤器双重脱敏: ① query 里 key= 的值 (lookbehind [?&] 防误伤 "...monkey=");
+        # ② 密钥字面值本身 (覆盖 path 段形态; key 是高熵随机串, 整串替换安全)。仅作用于日志渲染。
         import logging as _logging
         import re as _re
         _MASK_KEY_RE = _re.compile(r'(?<=[?&])key=[^&\s"\']+')
+        _URL_KEY_VAL = os.environ.get("OMBRE_MCP_URL_KEY", "").strip()
 
         class _MaskUrlKeyFilter(_logging.Filter):
             def filter(self, record):
                 try:
                     if record.args and isinstance(record.args, tuple):
-                        record.args = tuple(
-                            (_MASK_KEY_RE.sub("key=***", a) if isinstance(a, str) else a)
-                            for a in record.args
-                        )
+                        def _red(a):
+                            if isinstance(a, str):
+                                a = _MASK_KEY_RE.sub("key=***", a)
+                                if _URL_KEY_VAL and _URL_KEY_VAL in a:
+                                    a = a.replace(_URL_KEY_VAL, "***")
+                            return a
+                        record.args = tuple(_red(a) for a in record.args)
                 except Exception:
                     pass
                 return True
