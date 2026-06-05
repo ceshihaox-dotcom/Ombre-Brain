@@ -3779,6 +3779,13 @@ if __name__ == "__main__":
                 provided = request.headers.get("X-Admin-Token", "")
                 if expected and provided and _hmac.compare_digest(provided, expected):
                     return await call_next(request)
+                # cookie 兜底: dashboard 工作台等页面用 Web Worker 拉数据, 这些请求不经
+                # 前端 fetch/XHR 的 header 注入(worker 读不到 localStorage), 但浏览器会自动
+                # 带上同源 cookie(auth-token.js 已把 token 同步进 ombre_admin_token cookie)。
+                # cookie 走 SameSite=Strict + CORS 已收紧到同源 → CSRF 风险可控。header 仍是首选。
+                _cookie_tok = request.cookies.get("ombre_admin_token", "")
+                if expected and _cookie_tok and _hmac.compare_digest(_cookie_tok, expected):
+                    return await call_next(request)
                 # --- /mcp URL-key 旁路 (opt-in, 仅 /mcp 这一条口子) ---
                 # claude.ai 网页连接器只有 URL 字段、配不了自定义 header → 给 /mcp 开一条
                 # "URL 带密钥"的口子, 让网页版也能连带鉴权的 OB。

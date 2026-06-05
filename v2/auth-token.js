@@ -19,6 +19,19 @@
     try { return localStorage.getItem(KEY); } catch (e) { return null; }
   }
 
+  // 把 token 同步到 cookie。用途: 工作台(console)等页面用 Web Worker 拉数据,
+  // worker 既不经主线程的 fetch/XHR patch、也读不到 localStorage —— 但浏览器对
+  // 同源请求(含 worker fetch/XHR)会自动带上 cookie。服务端 AuthGate 同时接受
+  // X-Admin-Token header 或此 cookie。SameSite=Strict + 服务端 CORS 收紧 → 挡 CSRF。
+  function syncCookie(token) {
+    try {
+      if (!token) return;
+      var secure = (location.protocol === 'https:') ? '; Secure' : '';
+      document.cookie = 'ombre_admin_token=' + token + '; path=/; SameSite=Strict' + secure;
+    } catch (e) {}
+  }
+  syncCookie(getToken());  // 进页面时若已有 token, 立刻同步进 cookie
+
   // 同源需要鉴权的请求: /api/* 或 /mcp。兼容相对/绝对 URL、有无前导斜杠。
   // (^|/) 边界防误伤 "therapi/" 之类把 api 当子串。
   function needsToken(url) {
@@ -60,6 +73,7 @@
           );
           if (entered && entered.trim()) {
             try { localStorage.setItem(KEY, entered.trim()); } catch (e) {}
+            syncCookie(entered.trim());
             location.reload();
             return res;
           }
