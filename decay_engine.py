@@ -44,7 +44,7 @@ class DecayEngine:
     # ---------------------------------------------------------
     DEFAULTS = {
         "feel_score": 50.0,            # feel 桶基础权重 (锁定值, 防"心动时刻"被自然遗忘); 设 0 → 跟随 importance 公式
-        "protected_score": 100.0,      # protected/permanent 桶上限 (原硬编 999, 太极端)
+        "protected_score": 999.0,      # protected/permanent 桶分数 (对齐上游; 实质=永不衰减, 999 与 100 功能等价)
         "highlight_boost_pct": 30.0,   # highlight=true 时 score *= (1 + pct/100)
         "surface_threshold": 5.0,      # score 高于此值 → 标记为"活跃" (UI 提示用)
         "archive_threshold": 0.3,      # score 低于此值 → 自动归档
@@ -161,7 +161,8 @@ class DecayEngine:
             return self.feel_score
 
         importance = max(1, min(10, int(metadata.get("importance", 5))))
-        activation_count = max(1, int(metadata.get("activation_count", 1)))
+        # B-03 对齐上游: float 不截断 → time-ripple 的 +0.3 涟漪(相邻桶连带激活)能真正生效
+        activation_count = max(1.0, float(metadata.get("activation_count", 1)))
 
         # --- Days since last activation ---
         last_active_str = metadata.get("last_active", metadata.get("created", ""))

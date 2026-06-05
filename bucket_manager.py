@@ -93,9 +93,10 @@ class BucketManager:
         self.w_emotion = scoring.get("emotion_resonance", 2.0)
         self.w_time = scoring.get("time_proximity", 1.5)  # 默认对齐上游 1.5(个人偏好走 scoring_weights 覆盖); 仅 fuzzy 模式生效
         self.w_importance = scoring.get("importance", 1.0)
-        # content_weight: 有意高于上游(1.0→3.0), 让正文命中可被搜到("我写过但搜不到"的解药)。
-        # 两种检索模式都用到, 是 fork 保留的真改进 — 已在 CHANGES 披露。
-        self.content_weight = scoring.get("content_weight", 3.0)
+        # content_weight: 默认对齐上游 1.0。调高(如 3.0)能让"正文命中"也被搜到
+        # ("我写过但搜不到"的解药), 但这是未充分验证的个人偏好 → 走 runtime scoring 覆盖,
+        # 不塞进开源默认。文档会说明"想让正文可搜→调高 content_weight"。两种检索模式都用到。
+        self.content_weight = scoring.get("content_weight", 1.0)
         # warmth_boost: 高 valence(>0.5)桶在检索时获得额外加分,跟 query 是否带情感坐标无关。
         # 跟 emotion_resonance 不同 — emotion_resonance 是 Russell 距离,
         # 无 query emotion 时退化为常数 0.5,对亲密时刻无帮助。
@@ -158,6 +159,7 @@ class BucketManager:
     # Runtime-tunable scoring keys (whitelist; values type-coerced per key).
     # 跟 decay_engine.DEFAULTS 同思路 — 限定可被 /api/scoring-config 改的 key, 防误写。
     SCORING_OVERRIDE_DEFAULTS = {
+        "content_weight": 1.0,         # float — 正文字段检索权重 (默认对齐上游 1.0; 调高如 3.0 让"正文命中"也能被搜到)
         "title_hit_bonus": 0.0,        # float, 0~100
         "keyword_first_sort": False,   # bool
         "dryrun_log": False,           # bool
@@ -170,6 +172,11 @@ class BucketManager:
         未在 overrides 里出现的 key 保留 __init__ 时读的值(可能来自 yaml/默认)。"""
         if not isinstance(overrides, dict):
             return
+        if "content_weight" in overrides:
+            try:
+                self.content_weight = max(0.0, float(overrides["content_weight"]))
+            except (TypeError, ValueError):
+                pass
         if "title_hit_bonus" in overrides:
             try:
                 self.title_hit_bonus = max(0.0, float(overrides["title_hit_bonus"]))
@@ -183,6 +190,7 @@ class BucketManager:
             self.precise_match_mode = bool(overrides["precise_match_mode"])
         logger.info(
             f"[scoring] runtime overrides applied: "
+            f"content_weight={self.content_weight}, "
             f"title_hit_bonus={self.title_hit_bonus}, "
             f"keyword_first_sort={self.keyword_first_sort}, "
             f"dryrun_log={self.dryrun_log}, "
@@ -192,6 +200,7 @@ class BucketManager:
     def current_scoring_overrides(self) -> dict:
         """Return current values of runtime-tunable scoring keys (for /api/scoring-config GET)."""
         return {
+            "content_weight": self.content_weight,
             "title_hit_bonus": self.title_hit_bonus,
             "keyword_first_sort": self.keyword_first_sort,
             "dryrun_log": self.dryrun_log,
