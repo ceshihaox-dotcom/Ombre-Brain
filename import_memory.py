@@ -146,35 +146,71 @@ def _parse_chatgpt_json(data: list | dict) -> list[dict]:
 
 
 def _parse_markdown(text: str) -> list[dict]:
-    """Parse Markdown/plain text → [{role, content, timestamp}, ...]"""
-    # Try to detect conversation patterns
+    """Parse Markdown/plain text → [{role, content, timestamp}, ...]
+    认两种对话格式:
+      ① 行首角色前缀  user:/human:/你:/我:  和  assistant:/claude:/ai:/...
+      ② markdown 标题式说话人  "### **名字** · 2026-06-06 10:30" / "## 名字"
+         (常见于聊天前端导出, 如 Rin/Soren)。名字→角色通用映射: 首个出现的说话人=user,
+         其余/已知 AI 名=assistant, 不写死具体名字。带 · 时间戳的会归一化成 [时间戳] 前缀,
+         供 digest 推断 event_time。"""
+    import re
     lines = text.split("\n")
     turns = []
     current_role = "user"
     current_content = []
 
+    # 标题式说话人: ## 或更深 + (可选粗体)短名字 + (可选 · 时间戳)
+    header_re = re.compile(r'^#{2,6}\s*(?:\*\*\s*)?([^*#·\n]{1,40})(?:\s*\*\*)?\s*(·[^\n]*)?$')
+    ts_re = re.compile(r'\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}')
+    name_role: dict[str, str] = {}
+    _known_ai = ("assistant", "claude", "ai", "gpt", "bot", "deepseek", "soren", "助手", "模型", "机器人")
+
+    def role_for(name: str) -> str:
+        low = name.strip().lower()
+        if low in name_role:
+            return name_role[low]
+        if any(low == k or k in low for k in _known_ai):
+            r = "assistant"
+        elif "user" not in name_role.values():
+            r = "user"          # 首个未知说话人 = 人类
+        else:
+            r = "assistant"
+        name_role[low] = r
+        return r
+
+    def flush():
+        if current_content:
+            c = "\n".join(current_content).strip()
+            if c:
+                turns.append({"role": current_role, "content": c, "timestamp": ""})
+
     for line in lines:
         stripped = line.strip()
-        # Detect role switches
+        m = header_re.match(stripped)
+        # 仅当标题里有粗体或 · 时间戳, 才当作说话人(跟普通章节标题区分, 降低误判)
+        if m and ("**" in stripped or "·" in stripped):
+            name = m.group(1).strip()
+            if name:
+                flush()
+                current_role = role_for(name)
+                tm = ts_re.search(m.group(2) or "")
+                # 把 · 时间戳归一化成 [YYYY-MM-DD HH:MM] 前缀, digest 用它推 event_time
+                current_content = [f"[{tm.group(0).replace('T', ' ')}] "] if tm else []
+                continue
         if stripped.lower().startswith(("human:", "user:", "你:", "我:")):
-            if current_content:
-                turns.append({"role": current_role, "content": "\n".join(current_content).strip(), "timestamp": ""})
+            flush()
             current_role = "user"
             content_after = stripped.split(":", 1)[1].strip() if ":" in stripped else ""
             current_content = [content_after] if content_after else []
         elif stripped.lower().startswith(("assistant:", "claude:", "ai:", "gpt:", "bot:", "deepseek:")):
-            if current_content:
-                turns.append({"role": current_role, "content": "\n".join(current_content).strip(), "timestamp": ""})
+            flush()
             current_role = "assistant"
             content_after = stripped.split(":", 1)[1].strip() if ":" in stripped else ""
             current_content = [content_after] if content_after else []
         else:
             current_content.append(line)
 
-    if current_content:
-        content = "\n".join(current_content).strip()
-        if content:
-            turns.append({"role": current_role, "content": content, "timestamp": ""})
+    flush()
 
     # If no role patterns detected, treat entire text as one big chunk
     if not turns:
