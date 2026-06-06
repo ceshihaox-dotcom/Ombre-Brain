@@ -476,9 +476,19 @@ Feel is not an event log — it's **what the model carries away**: a feeling, an
 
 ## 给 Claude 的使用指南 / Usage Guide for Claude
 
-`CLAUDE_PROMPT.md` 是写给 Claude 看的使用说明。放到你的 system prompt 或 custom instructions 里就行。
+`CLAUDE_PROMPT.md` 是写给 AI 看的使用说明——教它**何时**用哪个工具、"权重池"怎么回事、dream/feel 怎么做。
 
-`CLAUDE_PROMPT.md` is the usage guide written for Claude. Put it in your system prompt or custom instructions.
+> ⚠️ **要知道**：AI **默认看不到这份说明**。它默认只能看到 MCP 工具的简短描述（+ 若装了 SessionStart hook，会有 breath/dream 的输出）。所以这份指南**需要你主动喂给它**——给多少，按你的 token 预算自己定：
+
+| 怎么给 | 效果 | 代价 |
+|---|---|---|
+| 把 `CLAUDE_PROMPT.md` **全文**放进 system prompt / custom instructions | AI 最会用 OB（该 `hold` 就存、该 `resolved` 就放下、`pulse` 不乱调） | 每次会话多占一段 token |
+| 放**精简版**（自己删到核心几条） | 折中 | 中等 |
+| **不放**，只靠工具描述 | 最省 token | AI 用得糙（可能乱调 `pulse`、少用 `hold`） |
+
+> 这是给你的**信息和选择**，不是规定——OB 不会自动往 AI 的 prompt 里塞东西（省得给 token 紧张的人加负担）。
+
+**English**: `CLAUDE_PROMPT.md` is the usage guide for the AI. Note it is **not** auto-injected — by default the AI only sees the brief MCP tool descriptions. Paste as much of it into your system prompt as your token budget allows: full = the AI uses OB best (more tokens/session); partial = middle ground; none = cheapest but the AI uses the tools crudely.
 
 ## 工具脚本 / Utility Scripts
 
