@@ -1,7 +1,7 @@
 // constellation-physics.jsx —— 力导向布局 + 类型推断 + 边权计算
 
 // 推断星体类型（4 视觉类）
-// archived 视觉灰色用于已内化的桶 (老 item.archived 字段桥接层从未填, 改读 internalized)
+// archived 视觉灰色用于已消化的桶 (老 item.archived 字段桥接层从未填, 改读 internalized)
 function inferType(item) {
   if (item.internalized || item.archived) return 'archived';
   if (item.feel) return 'feel';
@@ -42,7 +42,7 @@ window.activityOf = activityOf;
 // ──────────────────────────────────────────────────────────
 const AUTO_TAGS = new Set([
   '亲手写', 'AI 写入',          // created_by 派生
-  '已内化',                       // internalized 派生
+  '已消化',                       // internalized 派生
   '保护',                         // protected 派生
   '重要',                         // importance >= 8 派生
   'feel(柔软)',                   // type=feel 派生

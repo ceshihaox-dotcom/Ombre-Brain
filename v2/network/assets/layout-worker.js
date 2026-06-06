@@ -16,7 +16,7 @@ function inferType(item) {
 
 // 排除桥接层自动注入的状态标签 (跟主版同步)
 const AUTO_TAGS = new Set([
-  '亲手写', 'AI 写入', '已内化', '保护', '重要', 'feel(柔软)',
+  '亲手写', 'AI 写入', '已消化', '保护', '重要', 'feel(柔软)',
 ]);
 function _isTopicalTag(t) {
   if (!t) return false;

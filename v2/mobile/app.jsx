@@ -439,11 +439,11 @@ function HomeScreen() {
             onClick={() => toggleFilter('noise')}
             title="只看标了噪声的(默认其它视图都隐藏)"
           >⌀ 噪声</span>
-          {/* 已内化/待消化 = 低频沉淀状态, 排在噪声之后 (按用户偏好 2026-05-14) */}
+          {/* 已消化/待消化 = 低频沉淀状态, 排在噪声之后 (按用户偏好 2026-05-14) */}
           <span
             className={'home-chip' + (filters.has('internal') ? ' on' : '')}
             onClick={() => toggleFilter('internal')}
-          >已内化</span>
+          >已消化</span>
           <span
             className={'home-chip' + (filters.has('cold') ? ' on' : '')}
             onClick={() => toggleFilter('cold')}
@@ -1376,7 +1376,7 @@ function FormFields({
   noise, onToggleNoise,            // 可选:编辑既有桶时传入(噪声 toggle)
   createdBy, setCreatedBy,         // 可选:编辑既有桶时传入(来源三态 user/ai/import)
   highlight, setHighlight,         // 可选:核心准则浮现 (跟 pin/protected 是独立维度)
-  internalized, setInternalized,   // 可选:已内化 (编辑时才暴露,创建新桶时不该一上来就标已内化)
+  internalized, setInternalized,   // 可选:已消化 (编辑时才暴露,创建新桶时不该一上来就标已消化)
 }) {
   const feel = tags.some(t => /^feel/i.test(String(t)));
   const toggleFeel = () => {
@@ -1492,9 +1492,9 @@ function FormFields({
             <button
               className={'edit-toggle internal ' + (internalized ? 'on' : '')}
               onClick={() => setInternalized(!internalized)}
-              title="已内化 = 这条已经成为本能,从浮现中隐藏"
+              title="已消化 = 这条已经成为本能,从浮现中隐藏"
             >
-              <span className="ic">◐</span><span>已内化</span>
+              <span className="ic">◐</span><span>已消化</span>
             </button>
           )}
           {onToggleNoise && (

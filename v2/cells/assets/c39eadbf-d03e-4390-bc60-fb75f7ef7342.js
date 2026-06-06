@@ -215,7 +215,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
 
   // 注: '亲手写' / 'AI 写入' 已迁到 metadata.created_by 字段(三态 user/ai/import),
   // 不再放进 tag 候选 — 避免双轨制 (字段 + tag 同表达一件事)
-  const allTagOptions = ['已内化', '保护', '重要', 'feel(柔软)', '编程', '工作', '恋爱', '创作', 'AI', '出行', '内心', '日常', '成长'];
+  const allTagOptions = ['已消化', '保护', '重要', 'feel(柔软)', '编程', '工作', '恋爱', '创作', 'AI', '出行', '内心', '日常', '成长'];
   const allDraftTags = Array.from(new Set([...(draft?.tags || []), ...allTagOptions]));
 
   return (
@@ -254,7 +254,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
             {!editing && view.protected && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--c-pin)' }}>❖ 钉决</span></>}
             {!editing && view.highlight && !view.protected && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--c-highlight)' }}>★ 高亮</span></>}
             {!editing && view.feel && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--c-feel)' }}>♡ feel</span></>}
-            {!editing && view.internalized && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--ink-3)' }}>◐ 已内化</span></>}
+            {!editing && view.internalized && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--ink-3)' }}>◐ 已消化</span></>}
             {!editing && view.noise && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--ink-4)' }}>⌀ 噪声</span></>}
           </div>
 
@@ -478,7 +478,7 @@ function ItemModal({ item, allItems, onClose, onNavigate, onOpenItem, onUpdate }
                 </label>
                 <label className={`ob-modal-edit-flag ${draft.internalized ? 'on' : ''}`}>
                   <input type="checkbox" checked={draft.internalized} onChange={(e) => setDraft(d => ({ ...d, internalized: e.target.checked }))} />
-                  <span>◐ 已内化</span>
+                  <span>◐ 已消化</span>
                 </label>
                 <label className={`ob-modal-edit-flag ${draft.noise ? 'on tone-noise' : ''}`} title="软删除: 加速衰减(×0.05) + 重要度锁 1, 几天内自动归档; 取消可恢复">
                   <input

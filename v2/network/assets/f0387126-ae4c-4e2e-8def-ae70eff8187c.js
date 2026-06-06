@@ -284,7 +284,7 @@ function ConstellationApp() {
     total: data.length,
     pinned: data.filter(i => i.protected).length,
     feel: data.filter(i => i.feel).length,
-    internalized: data.filter(i => (i.tags || []).includes('已内化')).length,
+    internalized: data.filter(i => (i.tags || []).includes('已消化')).length,
   }), [data]);
 
   return (
@@ -298,7 +298,7 @@ function ConstellationApp() {
             <span><b>{stats.total}</b> 格</span>
             <span><b>{stats.pinned}</b> 钉决</span>
             <span><b>{stats.feel}</b> feel</span>
-            <span><b>{stats.internalized}</b> 已内化</span>
+            <span><b>{stats.internalized}</b> 已消化</span>
           </div>
         </div>
         <div className="cs-topbar-actions">

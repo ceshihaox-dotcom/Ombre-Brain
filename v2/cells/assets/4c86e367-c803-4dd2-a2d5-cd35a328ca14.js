@@ -243,7 +243,7 @@ function WriteDrawer({ open, onClose, onSave, defaultDate, defaultTime, defaultT
   };
 
   // 注: 来源类 (亲手写/AI 写入/导入) 由 metadata.created_by 决定, 不放进可选 tag
-  //     钉决/高亮/已内化/feel 也都有独立 toggle, 不再放 tag — 避免双轨制
+  //     钉决/高亮/已消化/feel 也都有独立 toggle, 不再放 tag — 避免双轨制
   //     这里只保留主题域 tag(跟 ConsoleItemModal 的 allTagOptions 域 tag 部分对齐)
   const allTags = ['编程', '工作', '恋爱', '创作', 'AI', '出行', '内心', '日常', '成长'];
   const valid = title.trim().length > 0;
@@ -350,10 +350,10 @@ function WriteDrawer({ open, onClose, onSave, defaultDate, defaultTime, defaultT
                 type="button"
                 className={`ob-write-flag ${internalizedFlag ? 'on internalized' : ''}`}
                 onClick={() => setInternalized(!internalizedFlag)}
-                title="已内化 — 已经消化吸收, 不再需要主动浮现"
+                title="已消化 — 已经消化吸收, 不再需要主动浮现"
               >
                 <span className="ob-write-flag-i">◐</span>
-                <span>已内化</span>
+                <span>已消化</span>
               </button>
             </div>
           </div>

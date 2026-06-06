@@ -93,7 +93,7 @@ function ConfigPage() {
     const mode = view || hitView;
     setHitStatsLoading(true);
     try {
-      // 冷门视图: 并入从未命中的桶(count 0) + 排除钉选/永久参考/feel/已内化(它们 ×0 是预期) + 升序
+      // 冷门视图: 并入从未命中的桶(count 0) + 排除钉选/永久参考/feel/已消化(它们 ×0 是预期) + 升序
       const qs = mode === 'cold'
         ? 'limit=300&include_zero=1&exclude_gated=1&order=asc'
         : 'limit=50&order=desc';
@@ -884,7 +884,7 @@ function ConfigPage() {
         )}
         <div className="oc-field-help" style={{ marginTop: 10, color: 'var(--ink-4)' }}>
           {hitView === 'cold'
-            ? '冷落视图: 升序排, 已排除钉选/永久参考/feel/已内化 (它们不参与自动注入, ×0 是预期) · ×0 且你在意的桶 → 改 title/内容让它更容易被命中'
+            ? '冷落视图: 升序排, 已排除钉选/永久参考/feel/已消化 (它们不参与自动注入, ×0 是预期) · ×0 且你在意的桶 → 改 title/内容让它更容易被命中'
             : '累计落盘, 重启不再清零 · 切到「冷落」看哪些在意的记忆没被重视'}
         </div>
       </ConsoleCard>

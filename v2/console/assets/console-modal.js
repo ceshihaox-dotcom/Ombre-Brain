@@ -8,7 +8,7 @@ const CM_TAG_META = {
   '亲手写':    { icon: '', tone: 'sage' },
   'AI 写入':   { icon: '', tone: 'sage' },
   '导入':      { icon: '', tone: 'sage' },
-  '已内化':    { icon: '◐', tone: 'sage' },
+  '已消化':    { icon: '◐', tone: 'sage' },
   '保护':      { icon: '❖', tone: 'amber' },
   '高亮':      { icon: '★', tone: 'amber' },
   'feel(柔软)': { icon: '♡', tone: 'rose' }
@@ -195,7 +195,7 @@ function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate, mode,
 
   // 注: '亲手写' / 'AI 写入' / '导入' 已迁到 metadata.created_by 字段(三态),
   // 不再放进 tag 候选 — 避免双轨制 (字段 + tag 同表达一件事)
-  const allTagOptions = ['已内化', '保护', '重要', 'feel(柔软)', '编程', '工作', '恋爱', '创作', 'AI', '出行', '内心', '日常', '成长'];
+  const allTagOptions = ['已消化', '保护', '重要', 'feel(柔软)', '编程', '工作', '恋爱', '创作', 'AI', '出行', '内心', '日常', '成长'];
   const allDraftTags = Array.from(new Set([...(draft?.tags || []), ...allTagOptions]));
 
   return (
@@ -234,7 +234,7 @@ function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate, mode,
             {!editing && view.protected && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--c-pin)' }}>❖ 钉决</span></>}
             {!editing && view.highlight && !view.protected && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--c-highlight)' }}>★ 高亮</span></>}
             {!editing && view.feel && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--c-feel)' }}>♡ feel</span></>}
-            {!editing && view.internalized && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--ink-3)' }}>◐ 已内化</span></>}
+            {!editing && view.internalized && <><span style={{ opacity: 0.5 }}>/</span><span style={{ color: 'var(--ink-3)' }}>◐ 已消化</span></>}
           </div>
 
           {editing ? (
@@ -395,7 +395,7 @@ function ConsoleItemModal({ item, allItems, onClose, onNavigate, onUpdate, mode,
                 </label>
                 <label className={`ob-modal-edit-flag ${draft.internalized ? 'on' : ''}`}>
                   <input type="checkbox" checked={draft.internalized} onChange={(e) => setDraft(d => ({ ...d, internalized: e.target.checked }))} />
-                  <span>◐ 已内化</span>
+                  <span>◐ 已消化</span>
                 </label>
               </div>
             </>

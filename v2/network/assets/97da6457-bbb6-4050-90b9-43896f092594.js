@@ -4,7 +4,7 @@ const { useState: cpS, useMemo: cpM } = React;
 
 // 跟 buildLinks 的 AUTO_TAGS 同步 — 桥接层自动注入的状态标签, 不算主题标签
 const _CS_AUTO_TAGS = new Set([
-  '亲手写', 'AI 写入', '已内化', '保护', '重要', 'feel(柔软)',
+  '亲手写', 'AI 写入', '已消化', '保护', '重要', 'feel(柔软)',
 ]);
 function _csIsTopical(t) {
   if (!t) return false;
@@ -116,13 +116,13 @@ function LeftPanel({
               <span className="cs-legend-count">{extraCounts[k] || 0}</span>
             </div>
           ))}
-          {/* archived 视觉类 → "已内化" */}
+          {/* archived 视觉类 → "已消化" */}
           <div
             className={`cs-legend-row ${enabledTypes.has('archived') ? '' : 'off'}`}
             onClick={() => toggleType('archived')}
           >
             <span className="cs-legend-dot archived"/>
-            <span className="cs-legend-name">已内化<em>internalized</em></span>
+            <span className="cs-legend-name">已消化<em>internalized</em></span>
             <span className="cs-legend-count">{typeCounts.archived || 0}</span>
           </div>
         </div>

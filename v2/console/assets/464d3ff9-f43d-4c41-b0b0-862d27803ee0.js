@@ -23,7 +23,7 @@ function statusOf(item) {
 // 修复"导入台标签无法删除" (实际是删了又出现) — visibleTags 一起过滤掉.
 const _CONSOLE_PSEUDO_TAGS = new Set([
   '亲手写', 'AI 写入', '导入',                                    // 来源伪 tag (用 source pill 切换)
-  '已内化', '保护', '重要', 'feel(柔软)',                          // 状态伪 tag (用对应 toggle / type pill 切换)
+  '已消化', '保护', '重要', 'feel(柔软)',                          // 状态伪 tag (用对应 toggle / type pill 切换)
 ]);
 function visibleTags(tags) {
   return (tags || []).filter(t => !String(t).startsWith('__') && !_CONSOLE_PSEUDO_TAGS.has(String(t)));

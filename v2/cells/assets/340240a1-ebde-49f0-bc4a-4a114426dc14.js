@@ -310,11 +310,12 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
     return () => { clearTimeout(t1); clearTimeout(t2); };
   }, []);
 
-  // 状态筛选 — 排序: 钉决 > 高亮 > 重要度高 > 来源(导入/AI写入/我写的) > feel > 已内化 > 待消化 > 噪声
+  // 状态筛选 — 排序: 钉决 > 高亮 > 重要度高 > 来源(导入/AI写入/我写的) > feel > 已消化 > 待消化 > 噪声
   const statusFilters = cuM(() => {
-    const c = (fn) => items.filter(fn).length;
+    const active = items.filter(i => !i.archived);   // 归档桶单独成档, 不混进其它视图
+    const c = (fn) => active.filter(fn).length;
     return [
-      { id: 'all', label: '全部', tone: '', count: items.length },
+      { id: 'all', label: '全部', tone: '', count: active.length },
       { id: 'pin', label: '❖ 钉决', tone: 'pin', count: c(i => i.protected || i.pinned) },
       { id: 'highlight', label: '★ 高亮', tone: 'highlight', count: c(i => i.highlight) },
       { id: 'imp_high', label: '✦ 重要度≥8', tone: 'fresh', count: c(i => (i.importance || 5) >= 8) },
@@ -322,9 +323,10 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
       { id: 'ai', label: 'AI 写入', tone: '', count: c(i => (i.created_by || 'ai') === 'ai') },
       { id: 'mine', label: '亲手写', tone: '', count: c(i => i.created_by === 'user') },
       { id: 'feel', label: '♡ Feel', tone: 'feel', count: c(i => i.feel) },
-      { id: 'internal', label: '已内化', tone: 'noise', count: c(i => i.internalized) },
+      { id: 'internal', label: '已消化', tone: 'noise', count: c(i => i.internalized) },
       { id: 'cold', label: '待消化', tone: 'noise', count: c(i => i.importance < 2) },
       { id: 'noise', label: '⌀ 噪声', tone: 'noise', count: c(i => i.noise) },
+      { id: 'archived', label: '🗄 已归档', tone: 'noise', count: items.filter(i => i.archived).length },
     ];
   }, [items]);
 
@@ -365,8 +367,9 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
 
   // 过滤 + 排序
   const filtered = cuM(() => {
-    let v = items;
-    if (statusFilter !== 'all') {
+    // 已归档单独成档; 其它所有视图(含"全部")排除归档桶
+    let v = statusFilter === 'archived' ? items.filter(i => i.archived) : items.filter(i => !i.archived);
+    if (statusFilter !== 'all' && statusFilter !== 'archived') {
       if (statusFilter === 'pin') v = v.filter(i => i.protected || i.pinned);
       else if (statusFilter === 'highlight') v = v.filter(i => i.highlight);
       else if (statusFilter === 'imp_high') v = v.filter(i => (i.importance || 5) >= 8);
@@ -413,7 +416,7 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
       return [{ id: 'all', label: '', icon: '', items: filtered }];
     }
     if (group === 'status') {
-      // 梯度: 钉决 > 高亮 > 重要度高(≥8) > feel > 日常 > 待消化(<2) > 已内化(单分一组沉底)
+      // 梯度: 钉决 > 高亮 > 重要度高(≥8) > feel > 日常 > 待消化(<2) > 已消化(单分一组沉底)
       const g = {
         pin: [], highlight: [], fresh: [], feel: [], normal: [], cold: [], internalized: [],
       };
@@ -433,7 +436,7 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
         { id: 'feel', label: 'Feel', icon: '♡', tone: 'feel', items: g.feel },
         { id: 'normal', label: '日常', icon: '·', tone: '', items: g.normal },
         { id: 'cold', label: '待消化 (<2)', icon: '◌', tone: 'cold', items: g.cold },
-        { id: 'internalized', label: '已内化', icon: '◐', tone: '', items: g.internalized },
+        { id: 'internalized', label: '已消化', icon: '◐', tone: '', items: g.internalized },
       ].filter(x => x.items.length > 0);
       return out;
     }
