@@ -382,7 +382,9 @@ class BucketManager:
                         if isinstance(rec, dict):
                             self._hit_stats[bid] = {
                                 "count": int(rec.get("count", 0) or 0),
+                                "surface_count": int(rec.get("surface_count", 0) or 0),
                                 "last_hit_iso": str(rec.get("last_hit_iso", "") or ""),
+                                "last_surface_iso": str(rec.get("last_surface_iso", "") or ""),
                                 "last_query": str(rec.get("last_query", "") or ""),
                             }
             logger.info(
@@ -484,7 +486,9 @@ class BucketManager:
                 zero_count += 1
             rows.append({
                 "id": bid, "name": name, "count": count,
+                "surface_count": int(rec.get("surface_count", 0) or 0),
                 "last_hit": rec.get("last_hit_iso", ""),
+                "last_surface": rec.get("last_surface_iso", ""),
                 "last_query": rec.get("last_query", ""),
                 "gated": gated, "missing": missing,
             })
@@ -500,6 +504,29 @@ class BucketManager:
             "order": order,
             "items": rows[:limit],
         }
+
+    def record_surfacing(self, ids) -> None:
+        """给"自动浮现"路径(breath 无参浮现 / breath-hook)记一次命中, 跟 search() 的
+        关键词命中分开计(surface_count)。这样"被想起 = 被检索 + 被浮现"完整,
+        又不让频繁的浮现淹没"被检索"的 title 写作反馈。feel 桶不记(私密, 跟搜索统计一致)。"""
+        if not ids:
+            return
+        try:
+            from datetime import datetime as _dt
+            now_iso = _dt.utcnow().isoformat()
+            for bid in ids:
+                if not bid:
+                    continue
+                rec = self._hit_stats.get(bid)
+                if rec is None:
+                    rec = {"count": 0}
+                    self._hit_stats[bid] = rec
+                rec["surface_count"] = int(rec.get("surface_count", 0) or 0) + 1
+                rec["last_surface_iso"] = now_iso
+            self._hit_dirty += 1
+            self._flush_hit_stats()
+        except Exception:
+            pass
 
     def reset_hit_stats(self) -> None:
         """清空命中统计 — 用于"清零后看哪些桶又被命中"实验。同时删盘文件。"""

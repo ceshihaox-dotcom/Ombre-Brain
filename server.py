@@ -156,6 +156,7 @@ async def breath_hook(request):
         # Hard cap: max 20 surfacing buckets in hook
         candidates = candidates[:20]
 
+        surfaced_ids = []
         for b in candidates:
             if token_budget <= 0:
                 break
@@ -164,7 +165,12 @@ async def breath_hook(request):
             if summary_tokens > token_budget:
                 break
             parts.append(summary)
+            surfaced_ids.append(b["id"])
             token_budget -= summary_tokens
+
+        # 记"被自动浮现"命中 (SessionStart hook 也是"被想起"的一条路径, 跟 breath() 主路径一致)
+        if surfaced_ids:
+            bucket_mgr.record_surfacing(surfaced_ids)
 
         if not parts:
             return PlainTextResponse("")
@@ -426,6 +432,7 @@ async def breath(
         candidates = candidates[:max_results]
 
         dynamic_results = []
+        surfaced_ids = []
         for b in candidates:
             if token_budget <= 0:
                 break
@@ -438,10 +445,16 @@ async def breath(
                 # NOTE: no touch() here — surfacing should NOT reset decay timer
                 score = decay_engine.calculate_score(b["metadata"])
                 dynamic_results.append(f"[权重:{score:.2f}] [bucket_id:{b['id']}] {summary}")
+                surfaced_ids.append(b["id"])
                 token_budget -= summary_tokens
             except Exception as e:
                 logger.warning(f"Failed to dehydrate surfaced bucket / 浮现脱水失败: {e}")
                 continue
+
+        # 记"被自动浮现"命中: 跟 search 关键词命中分开计(surface_count), 让观测统计的
+        # "被想起 = 被检索 + 被浮现"完整。只记动态权重池浮现的桶; 钉选/永久参考每次都在、计了无意义。
+        if surfaced_ids:
+            bucket_mgr.record_surfacing(surfaced_ids)
 
         if not pinned_results and not protected_results and not dynamic_results:
             return "权重池平静，没有需要处理的记忆。"

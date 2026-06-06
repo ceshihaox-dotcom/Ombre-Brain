@@ -820,7 +820,7 @@ function ConfigPage() {
       </ConsoleCard>
 
       {/* 记忆命中频次 (反向反馈写作: 哪些桶经常被检索 / 哪些从未) */}
-      <ConsoleCard label="命中频次" sub="哪些记忆被高频检索 · 哪些被冷落从未命中 · 反向指导 title 写作">
+      <ConsoleCard label="记忆被想起" sub="被检索(关键词命中) + 被浮现(权重池自动浮现) · 哪条常被想起、哪条被冷落 · 反向指导 title 写作">
         {/* 热门 / 冷门 视图切换 */}
         <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
           {[['hot', '🔥 高频'], ['cold', '🧊 冷落 (含从未命中)']].map(([v, label]) => (
@@ -865,8 +865,11 @@ function ConfigPage() {
                   borderBottom: i < hitStats.items.length - 1 ? '1px solid var(--ink-5, rgba(0,0,0,0.05))' : 'none',
                   opacity: zero ? 0.7 : 1,
                 }}>
-                  <span style={{ fontFamily: 'var(--mono)', color: zero ? 'var(--ink-4)' : 'var(--accent)', minWidth: 32, textAlign: 'right' }}>
-                    ×{it.count}
+                  <span style={{ fontFamily: 'var(--mono)', minWidth: 64, textAlign: 'right', whiteSpace: 'nowrap' }}>
+                    <span style={{ color: zero ? 'var(--ink-4)' : 'var(--accent)' }} title="被关键词检索命中次数">×{it.count}</span>
+                    {(it.surface_count || 0) > 0 && (
+                      <span style={{ color: 'var(--ink-4)', fontSize: 10, marginLeft: 4 }} title="被权重池自动浮现次数">浮{it.surface_count}</span>
+                    )}
                   </span>
                   <span style={{ flex: 1, color: 'var(--ink-2)' }}>
                     {it.name || it.id}
@@ -874,7 +877,7 @@ function ConfigPage() {
                   </span>
                   <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-4)' }}>
                     {zero
-                      ? '从未命中'
+                      ? ((it.surface_count || 0) > 0 ? '仅浮现 · 从未被搜索' : '从未被想起')
                       : (it.last_query ? `"${String(it.last_query).slice(0, 20)}"` : (it.last_hit ? String(it.last_hit).slice(0, 10) : ''))}
                   </span>
                 </div>
@@ -884,8 +887,8 @@ function ConfigPage() {
         )}
         <div className="oc-field-help" style={{ marginTop: 10, color: 'var(--ink-4)' }}>
           {hitView === 'cold'
-            ? '冷落视图: 升序排, 已排除钉选/永久参考/feel/已消化 (它们不参与自动注入, ×0 是预期) · ×0 且你在意的桶 → 改 title/内容让它更容易被命中'
-            : '累计落盘, 重启不再清零 · 切到「冷落」看哪些在意的记忆没被重视'}
+            ? '冷落视图: 升序排, 已排除钉选/永久参考/feel/已消化 (它们本就不参与普通浮现/检索, ×0 是预期) · ×0 且你在意的桶 → 改 title/内容让它更容易被想起'
+            : '累计落盘, 重启不再清零 · 切到「冷落」看哪些在意的记忆没被想起'}
         </div>
       </ConsoleCard>
 
@@ -972,7 +975,7 @@ function ConfigPage() {
           </div>
         )}
         <div className="oc-field-help" style={{ marginTop: 10, color: 'var(--ink-4)' }}>
-          点条目展开看 top-10 详情 · score 紫色 = title 命中 · 自动注入触发的 search 也在这看
+          点条目展开看 top-10 详情 · score 紫色 = title 命中 · AI 主动检索 + 自动注入(API) 触发的 search 都在这看
         </div>
       </ConsoleCard>
 
