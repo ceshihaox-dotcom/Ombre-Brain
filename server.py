@@ -1305,6 +1305,19 @@ _SCORING_SCHEMA = [
         "type": "bool",
         "hint": "每次 search 打印 top-10 详细到服务日志, 调权重时打开看效果",
     },
+    {
+        "key": "precise_match_mode",
+        "label": "严格关键词模式",
+        "type": "bool",
+        "hint": "开启后检索走严格 token 命中(query 按词切, 每个词在桶各字段做精确命中), 砍掉情感/时间/重要度/温度偏置。解决「长 query 模糊匹配错乱」和「高 valence 桶没关键词也排前」。默认关=模糊匹配(上游兼容)",
+    },
+    {
+        "key": "warmth_boost",
+        "label": "温度偏置",
+        "type": "float",
+        "min": 0, "max": 5, "step": 0.5,
+        "hint": "给高 valence(>0.5 的「温暖」桶)检索时额外加分, 跟 query 带不带情感无关——让温暖的记忆天然更易浮现。默认 0=关(零行为变化); 调到 2.0 ≈ 给 valence=0.9 桶加约 1/5 个主题命中分",
+    },
 ]
 
 

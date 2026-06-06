@@ -164,6 +164,7 @@ class BucketManager:
         "keyword_first_sort": False,   # bool
         "dryrun_log": False,           # bool
         "precise_match_mode": False,   # bool — 严格关键词命中模式 (砍 emotion/time/importance/warmth)
+        "warmth_boost": 0.0,           # float — 高 valence(温暖)桶检索额外加分 (env OMBRE_SCORING_WARMTH_BOOST 为初值)
     }
 
     def apply_runtime_scoring_overrides(self, overrides: dict) -> None:
@@ -188,13 +189,19 @@ class BucketManager:
             self.dryrun_log = bool(overrides["dryrun_log"])
         if "precise_match_mode" in overrides:
             self.precise_match_mode = bool(overrides["precise_match_mode"])
+        if "warmth_boost" in overrides:
+            try:
+                self.w_warmth = max(0.0, float(overrides["warmth_boost"]))
+            except (TypeError, ValueError):
+                pass
         logger.info(
             f"[scoring] runtime overrides applied: "
             f"content_weight={self.content_weight}, "
             f"title_hit_bonus={self.title_hit_bonus}, "
             f"keyword_first_sort={self.keyword_first_sort}, "
             f"dryrun_log={self.dryrun_log}, "
-            f"precise_match_mode={self.precise_match_mode}"
+            f"precise_match_mode={self.precise_match_mode}, "
+            f"warmth_boost={self.w_warmth}"
         )
 
     def current_scoring_overrides(self) -> dict:
@@ -205,6 +212,7 @@ class BucketManager:
             "keyword_first_sort": self.keyword_first_sort,
             "dryrun_log": self.dryrun_log,
             "precise_match_mode": self.precise_match_mode,
+            "warmth_boost": self.w_warmth,
         }
 
     # query 切 token 用正则: 中英标点 + 空白 + 全角符号
