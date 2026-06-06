@@ -324,7 +324,7 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
       { id: 'mine', label: '亲手写', tone: '', count: c(i => i.created_by === 'user') },
       { id: 'feel', label: '♡ Feel', tone: 'feel', count: c(i => i.feel) },
       { id: 'internal', label: '已消化', tone: 'noise', count: c(i => i.internalized) },
-      { id: 'cold', label: '待消化', tone: 'noise', count: c(i => (i.score || 0) < 2 && !i.noise) },
+      { id: 'cold', label: '待消化', tone: 'noise', count: c(i => (i.score || 0) < 1.5 && !i.noise) },
       { id: 'archived', label: '🗄 已归档', tone: 'noise', count: items.filter(i => i.archived).length },
     ];
   }, [items]);
@@ -377,7 +377,7 @@ function CellsView({ items, todayDate, onOpenItem, onUpdateItem, onCreateItem })
       else if (statusFilter === 'mine') v = v.filter(i => i.created_by === 'user');
       else if (statusFilter === 'feel') v = v.filter(i => i.feel);
       else if (statusFilter === 'internal') v = v.filter(i => i.internalized);
-      else if (statusFilter === 'cold') v = v.filter(i => (i.score || 0) < 2 && !i.noise);
+      else if (statusFilter === 'cold') v = v.filter(i => (i.score || 0) < 1.5 && !i.noise);
     }
     if (domainFilters.length > 0) {
       v = v.filter(i => domainFilters.every(d => (i.domain || []).includes(d)));
