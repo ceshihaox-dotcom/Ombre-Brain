@@ -401,13 +401,27 @@ async def breath(
         for r in protected_results:
             token_budget -= count_tokens_approx(r)
 
-        candidates = list(scored)
+        # --- 冷启动检测：从未被访问过(activation_count==0)且重要度>=8的桶，优先插最前(最多2个) ---
+        # 让你新存的重要记忆有机会先被想起一次，而不是没露过脸就沉底（对齐上游 B-04）。
+        cold_start = [
+            b for b in unresolved
+            if int(b["metadata"].get("activation_count", 0)) == 0
+            and int(b["metadata"].get("importance", 0)) >= 8
+        ][:2]
+        cold_start_ids = {b["id"] for b in cold_start}
+        scored_with_cold = cold_start + [b for b in scored if b["id"] not in cold_start_ids]
+
+        candidates = list(scored_with_cold)
         if len(candidates) > 1:
-            # Ensure highest-score bucket is first, shuffle rest from top-20
-            top1 = [candidates[0]]
-            pool = candidates[1:min(20, len(candidates))]
-            random.shuffle(pool)
-            candidates = top1 + pool + candidates[min(20, len(candidates)):]
+            # 冷启动桶固定在最前；其余从 top-20 里随机打乱保多样性
+            n_cold = len(cold_start)
+            non_cold = candidates[n_cold:]
+            if len(non_cold) > 1:
+                top1 = [non_cold[0]]
+                pool = non_cold[1:min(20, len(non_cold))]
+                random.shuffle(pool)
+                non_cold = top1 + pool + non_cold[min(20, len(non_cold)):]
+            candidates = cold_start + non_cold
         # Hard cap: never surface more than max_results buckets
         candidates = candidates[:max_results]
 

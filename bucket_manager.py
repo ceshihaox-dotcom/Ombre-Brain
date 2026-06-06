@@ -582,7 +582,9 @@ class BucketManager:
             "type": bucket_type,
             "created": now_iso(),
             "last_active": now_iso(),
-            "activation_count": 1,
+            # 初值 0 对齐上游: "创建" ≠ "被召回"。touch() 首次命中后才 +1。
+            # 让 breath 冷启动检测(activation_count==0 且 importance>=8)能认出新建的重要桶。
+            "activation_count": 0,
         }
         # event_time 是用户/AI 设置的"事件实际发生时间",跟系统级 created 区分
         # 没传或非法就不写,读取时 dehydrator/前端会退回 created
@@ -899,6 +901,15 @@ class BucketManager:
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(frontmatter.dumps(post))
             self._move_bucket(file_path, self.archive_dir, domain)
+        elif ("resolved" in kwargs and not kwargs["resolved"]) and post.get("type") == "archived":
+            # 取消归档(取消噪声 / 取消 resolved): 把桶从 archive/ 真搬回 dynamic/,
+            # 重新参与浮现与检索。否则只清了 resolved 标记、恢复了 importance 数值,
+            # 桶仍滞留 archive/ → 被 breath 的 list_all(include_archive=False) 排除,
+            # "回退"只回了数字没回可见状态(前端看着回来了, 内部其实没浮现)。
+            post["type"] = "dynamic"
+            with open(file_path, "w", encoding="utf-8") as f:
+                f.write(frontmatter.dumps(post))
+            self._move_bucket(file_path, self.dynamic_dir, domain)
 
         logger.info(f"Updated bucket / 更新记忆桶: {bucket_id}")
         return True
