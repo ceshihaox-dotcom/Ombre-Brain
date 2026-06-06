@@ -1182,6 +1182,7 @@ class BucketManager:
         domain_filter: list[str] = None,
         query_valence: float = None,
         query_arousal: float = None,
+        record_stats: bool = True,
     ) -> list[dict]:
         """
         Multi-dimensional indexed search for memory buckets.
@@ -1337,6 +1338,10 @@ class BucketManager:
             )
         else:
             scored.sort(key=lambda x: x["score"], reverse=True)
+
+        # record_stats=False (即时模拟 dry-run): 不记统计、不污染命中频次, 直接返回结果
+        if not record_stats:
+            return scored[:limit]
 
         # 命中频次统计累积 (v1 in-memory) — 给配置页 /api/hit-stats 反向看写作命中分布
         try:

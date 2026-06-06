@@ -52,6 +52,11 @@ function ConfigPage() {
   const [recentLoading, setRecentLoading] = ccS(false);
   const [recentOpen, setRecentOpen] = ccS({});             // ts → bool: 展开第 N 条详情
 
+  // 即时模拟 (输入一段话 → dry-run 看会检索/浮现哪些记忆, 不记统计)
+  const [simQuery, setSimQuery] = ccS('');
+  const [simResult, setSimResult] = ccS(null);             // { keyword_hits:[...], vector_hits:[...] } 或 { error }
+  const [simLoading, setSimLoading] = ccS(false);
+
   const fetchAll = async () => {
     try {
       const r = await fetch('/api/config/api');
@@ -110,6 +115,18 @@ function ConfigPage() {
       if (r.ok) setRecentSearches(await r.json());
     } catch (e) { /* 沉默 */ }
     finally { setRecentLoading(false); }
+  };
+  const runSimulate = async () => {
+    const q = simQuery.trim();
+    if (!q) return;
+    setSimLoading(true);
+    try {
+      // simulate=true → dry-run, 不记命中统计、不进最近搜索; include_vector 顺带看语义召回
+      const r = await fetch('/api/search?simulate=true&include_vector=true&limit=20&q=' + encodeURIComponent(q));
+      if (r.ok) setSimResult(await r.json());
+      else setSimResult({ error: 'HTTP ' + r.status });
+    } catch (e) { setSimResult({ error: String(e) }); }
+    finally { setSimLoading(false); }
   };
   ccE(() => { fetchAll(); fetchStrategy(); fetchDecay(); fetchPrompts(); fetchScoring(); fetchHitStats(); fetchRecentSearches(); }, []);
 
@@ -817,6 +834,59 @@ function ConfigPage() {
             推荐起步: title 加分 +15 + dryrun 打开, 观察一天再调
           </div>
         )}
+      </ConsoleCard>
+
+      {/* 即时模拟: 输入一段话, dry-run 看会检索到哪些记忆 (配合上面的旋钮实时调) */}
+      <ConsoleCard label="即时模拟" sub="输入一句话 → 看 OB 会检索出哪些记忆 + 为什么命中 · dry-run 不记统计 · 调上面旋钮后在这实测效果">
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+          <input
+            type="text"
+            value={simQuery}
+            onChange={(e) => setSimQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') runSimulate(); }}
+            placeholder="输入一段话试试，比如「上次去爬山」"
+            style={{ flex: 1, padding: '6px 10px', fontSize: 13, border: '1px solid var(--ink-4)', borderRadius: 4, background: 'var(--paper)', color: 'var(--ink-1)' }}
+          />
+          <button className="oc-btn oc-btn-primary" onClick={runSimulate} disabled={simLoading || !simQuery.trim()} style={{ fontSize: 12, padding: '4px 18px' }}>
+            {simLoading ? '⌛' : '模拟'}
+          </button>
+        </div>
+        {simResult && simResult.error && (
+          <div style={{ color: '#c44', fontSize: 12 }}>出错: {simResult.error}</div>
+        )}
+        {simResult && !simResult.error && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
+            <div style={{ fontSize: 11, color: 'var(--ink-4)', fontFamily: 'var(--mono)', marginBottom: 4 }}>
+              关键词命中 {(simResult.keyword_hits || []).length} · 语义召回 {(simResult.vector_hits || []).length}
+            </div>
+            {(simResult.keyword_hits || []).length === 0 && (simResult.vector_hits || []).length === 0 && (
+              <div style={{ color: 'var(--ink-4)', padding: '8px 0' }}>没有命中 —— 这段话不会让任何记忆浮现</div>
+            )}
+            {(simResult.keyword_hits || []).map((h) => {
+              const titleHit = (h.matched_in || []).includes('title');
+              return (
+                <div key={h.id} title={h.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '4px 0', borderBottom: '1px solid var(--ink-5, rgba(0,0,0,0.05))' }}>
+                  <span style={{ fontFamily: 'var(--mono)', color: titleHit ? 'var(--accent)' : 'var(--ink-3)', minWidth: 44, textAlign: 'right' }}>{Number(h.score || 0).toFixed(1)}</span>
+                  <span style={{ flex: 1, color: 'var(--ink-2)' }}>{h.name}</span>
+                  <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-4)' }}>{(h.matched_in || []).join('/') || '—'}</span>
+                </div>
+              );
+            })}
+            {(simResult.vector_hits || []).length > 0 && (
+              <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 6, marginBottom: 2 }}>— 语义召回 (query 不在文本里但意思相近) —</div>
+            )}
+            {(simResult.vector_hits || []).map((h) => (
+              <div key={h.id} title={h.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '4px 0', opacity: 0.8 }}>
+                <span style={{ fontFamily: 'var(--mono)', color: 'var(--ink-4)', minWidth: 44, textAlign: 'right' }}>~{Number(h.similarity || 0).toFixed(2)}</span>
+                <span style={{ flex: 1, color: 'var(--ink-3)' }}>{h.name}</span>
+                <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-4)' }}>语义</span>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="oc-field-help" style={{ marginTop: 10, color: 'var(--ink-4)' }}>
+          分数 = 检索权重 (紫色 = title 命中) · 右侧是命中字段 · 改上面旋钮后再模拟同一句, 看排序怎么变
+        </div>
       </ConsoleCard>
 
       {/* 记忆命中频次 (反向反馈写作: 哪些桶经常被检索 / 哪些从未) */}

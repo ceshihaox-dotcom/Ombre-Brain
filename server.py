@@ -2817,6 +2817,8 @@ async def api_search(request):
     # 理由: 钉选(highlight / protected)开窗时已由 breath-hook 必定浮现进上下文,
     #       日常对话自动注入再命中同一批 = 重复噪声。排掉降噪。(调用方见 ombre-inject.js)
     exclude_pinned = request.query_params.get("exclude_pinned", "false").lower() == "true"
+    # simulate=true: 即时模拟(浮现观测页用) —— 不记命中统计、不进最近搜索, 纯 dry-run 看"会检索到什么"
+    simulate = request.query_params.get("simulate", "false").lower() == "true"
 
     def _is_noise(meta):
         return bool(meta.get("resolved", False) and meta.get("importance", 5) == 1)
@@ -2829,7 +2831,7 @@ async def api_search(request):
 
     try:
         # === 关键词通道 ===
-        matches = await bucket_mgr.search(query, limit=limit)
+        matches = await bucket_mgr.search(query, limit=limit, record_stats=not simulate)
         if not include_noise:
             matches = [b for b in matches if not _is_noise(b.get("metadata", {}))]
         if not include_feel:
