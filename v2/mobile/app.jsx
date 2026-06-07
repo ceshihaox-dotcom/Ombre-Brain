@@ -268,10 +268,10 @@ function HomeScreen() {
     if (!buckets) return [];
     // 已归档单独成档: 归档桶只在 archived chip 下出现, 其它所有视图(含"全部")排除。
     // (/api/buckets 默认 include_archive=True, 不排除会让归档桶漏进普通视图 — 对齐电脑端 cells)
-    // 噪声桶 (isNoise) 默认沉底不进任何视图; 衰减几天后自动进已归档, 在「已归档」档可找回。
+    // 噪声桶 (isNoise) **计入并显示** (2026-06-07 用户定: 噪声=过期记忆不是垃圾, 垃圾直接删) — 对齐 cells active。
     let result = filters.has('archived')
       ? buckets.filter(b => isArchived(b))
-      : buckets.filter(b => !isArchived(b) && !isNoise(b));
+      : buckets.filter(b => !isArchived(b));
     // 注: 只看 b.protected, 不再 OR b.pinned —
     // API 的 b.pinned = is_protected OR is_highlighted 兼容老语义, 这里 OR 会把"只高亮没钉决"误判
     // (用户体感: 钉决取消后桶仍在钉决列表 = 它还高亮着, 而高亮 != 钉决)
@@ -309,7 +309,7 @@ function HomeScreen() {
     if (!buckets) return [];
     const counts = {};
     buckets.forEach(b => {
-      if (isNoise(b) || isArchived(b)) return;
+      if (isArchived(b)) return;
       (b.domain || []).forEach(d => { if (d) counts[d] = (counts[d] || 0) + 1; });
     });
     return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([d, c]) => ({ domain: d, count: c }));
@@ -319,7 +319,7 @@ function HomeScreen() {
     if (!buckets) return [];
     const counts = {};
     buckets.forEach(b => {
-      if (isNoise(b) || isArchived(b)) return;
+      if (isArchived(b)) return;
       (b.tags || []).forEach(t => {
         if (t && !String(t).startsWith('__')) counts[t] = (counts[t] || 0) + 1;
       });
@@ -335,7 +335,7 @@ function HomeScreen() {
     if (!buckets) return [];
     const grouped = new Map();
     for (const b of buckets) {
-      if (isNoise(b)) continue; // 默认天卡不计入噪声
+      if (isArchived(b)) continue; // 归档桶单独成档不进天卡; 噪声计入(过期记忆非垃圾)
       const dt = bucketDate(b);
       if (!dt) continue;
       const k = dayKeyOf(dt);
@@ -1002,7 +1002,7 @@ function DayDetailScreen({ dayKey }) {
     if (!buckets) return null;
     const items = [];
     for (const b of buckets) {
-      if (isNoise(b)) continue; // 噪声不进当天列表
+      if (isArchived(b)) continue; // 归档单独成档; 噪声计入当天列表(过期记忆非垃圾)
       const dt = bucketDate(b);
       if (!dt) continue;
       if (dayKeyOf(dt) === dayKey) items.push({ b, dt });
