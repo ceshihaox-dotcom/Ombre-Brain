@@ -101,6 +101,20 @@ function isNoise(b) {
   return !!(b.resolved && (b.importance || 5) === 1);
 }
 
+// 命中位置: 关键词搜索时, 算 query 落在哪些字段 (对齐桌面 matched_in 指示)
+// 手机搜索是本地子串匹配 (filteredBuckets), 这里同口径逐字段判一遍给出徽章
+function matchedFields(b, q) {
+  if (!q) return [];
+  const ql = q.toLowerCase();
+  const out = [];
+  if ((b.name || '').toLowerCase().includes(ql)) out.push('标题');
+  if ((b.summary || '').toLowerCase().includes(ql)) out.push('摘要');
+  if ((b.content_preview || '').toLowerCase().includes(ql)) out.push('正文');
+  const visTags = (b.tags || []).filter(t => !String(t).startsWith('__'));
+  if (visTags.some(t => String(t).toLowerCase().includes(ql))) out.push('标签');
+  return out;
+}
+
 function bucketTitle(b) {
   return b.name || b.id;
 }
@@ -564,6 +578,14 @@ function HomeScreen() {
                       </span>
                     </div>
                     <div className="dd-item-snip">{bucketSummary(b)}</div>
+                    {searchQuery.trim() && (() => {
+                      const mf = matchedFields(b, searchQuery.trim());
+                      return mf.length > 0 ? (
+                        <div style={{ marginTop: 3, fontFamily: 'var(--mono)', fontSize: 9.5, letterSpacing: '0.04em', color: 'var(--accent)', opacity: 0.85 }}>
+                          命中 {mf.join(' / ')}
+                        </div>
+                      ) : null;
+                    })()}
                   </div>
                   <span className="dd-item-imp">
                     {Array.from({ length: 10 }).map((_, k) => (
@@ -2909,6 +2931,14 @@ function SettingScreen() {
             </div>
             <span className="setting-row-arrow">›</span>
           </div>
+          <div className="setting-row" onClick={() => navigate('/setting/scoring')}>
+            <div className="setting-row-ic">⊹</div>
+            <div className="setting-row-mid">
+              <div className="setting-row-title">检索打分</div>
+              <div className="setting-row-sub">title 命中加分 / 关键词优先 · 默认全关</div>
+            </div>
+            <span className="setting-row-arrow">›</span>
+          </div>
         </div>
       </div>
       <TabBar active="setting"/>
@@ -3146,6 +3176,157 @@ function DecayConfigScreen() {
         {cfg && (
           <div className="decay-foot">
             桌面控制台还有更多参数 · 改动写入 buckets/runtime_config.json
+          </div>
+        )}
+      </div>
+
+      <TabBar active="setting"/>
+    </div>
+  );
+}
+
+// 检索打分微调 (镜像桌面 Breath tab 的 scoring 卡): title 命中加分 / 关键词优先 / 精确匹配
+// 走 /api/scoring-config, 与桌面同源。schema 里 type==='bool' 的渲染成开关, 其余滑块。
+function ScoringConfigScreen() {
+  const [cfg, setCfg] = useState(null);
+  const [error, setError] = useState(null);
+  const [savingKey, setSavingKey] = useState(null);
+  const [resetting, setResetting] = useState(false);
+
+  useEffect(() => {
+    api('/api/scoring-config')
+      .then(d => setCfg(d))
+      .catch(e => setError(e.message));
+  }, []);
+
+  const updateOne = async (key, value) => {
+    if (!cfg) return;
+    const old = cfg.current[key];
+    setCfg(c => ({ ...c, current: { ...c.current, [key]: value } }));
+    setSavingKey(key);
+    try {
+      const r = await fetch('/api/scoring-config', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ [key]: value }),
+      });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      if (d && d.current) setCfg(c => ({ ...c, current: d.current }));
+    } catch (e) {
+      alert('保存失败: ' + e.message);
+      setCfg(c => ({ ...c, current: { ...c.current, [key]: old } }));
+    } finally {
+      setSavingKey(null);
+    }
+  };
+
+  const resetAll = async () => {
+    if (!cfg) return;
+    if (!window.confirm('打分微调全部关掉(回到默认零影响)?')) return;
+    setResetting(true);
+    try {
+      const r = await fetch('/api/scoring-config/reset', { method: 'POST' });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const d = await r.json();
+      if (d && d.current) setCfg(c => ({ ...c, current: d.current }));
+    } catch (e) {
+      alert('恢复失败: ' + e.message);
+    } finally {
+      setResetting(false);
+    }
+  };
+
+  return (
+    <div className="trash-body">
+      <div className="sub-top">
+        <div className="sub-back-row">
+          <button className="app-back" onClick={() => navigate('/setting')}>‹ 设置</button>
+          <span className="app-eyebrow" style={{ marginLeft: 'auto' }}>
+            <span>改完即刻生效</span>
+          </span>
+        </div>
+        <h1 className="sub-title">检索打分</h1>
+        <div className="sub-meta">title 命中加分 / 关键词优先 / 精确匹配 · 默认全关 = 零影响</div>
+      </div>
+
+      <div className="decay-list">
+        {error && <div className="app-error">后端错: {error}</div>}
+        {!cfg && !error && <div className="app-loading">载入中…</div>}
+
+        {cfg && (
+          <div className="decay-reset-row">
+            <button
+              className="decay-reset-btn"
+              onClick={resetAll}
+              disabled={resetting}
+            >{resetting ? '⌛ 恢复中…' : '↺ 全部关掉'}</button>
+          </div>
+        )}
+
+        {cfg && cfg.schema && cfg.schema.map(item => {
+          const cur = cfg.current[item.key];
+          const def = cfg.defaults[item.key];
+          // 开关型 (keyword_first_sort / precise_match_mode / dryrun_log 等)
+          if (item.type === 'bool') {
+            const on = !!cur;
+            return (
+              <div className="decay-row" key={item.key}>
+                <div className="decay-row-hd">
+                  <span className="decay-row-lbl">{item.label}</span>
+                  <button
+                    onClick={() => updateOne(item.key, !on)}
+                    disabled={savingKey === item.key}
+                    style={{
+                      marginLeft: 'auto',
+                      border: '1px solid var(--accent, #6e4f9a)',
+                      background: on ? 'var(--accent, #6e4f9a)' : 'transparent',
+                      color: on ? '#fff' : 'var(--ink-3, #999)',
+                      borderRadius: 6, padding: '3px 16px', fontSize: 13,
+                    }}
+                  >{on ? '已开' : '关'}</button>
+                </div>
+                <div className="decay-row-hint"><span>{item.hint}</span></div>
+              </div>
+            );
+          }
+          // 数值型滑块
+          const isDefault = Math.abs((cur ?? 0) - (def ?? 0)) < 1e-6;
+          const fmt = v => (item.step < 1 ? Number(v ?? 0).toFixed(2) : Math.round(v ?? 0));
+          return (
+            <div className="decay-row" key={item.key}>
+              <div className="decay-row-hd">
+                <span className="decay-row-lbl">{item.label}</span>
+                <span className={'decay-row-val' + (isDefault ? '' : ' changed')}>
+                  {fmt(cur)}
+                </span>
+                <button
+                  className="decay-row-reset"
+                  onClick={() => updateOne(item.key, def)}
+                  disabled={isDefault || savingKey === item.key}
+                  title={'恢复默认 ' + fmt(def)}
+                >↺</button>
+              </div>
+              <input
+                type="range"
+                min={item.min}
+                max={item.max}
+                step={item.step}
+                value={cur ?? 0}
+                onChange={e => updateOne(item.key, +e.target.value)}
+                className="decay-row-slider"
+              />
+              <div className="decay-row-hint">
+                <span>{item.hint}</span>
+                <span>{item.min} – {item.max} · 默认 {fmt(def)}</span>
+              </div>
+            </div>
+          );
+        })}
+
+        {cfg && (
+          <div className="decay-foot">
+            想边调边看效果? 桌面控制台 Breath 页有「即时模拟」· 改动写入 runtime_config.json
           </div>
         )}
       </div>
@@ -3562,6 +3743,7 @@ function App() {
       if (rest[0] === 'import') return <ImportScreen/>;
       if (rest[0] === 'api') return <ApiSettingScreen/>;
       if (rest[0] === 'decay') return <DecayConfigScreen/>;
+      if (rest[0] === 'scoring') return <ScoringConfigScreen/>;
       return <SettingScreen/>;
     case 'new':
       return <NewScreen/>;
