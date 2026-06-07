@@ -96,6 +96,6 @@ wikilink:
   use_tags: false
   use_domain: true
   use_auto_keywords: true
-  auto_top_k: 4
-  min_keyword_len: 3
+  auto_top_k: 8
+  min_keyword_len: 2
   exclude_keywords: []

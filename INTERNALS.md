@@ -112,7 +112,7 @@
 **`pulse`** — 系统状态：
 - 返回各类型桶数量、衰减引擎状态、未解决/钉选/feel 统计
 
-**REST API（17 个端点）**
+**REST API（下表为主要端点；完整列表以 server.py 的 `@mcp.custom_route` 为准）**
 
 | 端点 | 方法 | 功能 |
 |---|---|---|
@@ -323,9 +323,9 @@
 | `matching.max_results` | `5` | 匹配返回上限 |
 | `scoring_weights.topic_relevance` | `4.0` | 主题评分权重 |
 | `scoring_weights.emotion_resonance` | `2.0` | 情感评分权重 |
-| `scoring_weights.time_proximity` | `2.5` | 时间评分权重 |
+| `scoring_weights.time_proximity` | `1.5` | 时间评分权重 |
 | `scoring_weights.importance` | `1.0` | 重要性评分权重 |
-| `scoring_weights.content_weight` | `3.0` | 正文评分权重 |
+| `scoring_weights.content_weight` | `1.0` | 正文评分权重（默认对齐上游；调高如 3.0 让正文也可被搜到，属个人偏好走 runtime 覆盖，不在 config 默认）|
 | `wikilink.enabled` | `true` | 启用 wikilink 注入 |
 | `wikilink.use_tags` | `false` | wikilink 包含标签 |
 | `wikilink.use_domain` | `true` | wikilink 包含域名 |
