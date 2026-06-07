@@ -261,7 +261,7 @@ LLM 生成 JSON 时如果对话里有引号，容易因为引号嵌套导致 JSO
 
 - **[P0luz](https://github.com/P0luz/Ombre-Brain)** — 创造了 Ombre-Brain 这套记忆系统。
 - **Claude Code** — 好同事，帮忙干了不少活。
-- 家里那台机器 — 提供情绪价值。
+- **家机** — 提供情绪价值。
 
 ---
 
