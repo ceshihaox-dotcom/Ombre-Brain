@@ -246,9 +246,12 @@ function HomeScreen() {
   //   噪声: 默认隐藏; 只有 noise chip 开启时才(且只)显示噪声
   const filteredBuckets = useMemo(() => {
     if (!buckets) return [];
-    let result = filters.has('noise')
-      ? buckets.filter(b => isNoise(b))
-      : buckets.filter(b => !isNoise(b));
+    // 已归档单独成档: 归档桶只在 archived chip 下出现, 其它所有视图(含"全部")排除。
+    // (/api/buckets 默认 include_archive=True, 不排除会让归档桶漏进普通视图 — 对齐电脑端 cells)
+    // 噪声桶 (isNoise) 默认沉底不进任何视图; 衰减几天后自动进已归档, 在「已归档」档可找回。
+    let result = filters.has('archived')
+      ? buckets.filter(b => b.archived)
+      : buckets.filter(b => !b.archived && !isNoise(b));
     // 注: 只看 b.protected, 不再 OR b.pinned —
     // API 的 b.pinned = is_protected OR is_highlighted 兼容老语义, 这里 OR 会把"只高亮没钉决"误判
     // (用户体感: 钉决取消后桶仍在钉决列表 = 它还高亮着, 而高亮 != 钉决)
@@ -257,7 +260,7 @@ function HomeScreen() {
     if (filters.has('fresh'))    result = result.filter(b => (b.importance || 5) >= 8);
     if (filters.has('feel'))     result = result.filter(b => isFeel(b));
     if (filters.has('internal')) result = result.filter(b => b.internalized || b.digested);
-    if (filters.has('cold'))     result = result.filter(b => (b.importance || 5) < 2);
+    if (filters.has('cold'))     result = result.filter(b => (b.score || 0) < 1.5);  // 对齐电脑端: 按衰减 score<1.5, 不是 importance<2
     // 来源过滤 — 三态多选 (OR), 缺 created_by 的老桶按 'ai' 计 (跟后端 list 端点 default 一致)
     const srcFilters = ['user', 'ai', 'import'].filter(s => filters.has('src-' + s));
     if (srcFilters.length > 0) {
@@ -286,7 +289,7 @@ function HomeScreen() {
     if (!buckets) return [];
     const counts = {};
     buckets.forEach(b => {
-      if (isNoise(b)) return;
+      if (isNoise(b) || b.archived) return;
       (b.domain || []).forEach(d => { if (d) counts[d] = (counts[d] || 0) + 1; });
     });
     return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([d, c]) => ({ domain: d, count: c }));
@@ -296,7 +299,7 @@ function HomeScreen() {
     if (!buckets) return [];
     const counts = {};
     buckets.forEach(b => {
-      if (isNoise(b)) return;
+      if (isNoise(b) || b.archived) return;
       (b.tags || []).forEach(t => {
         if (t && !String(t).startsWith('__')) counts[t] = (counts[t] || 0) + 1;
       });
@@ -434,12 +437,7 @@ function HomeScreen() {
             className={'home-chip' + (filters.has('src-user') ? ' on' : '')}
             onClick={() => toggleFilter('src-user')}
           >亲手写</span>
-          <span
-            className={'home-chip noise' + (filters.has('noise') ? ' on' : '')}
-            onClick={() => toggleFilter('noise')}
-            title="只看标了噪声的(默认其它视图都隐藏)"
-          >⌀ 噪声</span>
-          {/* 已消化/待消化 = 低频沉淀状态, 排在噪声之后 (按用户偏好 2026-05-14) */}
+          {/* 已消化/待消化/已归档 = 低频沉淀状态 (2026-06-07 对齐电脑端: 删噪声 chip → 噪声桶沉底自动归档; 加已归档档) */}
           <span
             className={'home-chip' + (filters.has('internal') ? ' on' : '')}
             onClick={() => toggleFilter('internal')}
@@ -448,6 +446,11 @@ function HomeScreen() {
             className={'home-chip' + (filters.has('cold') ? ' on' : '')}
             onClick={() => toggleFilter('cold')}
           >待消化</span>
+          <span
+            className={'home-chip' + (filters.has('archived') ? ' on' : '')}
+            onClick={() => toggleFilter('archived')}
+            title="已归档桶 (其它视图默认不显示, 噪声沉底后也归这)"
+          >已归档</span>
           <span
             className={'home-chip' + (tagFilters.length > 0 ? ' on' : '')}
             onClick={() => setTagSheetOpen(true)}
