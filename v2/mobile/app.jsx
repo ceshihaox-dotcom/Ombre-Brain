@@ -101,6 +101,12 @@ function isNoise(b) {
   return !!(b.resolved && (b.importance || 5) === 1);
 }
 
+// 已归档: 后端用 type==='archived' 标记, 原始 /api/buckets 桶**没有**布尔 b.archived 字段。
+// (电脑端 cells 是 mock 转换后才有 i.archived; 手机用原始桶 → 必须看 type) 对齐 server.py / cells。
+function isArchived(b) {
+  return b.type === 'archived';
+}
+
 // 命中位置: 关键词搜索时, 算 query 落在哪些字段 (对齐桌面 matched_in 指示)
 // 手机搜索是本地子串匹配 (filteredBuckets), 这里同口径逐字段判一遍给出徽章
 function matchedFields(b, q) {
@@ -264,8 +270,8 @@ function HomeScreen() {
     // (/api/buckets 默认 include_archive=True, 不排除会让归档桶漏进普通视图 — 对齐电脑端 cells)
     // 噪声桶 (isNoise) 默认沉底不进任何视图; 衰减几天后自动进已归档, 在「已归档」档可找回。
     let result = filters.has('archived')
-      ? buckets.filter(b => b.archived)
-      : buckets.filter(b => !b.archived && !isNoise(b));
+      ? buckets.filter(b => isArchived(b))
+      : buckets.filter(b => !isArchived(b) && !isNoise(b));
     // 注: 只看 b.protected, 不再 OR b.pinned —
     // API 的 b.pinned = is_protected OR is_highlighted 兼容老语义, 这里 OR 会把"只高亮没钉决"误判
     // (用户体感: 钉决取消后桶仍在钉决列表 = 它还高亮着, 而高亮 != 钉决)
@@ -303,7 +309,7 @@ function HomeScreen() {
     if (!buckets) return [];
     const counts = {};
     buckets.forEach(b => {
-      if (isNoise(b) || b.archived) return;
+      if (isNoise(b) || isArchived(b)) return;
       (b.domain || []).forEach(d => { if (d) counts[d] = (counts[d] || 0) + 1; });
     });
     return Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([d, c]) => ({ domain: d, count: c }));
@@ -313,7 +319,7 @@ function HomeScreen() {
     if (!buckets) return [];
     const counts = {};
     buckets.forEach(b => {
-      if (isNoise(b) || b.archived) return;
+      if (isNoise(b) || isArchived(b)) return;
       (b.tags || []).forEach(t => {
         if (t && !String(t).startsWith('__')) counts[t] = (counts[t] || 0) + 1;
       });
