@@ -43,7 +43,7 @@ A long-term emotional memory system for AI assistants. Tags memories using Russe
 > (Docker / 手动部署没有自动生成 —— 必须自己设 `OMBRE_ADMIN_TOKEN`,否则公网模式拒绝启动;
 > 确知在私网/反代已鉴权才裸跑可设 `OMBRE_ALLOW_NO_AUTH=1`。)
 
-### 第二步：填 LLM 配置（建议填，留空会降级为本地关键词提取、质量差很多）
+### 第二步：填 LLM 配置（写入记忆必需——不填 hold / grow / dream 会报错；只检索已有记忆可不填）
 
 部署后到 Render → 你的服务 → **Environment**，填三个：
 
@@ -501,6 +501,7 @@ Feel is not an event log — it's **what the model carries away**: a feeling, an
 | `migrate_from_upstream.py` | 从上游迁入：老字段→新字段升级 / Migrate from upstream (field upgrade) |
 | `reverse_compat_migrate.py` | 切回上游前：新字段→老字段回填 / Back-fill to upstream-compatible fields |
 | `reclassify_api.py` | 用 API 重打标未分类桶 / Re-tag uncategorized buckets via API |
+| `reclassify_domains.py` | 按关键词规则重分类 domain 并搬目录 / Reclassify domains by keyword rules |
 | `test_tools.py` | MCP 工具集成测试（6 步：5 工具 + 清理） / MCP tool integration tests |
 | `test_smoke.py` | 冒烟测试 / Smoke test |
 
@@ -514,14 +515,14 @@ Feel is not an event log — it's **what the model carries away**: a feeling, an
 > **Free tier won't work**: Render free tier has **no persistent disk** — all memory data is lost on restart. It also sleeps on inactivity. **Starter plan ($7/mo) or above is required.**
 
 项目根目录已包含 `render.yaml`，点击按钮后：
-1. （可选）设置 `OMBRE_API_KEY`：任何 OpenAI 兼容 API 的 key，不填则自动降级为本地关键词提取
+1. （写入记忆必需）设置 `OMBRE_API_KEY`：任何 OpenAI 兼容 API 的 key；不填则 hold / grow / dream 报错（只检索已有记忆不受影响）
 2. （可选）设置 `OMBRE_BASE_URL`：API 地址，支持任意 OpenAI 化地址，如 `https://api.deepseek.com/v1` / `http://123.1.1.1:7689/v1` / `http://your-ollama:11434/v1`
 3. Render 自动挂载持久化磁盘到 `/opt/render/project/src/buckets`
 4. Dashboard：`https://<你的服务名>.onrender.com/v2/`
 5. 部署后 MCP URL：`https://<你的服务名>.onrender.com/mcp`
 
 `render.yaml` is included. After clicking the button:
-1. (Optional) `OMBRE_API_KEY`: any OpenAI-compatible key; omit to fall back to local keyword extraction
+1. (Required for writing) `OMBRE_API_KEY`: any OpenAI-compatible key; without it hold / grow / dream will error (searching existing memories still works)
 2. (Optional) `OMBRE_BASE_URL`: any OpenAI-compatible endpoint, e.g. `https://api.deepseek.com/v1`, `http://123.1.1.1:7689/v1`, `http://your-ollama:11434/v1`
 3. Persistent disk auto-mounts at `/opt/render/project/src/buckets`
 4. Dashboard: `https://<your-service>.onrender.com/v2/`
@@ -543,7 +544,7 @@ Feel is not an event log — it's **what the model carries away**: a feeling, an
    - Zeabur auto-detects the `Dockerfile` in root and builds via Docker
 
 2. **设置环境变量 / Set environment variables**（服务页面 → **Variables** 标签页）
-   - `OMBRE_API_KEY`（可选）— LLM API 密钥，不填则自动降级为本地关键词提取
+   - `OMBRE_API_KEY`（写入记忆必需）— LLM API 密钥，不填则 hold / grow / dream 报错（检索不受影响）
    - `OMBRE_BASE_URL`（可选）— API 地址，如 `https://api.deepseek.com/v1`
 
    > ⚠️ **不需要**手动设置 `OMBRE_TRANSPORT` 和 `OMBRE_BUCKETS_DIR`，Dockerfile 里已经设好了默认值。Zeabur 对单阶段 Dockerfile 会自动注入控制台设置的环境变量。

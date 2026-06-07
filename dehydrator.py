@@ -400,10 +400,10 @@ class Dehydrator:
     """
     Data dehydrator + content analyzer.
     Three capabilities: dehydration / merge / auto-tagging (domain + emotion).
-    Prefers API (better quality); auto-degrades to local (guaranteed availability).
+    Requires an LLM API (OMBRE_API_KEY); no local fallback — write ops error without it.
     数据脱水器 + 内容分析器。
     三大能力：脱水压缩 / 新旧合并 / 自动打标。
-    优先走 API，API 挂了自动降级到本地。
+    需要 LLM API（OMBRE_API_KEY）；无本地降级，未配置时写入类操作会报错。
     """
 
     def __init__(self, config: dict):
