@@ -89,12 +89,10 @@ function fmtTime(dt) {
 }
 
 function isFeel(b) {
-  // type='feel' (用户工作台手动切换 / 后端写 metadata.type='feel') 优先判定
-  // tags 里有 'feel' 字眼是历史兼容 (LLM 给的 'feel(柔软)' 等), 两条都认
-  // 之前只查 tags, 用户在工作台 toggle feel 后 type='feel' 但 tags 不变 →
-  // 移动端检测不出, "标记不是粉色点" — 修这个不一致
-  if (b.type === 'feel') return true;
-  return (b.tags || []).some(t => /feel/i.test(String(t)));
+  // 只认 type==='feel' (工作台 toggle feel 时设的权威标记) — 对齐桌面 cells。
+  // 2026-06-07 改: 删掉历史兼容的 tag 模糊匹配。type 是 feel 的唯一权威来源;
+  // tag 里有 'feel' 字眼是早年兜底, 会把"只在 tag 写了 feel、没真 toggle 成 feel"的老桶误算成 feel。
+  return b.type === 'feel';
 }
 
 function isNoise(b) {
