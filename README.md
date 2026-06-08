@@ -95,7 +95,7 @@ OMBRE_API_KEY=你的API密钥
 > 1. 打开 [aistudio.google.com/apikey](https://aistudio.google.com/apikey)，登录 Google 账号
 > 2. 点击「Create API key」生成一个 key
 > 3. 把 key 填入 `.env` 文件的 `OMBRE_API_KEY=` 后面
-> 4. 免费额度（截至 2025 年，请以官网实时信息为准）：
+> 4. 免费额度（请以官网实时信息为准）：
 >    - **脱水/打标模型**（`gemini-2.5-flash-lite`）：免费层 30 req/min
 >    - **向量化模型**（`gemini-embedding-001`）：免费层 1500 req/day，3072 维
 > 5. 在 `config.yaml` 中 `dehydration.base_url` 设为 `https://generativelanguage.googleapis.com/v1beta/openai`
@@ -104,7 +104,7 @@ OMBRE_API_KEY=你的API密钥
 >
 > **Recommended free option: Google AI Studio**
 > 1. Go to [aistudio.google.com/apikey](https://aistudio.google.com/apikey) and create an API key
-> 2. Free tier (as of 2025, check official site for current limits):
+> 2. Free tier (check official site for current limits):
 >    - Dehydration model (`gemini-2.5-flash-lite`): 30 req/min free
 >    - Embedding model (`gemini-embedding-001`): 1500 req/day free, 3072 dims
 > 3. Set `dehydration.base_url` to `https://generativelanguage.googleapis.com/v1beta/openai` in `config.yaml`
