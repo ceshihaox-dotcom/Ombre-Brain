@@ -1060,6 +1060,24 @@ class BucketManager:
         logger.info(f"Purged bucket / 物理删除记忆桶: {bucket_id}")
         return True
 
+    async def empty_trash(self) -> int:
+        """物理删除回收站里所有桶,一次扫盘删全部。返回删除数量。
+        前端"永久清空"用,避免逐条 N 次 HTTP 往返(大量桶时会很慢/删不干净)。"""
+        count = 0
+        if not os.path.exists(self.trash_dir):
+            return 0
+        for root, _, files in os.walk(self.trash_dir):
+            for fname in files:
+                if not fname.endswith(".md"):
+                    continue
+                try:
+                    os.remove(os.path.join(root, fname))
+                    count += 1
+                except OSError as e:
+                    logger.error(f"empty_trash 删除失败 / remove failed: {fname}: {e}")
+        logger.info(f"Emptied trash / 清空回收站: {count} 个桶")
+        return count
+
     # ---------------------------------------------------------
     # List trash: 列回收站里所有桶
     # ---------------------------------------------------------

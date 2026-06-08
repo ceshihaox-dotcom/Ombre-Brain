@@ -172,6 +172,8 @@ function CellsApp() {
         defaultTime="23:30"
         defaultTags={writeTags}
       />
+
+      <Fab />
     </div>
   );
 }

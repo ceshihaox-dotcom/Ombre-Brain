@@ -2439,6 +2439,32 @@ async def api_bucket_purge(request):
     return JSONResponse({"ok": True, "id": bucket_id, "purged": True})
 
 
+@mcp.custom_route("/api/trash/empty", methods=["POST"])
+async def api_trash_empty(request):
+    """清空回收站:一次请求物理删除所有 trash 桶 + 清对应 embedding。
+    避免前端逐条 purge 几百次往返导致的"每次只删一点"。不可撤销。"""
+    from starlette.responses import JSONResponse
+    try:
+        # 先收集 id 用于清 embedding(empty_trash 删文件后就拿不到了)
+        ids = []
+        try:
+            trashed = await bucket_mgr.list_trash()
+            ids = [b["id"] for b in trashed]
+        except Exception:
+            pass
+        n = await bucket_mgr.empty_trash()
+        if embedding_engine:
+            for bid in ids:
+                try:
+                    embedding_engine.delete_embedding(bid)
+                except Exception:
+                    pass
+        _invalidate_buckets_cache()
+        return JSONResponse({"ok": True, "purged": n})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @mcp.custom_route("/api/trash", methods=["GET"])
 async def api_trash_list(request):
     """列回收站所有桶。返回 mock 兼容形态(content_preview / summary 等)。"""
