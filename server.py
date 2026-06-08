@@ -763,11 +763,30 @@ async def grow(content: str, event_time: str = "") -> str:
     try:
         items = await dehydrator.digest(content)
     except Exception as e:
-        logger.error(f"Diary digest failed / 日记整理失败: {e}")
-        return f"日记整理失败: {e}"
+        logger.error(f"Diary digest failed / 日记整理失败, 退化为整段存一条: {e}")
+        items = None
 
+    # --- 兜底: 拆分失败/为空也【绝不丢内容】---
+    # grow 原本失败直接 return 错误, 那段内容就彻底消失("以为存了其实没存")。
+    # 改为: 整段当一条记忆存下来, 至少不丢; 用户回看时还能再 redehydrate/拆。
     if not items:
-        return "内容为空或整理失败。"
+        logger.warning("grow digest 为空, 整段存为单条记忆 (兜底防丢)")
+        try:
+            analysis = await dehydrator.analyze(content)
+        except Exception:
+            analysis = {"domain": ["未分类"], "valence": 0.5, "arousal": 0.3,
+                        "tags": [], "suggested_name": ""}
+        result_name, _is_merged = await _merge_or_create(
+            content=content.strip(),
+            tags=analysis.get("tags", []),
+            importance=analysis.get("importance", 5) if isinstance(analysis.get("importance"), int) else 5,
+            domain=analysis.get("domain", ["未分类"]),
+            valence=analysis.get("valence", 0.5),
+            arousal=analysis.get("arousal", 0.3),
+            name=analysis.get("suggested_name", ""),
+            event_time=event_time or None,
+        )
+        return f"⚠ 自动拆分失败,已【整段存为一条】记忆(未拆分,内容没丢)→ {result_name}"
 
     results = []
     created = 0

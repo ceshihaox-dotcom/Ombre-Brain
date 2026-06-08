@@ -791,6 +791,10 @@ class Dehydrator:
             raise RuntimeError("脱水 API 不可用，请检查 config.yaml 中的 dehydration 配置")
         try:
             result = await self._api_digest(content)
+            if not result:
+                # 一次重试: 弱模型偶发返回非 JSON / 空, temperature=0 下重调常能成
+                logger.info("digest 首次返回空, 重试一次")
+                result = await self._api_digest(content)
             if result:
                 return result
             raise RuntimeError("API 日记整理返回空结果")
@@ -814,7 +818,7 @@ class Dehydrator:
                 {"role": "system", "content": get_prompt("digest")},
                 {"role": "user", "content": content[:5000]},
             ],
-            max_tokens=2048,
+            max_tokens=8192,   # 2048 会把长日记的 JSON 截断→解析失败; 提到 8192(同 redehydrate)
             temperature=0.0,
         )
         if not response.choices:
@@ -839,8 +843,17 @@ class Dehydrator:
                 cleaned = cleaned.split("\n", 1)[-1].rsplit("```", 1)[0]
             items = json.loads(cleaned)
         except (json.JSONDecodeError, IndexError, ValueError):
-            logger.warning(f"Diary digest JSON parse failed / JSON 解析失败: {raw[:200]}")
-            return []
+            # 容错: LLM 偶尔在 JSON 前后裹了说明文字, 抠出第一个 [...] 数组再试一次
+            m = re.search(r"\[.*\]", cleaned, re.DOTALL)
+            if m:
+                try:
+                    items = json.loads(m.group(0))
+                except (json.JSONDecodeError, ValueError):
+                    logger.warning(f"Diary digest JSON parse failed / JSON 解析失败: {raw[:200]}")
+                    return []
+            else:
+                logger.warning(f"Diary digest JSON parse failed / JSON 解析失败: {raw[:200]}")
+                return []
 
         if not isinstance(items, list):
             return []
