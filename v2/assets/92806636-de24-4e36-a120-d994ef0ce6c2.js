@@ -32,14 +32,14 @@ function TodayBar({ todayItems, lastWriteDate, todayDate, focusToday, totalDays,
         <div className="ob-today-text">
           <div className="ob-today-eyebrow">{f.y}-{f.m}-{f.day} · {f.wk}</div>
           <div className="ob-today-label">
-            第 <strong className="ob-today-num-big">{days}</strong> 天 · <strong className="ob-today-num-pink">{count}</strong> 段记忆沉淀于此
+            第 <strong className="ob-today-num-big" style={{ color: 'var(--ink-3)' }}>{days}</strong> 天 · <strong className="ob-today-num-pink" style={{ color: 'var(--ink-3)' }}>{count}</strong> 段记忆沉淀于此
           </div>
         </div>
       </div>
       <div className="ob-today-r">
         <div className="ob-today-sub">
           {totalHi > 0
-            ? <><strong className="ob-today-num-pink">{totalHi}</strong> 条值得被反复想起</>
+            ? <><strong className="ob-today-num-pink" style={{ color: 'var(--ink-3)' }}>{totalHi}</strong> 条值得被反复想起</>
             : '继续记录这一天'}
         </div>
         <div className="ob-today-actions">

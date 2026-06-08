@@ -89,15 +89,19 @@ function TrashPage({ onCountChange }) {
       if (typed !== null) alert('未输入"全部删除",已取消');
       return;
     }
-    let failed = 0;
-    for (const it of items) {
-      try {
-        const r = await fetch(`/api/bucket/${encodeURIComponent(it.id)}/purge`, { method: 'POST' });
-        if (!r.ok) failed++;
-      } catch (e) { failed++; }
+    // 一次请求服务端删全部 — 避免逐条几百次往返导致"每次只删一点"
+    setBusy(b => ({ ...b, __all__: 'purging' }));
+    try {
+      const r = await fetch('/api/trash/empty', { method: 'POST' });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || ('HTTP ' + r.status));
+      await fetchTrash();
+    } catch (e) {
+      alert('清空回收站失败: ' + e.message);
+      await fetchTrash();
+    } finally {
+      setBusy(b => { const c = { ...b }; delete c.__all__; return c; });
     }
-    await fetchTrash();
-    if (failed) alert(`清空回收站:${failed} 条删除失败(其余已删)。对单条点"永久删除"可看到具体报错。`);
   };
 
   const formatTrashedAt = (s) => {
@@ -117,8 +121,8 @@ function TrashPage({ onCountChange }) {
         rightSlot={
           items.length > 0 && (
             <div style={{ display: 'flex', gap: 6 }}>
-              <button className="oc-btn oc-btn-ghost" onClick={restoreAll} style={{ fontSize: 11 }}>↻ 全部恢复</button>
-              <button className="oc-btn oc-btn-ghost" onClick={purgeAll} style={{ fontSize: 11, color: '#8B4A4A' }}>✕ 永久清空</button>
+              <button className="oc-btn oc-btn-ghost" onClick={restoreAll} disabled={!!busy.__all__} style={{ fontSize: 11 }}>↻ 全部恢复</button>
+              <button className="oc-btn oc-btn-ghost" onClick={purgeAll} disabled={!!busy.__all__} style={{ fontSize: 11, color: '#8B4A4A' }}>{busy.__all__ ? '⌛ 清空中…' : '✕ 永久清空'}</button>
             </div>
           )
         }
