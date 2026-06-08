@@ -92,9 +92,9 @@
 ### Step 3 — 配置环境变量
 
 ```
-OMBRE_BACKUP_REPO=github.com/yourname/my-ombre-backup
+OMBRE_BACKUP_REPO=https://github.com/yourname/my-ombre-backup   # 必须带 https://
 OMBRE_BACKUP_TOKEN=ghp_xxxxxxxxxxxxxxxxxxxx
-OMBRE_BACKUP_USER=ombre-bot   # 可选
+OMBRE_BACKUP_USER=ombre-bot   # 可选,默认 ombre-bot
 ```
 
 ### Step 4 — 验证
