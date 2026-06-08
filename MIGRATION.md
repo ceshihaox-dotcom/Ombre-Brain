@@ -43,7 +43,7 @@ Render 持久盘曾因环境变量错配发生过**约一周的数据丢失**事
 | `pinned: true` | `protected: true` + `highlight: true` | 拆成两个独立轴(防衰减 + 浮现优先) |
 | `pinned: false` | (清掉) | 上游 false 字段也清,避免歧义 |
 | `digested: true` | `internalized: true` | 改名,语义更准确 |
-| `digested: false` | `internalized: false` + (清 digested) | 同上 |
+| `digested: false` | (清掉) | 跟 `pinned: false` 一样,false 老字段直接清,不留 `internalized: false` |
 | 其他所有字段 | **完全不动** | id / name / tags / domain / valence / arousal / importance / type / created / last_active / activation_count / resolved / raw_source / 等等 |
 
 ### 完整步骤
