@@ -922,20 +922,18 @@ class BucketManager:
             logger.error(f"Failed to write bucket update / 写入桶更新失败: {file_path}: {e}")
             return False
 
-        # --- Auto-move: protected → permanent/, resolved → archive/ ---
-        # --- 自动移动：保护(防衰减) → permanent/，已解决 → archive/ ---
+        # --- Auto-move: protected → permanent/ ---
+        # --- 自动移动：保护(防衰减) → permanent/ ---
         # 注:highlight 单独不触发移动,它只影响 breath 浮现优先级,不改变存储位置
+        # 注:resolved 不再立即归档(2026-06-08 对齐上游 + USAGE)——留在 dynamic/ 随衰减自然沉降,
+        #    score < 阈值后由衰减引擎归档;期间关键词检索仍可捞回(breath 浮现仍排除 resolved)。
+        #    既有已归档的 resolved 桶不动,本改动只影响之后新标记的。
         domain = post.get("domain", ["未分类"])
         if kwargs.get("protected") and post.get("type") != "permanent":
             post["type"] = "permanent"
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(frontmatter.dumps(post))
             self._move_bucket(file_path, self.permanent_dir, domain)
-        elif kwargs.get("resolved") and post.get("type") not in ("permanent", "feel"):
-            post["type"] = "archived"
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(frontmatter.dumps(post))
-            self._move_bucket(file_path, self.archive_dir, domain)
         elif ("resolved" in kwargs and not kwargs["resolved"]) and post.get("type") == "archived":
             # 取消归档(取消噪声 / 取消 resolved): 把桶从 archive/ 真搬回 dynamic/,
             # 重新参与浮现与检索。否则只清了 resolved 标记、恢复了 importance 数值,
