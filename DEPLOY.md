@@ -71,9 +71,7 @@
     - **轮换**:在 Render Environment 改 `OMBRE_MCP_URL_KEY` 的值 → 重启 → 旧 URL 立刻失效,
       把新 URL 重新填进 claude.ai 连接器即可。
     - 服务端已对访问日志做脱敏:`?key=` 和路径里的密钥字面值都会被遮成 `***`,不进 uvicorn access log。
-- **每日自动备份**(GitHub Actions,见下文):如果设了 `OMBRE_ADMIN_TOKEN`,
-  必须在 OB 仓库的 `Settings > Secrets and variables > Actions` 里也加一个
-  同名 secret `OMBRE_ADMIN_TOKEN`,值一致,否则 backup 会 401。
+- **每日自动备份的 token**:若设了 `OMBRE_ADMIN_TOKEN`,备份工作流也要在仓库 Actions 里配同名 secret(否则 backup 401)——详见下文「自动备份配置」。
 
 ---
 
