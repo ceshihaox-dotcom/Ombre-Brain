@@ -65,7 +65,7 @@ A long-term emotional memory system for AI assistants. Tags memories using Russe
 部署完成后：
 
 - 主网页：`https://你的服务.onrender.com/v2/`
-- 手机端：`https://你的服务.onrender.com/v2/mobile/`（可在手机浏览器"添加到主屏幕"当 App 用）
+- 手机端：`https://你的服务.onrender.com/v2/mobile/`（可在手机浏览器"添加到主屏幕"当 App 用；首次访问同样会弹窗让你粘贴 token，存浏览器后免输）
 - 接入 Claude Desktop / Claude.ai：见下方[「接入 Claude」](#接入-claude-desktop--connect-to-claude-desktop)章节，MCP 地址填 `https://你的服务.onrender.com/mcp`
 
 ---
@@ -608,7 +608,9 @@ When connecting via tunnel, ensure:
      但 **claude.ai 网页版的自定义连接器不支持自定义 header**(只有 URL + OAuth),所以
      **网页版无法直接连**带鉴权的 OB。要在客户端直连,请用 **Claude Desktop + `mcp-remote`**:
      `npx -y mcp-remote https://<your-host>/mcp --header "X-Admin-Token:${OMBRE_TOKEN}"`
-     (token 放 env `OMBRE_TOKEN` 避免空格被拆);或在本机用 **stdio 模式**(无需 token)。
+     (`${OMBRE_TOKEN}` 需你的 shell / 环境支持变量展开才会被替换;不确定就**直接填 token 字面值**,否则会把字面串发出去 → 401)。
+     **Claude Code** 更省事:直接在 `~/.claude.json` 的 `mcpServers` 里给该 server 配 `"headers": {"X-Admin-Token": "<token>"}`,不用 mcp-remote 桥。
+     或在本机用 **stdio 模式**(无需 token)。
      / claude.ai web custom connectors don't support custom headers, so they can't reach an
      authed OB — use Claude Desktop + `mcp-remote --header`, or run locally in stdio mode.
    - 💡 **可选 · 想用 claude.ai 网页版直连**:设独立 env `OMBRE_MCP_URL_KEY`(URL 安全随机串,
