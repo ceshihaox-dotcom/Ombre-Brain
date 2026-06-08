@@ -64,7 +64,7 @@ Copy-Item ./buckets ./buckets.backup-original -Recurse
 
 #### Step 2 — 安装依赖
 
-迁移脚本只依赖标准库 + frontmatter:
+迁移脚本只依赖标准库 + frontmatter。**你既然在用上游 OB,这个依赖大概率已经装过了,可跳过这步**;没装再:
 
 ```bash
 pip install python-frontmatter
@@ -190,27 +190,44 @@ A: 本版本 6 个 prompt 里:
 
 **回滚到上游版**:
 
-如果你最终决定不用本版本,回上游:
+回滚有**两条路,代价不同,二选一**(别串着跑)。
+
+**路径 A · 回到迁移前的原始状态**(最简单,但丢失迁移后的新数据)
+
+适合迁移后没产生重要新记忆、或想要干净上游起点的人:
 
 ```bash
-# 1. 把数据回滚
+# 数据:覆盖回迁移前的原始备份
 rm -rf ./buckets
 mv ./buckets.backup-original ./buckets
 
-# 2. 切回上游代码
+# 代码:切回上游
 git remote add upstream https://github.com/P0luz/Ombre-Brain.git
 git fetch upstream
 git checkout upstream/main
 ```
 
-数据兼容性是双向的(上游能读本版本写出来的字段吗?**不能** — 上游不知道 protected/highlight/internalized)。所以回滚时:
+⚠️ 这会丢失你在本 fork 期间产生 / 修改的所有记忆(回到 `buckets.backup-original` 那一刻)。
+
+**路径 B · 保留所有数据,只把字段转回上游格式**(推荐给已用了一段时间的人)
+
+适合迁移后积累了新记忆、不想丢、只是想让上游能读。
+
+> 关于兼容方向:本版本能读上游数据;但上游**读不了**本版本写出的新字段(protected/highlight/internalized),所以回滚要先把字段转回去。
 
 ```bash
-# 把新字段切回上游格式 (protected/highlight→pinned, internalized→digested):
-python reverse_compat_migrate.py --dir ./buckets           # 默认 dry-run, 先看会改什么
+# 数据:先备份当前数据(reverse 脚本不自带备份), 再把新字段转回上游格式
+cp -r ./buckets ./buckets.backup-before-rollback
+python reverse_compat_migrate.py --dir ./buckets           # dry-run,先看会改什么
 python reverse_compat_migrate.py --dir ./buckets --apply   # 确认无误后真写
-# 或者用上面 buckets.backup-original 直接覆盖
+
+# 代码:切回上游
+git remote add upstream https://github.com/P0luz/Ombre-Brain.git
+git fetch upstream
+git checkout upstream/main
 ```
+
+protected/highlight → pinned、internalized → digested,保留迁移后全部记忆,上游也能正常读。
 
 ---
 
