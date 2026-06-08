@@ -153,8 +153,8 @@ def analyze_bucket(file_path: str) -> dict:
     # 检查 digested 老字段
     if "digested" in meta:
         digested_val = bool(meta.get("digested"))
-        if "internalized" not in meta:
-            result["actions"].append(f"digested->internalized (set {digested_val})")
+        if digested_val and "internalized" not in meta:
+            result["actions"].append("digested->internalized (set true)")
             result["needs_migration"] = True
         result["actions"].append("drop digested (老字段)")
         result["needs_migration"] = True
@@ -198,12 +198,12 @@ def normalize_bucket(file_path: str) -> Tuple[bool, list]:
         except Exception:
             pass
 
-    # digested -> internalized
+    # digested -> internalized (digested:false 跟 pinned:false 一样直接丢, 不设 internalized:false)
     if "digested" in meta:
         digested_val = bool(meta.get("digested"))
-        if "internalized" not in meta:
-            post["internalized"] = digested_val
-            actions_done.append(f"set internalized={digested_val}")
+        if digested_val and "internalized" not in meta:
+            post["internalized"] = True
+            actions_done.append("set internalized=true")
             changed = True
         try:
             del post["digested"]
