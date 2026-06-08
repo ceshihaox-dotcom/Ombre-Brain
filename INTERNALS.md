@@ -65,7 +65,7 @@
 **自动化处理**
 - 存入时 LLM 自动分析 domain/valence/arousal/tags/name
 - 大段日记 LLM 拆分为 2~6 条独立记忆
-- 浮现时自动脱水压缩（LLM 压缩保语义，API 不可用降级到本地关键词提取）
+- 浮现 / 存入时自动脱水压缩（LLM 压缩保语义；脱水依赖 LLM API，不可用则报错、无本地降级）
 - Wikilink `[[]]` 由 LLM 在内容中标记
 
 ---
@@ -152,11 +152,11 @@
 **迁移/批处理工具**：`migrate_to_domains.py`、`reclassify_domains.py`、`reclassify_api.py`、`backfill_embeddings.py`、`write_memory.py`、`check_buckets.py`、`import_memory.py`（历史对话导入引擎）
 
 **降级策略**
-- 脱水 API 不可用 → 本地关键词提取 + 句子评分
+- 脱水 / 打标 API 不可用 → 直接报错（**无本地降级**，写入类操作需 LLM API）
 - 向量搜索不可用 → 纯 fuzzy match
 - 逐条错误隔离（grow 中单条失败不影响其他）
 
-**安全**：路径遍历防护（`safe_path()`）、API Key 脱敏、API Key 不持久化到 yaml、输入范围钳制
+**安全**：全局鉴权（除静态页与 `/health` 外，所有 `/api/*` 与 `/mcp` 须带 `X-Admin-Token`；公网无 token 拒绝启动）、路径遍历防护（`safe_path()`）、API Key 脱敏、API Key 不持久化到 yaml、输入范围钳制
 
 **监控**：结构化日志、Health 端点、Breath Debug 端点、Dashboard 统计栏、衰减周期日志
 
@@ -166,12 +166,16 @@
 
 | 变量名 | 用途 | 必填 | 默认值 / 示例 |
 |---|---|---|---|
-| `OMBRE_API_KEY` | 脱水/打标/嵌入的 LLM API 密钥，覆盖 `config.yaml` 的 `dehydration.api_key` | 否（无则 API 功能降级到本地） | `""` |
+| `OMBRE_API_KEY` | 脱水/打标/嵌入的 LLM API 密钥，覆盖 `config.yaml` 的 `dehydration.api_key` | **写入必需**（无则 hold/grow/dream 报错；仅检索可不填） | `""` |
 | `OMBRE_BASE_URL` | API base URL，覆盖 `config.yaml` 的 `dehydration.base_url` | 否 | `""` |
 | `OMBRE_TRANSPORT` | 传输模式：`stdio` / `sse` / `streamable-http` | 否 | `""` → 回退到 config 或 `"stdio"` |
 | `OMBRE_BUCKETS_DIR` | 记忆桶存储目录路径 | 否 | `""` → 回退到 config 或 `./buckets` |
 | `OMBRE_HOOK_URL` | SessionStart 钩子调用的服务器 URL | 否 | `"http://localhost:8000"` |
 | `OMBRE_HOOK_SKIP` | 设为 `"1"` 跳过 SessionStart 钩子 | 否 | 未设置（不跳过） |
+| `OMBRE_ADMIN_TOKEN` | 全局鉴权 token：除静态页与 `/health` 外，所有 `/api/*` 与 `/mcp` 请求须带 `X-Admin-Token` header（或同值 cookie）| 公网部署必需（无则拒绝启动，除非显式豁免）| Render `generateValue` 自动生成 |
+| `OMBRE_ALLOW_NO_AUTH` | 设 `"1"` 豁免全局鉴权（仅限私网 / 反代已自行鉴权的场景）| 否 | 未设置 |
+| `OMBRE_ALLOWED_ORIGINS` | CORS 允许来源（逗号分隔）；默认仅同源 | 否 | `""`（仅同源）|
+| `OMBRE_MCP_URL_KEY` | 可选：给 `/mcp` 额外开一个 URL 路径/query 密钥形态（供 claude.ai 网页连接器等不支持自定义 header 的客户端用）| 否 | 未设置 |
 
 环境变量优先级：`环境变量 > config.yaml > 硬编码默认值`。所有环境变量在 `utils.py` 中读取并注入 config dict。
 
@@ -199,7 +203,7 @@
 | `server.py` | MCP 服务器主入口，注册工具 + Dashboard API + 钩子端点 | `bucket_manager`, `dehydrator`, `decay_engine`, `embedding_engine`, `utils` | `test_tools.py` |
 | `bucket_manager.py` | 记忆桶 CRUD、多维索引搜索、wikilink 注入、激活更新 | `utils` | `server.py`, `check_buckets.py`, `backfill_embeddings.py` |
 | `decay_engine.py` | 衰减引擎：遗忘曲线计算、自动归档、自动结案 | 无（接收 `bucket_mgr` 实例） | `server.py` |
-| `dehydrator.py` | 数据脱水压缩 + 合并 + 自动打标（LLM API + 本地降级） | `utils` | `server.py` |
+| `dehydrator.py` | 数据脱水压缩 + 合并 + 自动打标（仅 LLM API，无本地降级） | `utils` | `server.py` |
 | `embedding_engine.py` | 向量化引擎：Gemini embedding API + SQLite + 余弦搜索 | `utils` | `server.py`, `backfill_embeddings.py` |
 | `utils.py` | 配置加载、日志、路径安全、ID 生成、token 估算 | 无 | 所有模块 |
 | `write_memory.py` | 手动写入记忆 CLI（绕过 MCP） | 无（独立脚本） | 无 |
@@ -372,12 +376,11 @@
 
 ### 5.4 为什么有 dehydration（脱水）这一层？
 
-**决策**：存入前先用 LLM 压缩内容（保留信息密度，去除冗余表达），API 不可用时降级到本地关键词提取。
+**决策**：存入前先用 LLM 压缩内容（保留信息密度，去除冗余表达）。脱水依赖 LLM API，不可用则直接报错、不做本地降级（早期有本地降级，后移除——脱水质量不达标的"假记忆"比明确报错更难排查）。
 
 **理由**：
 - MCP 上下文有 token 限制，原始对话冗长，需要压缩
 - LLM 压缩能保留语义和情感色彩，纯截断会丢信息
-- 降级到本地确保离线可用——关键词提取 + 句子排序 + 截断
 
 **放弃方案**：只做截断。信息损失太大。
 
