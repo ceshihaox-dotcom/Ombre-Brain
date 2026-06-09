@@ -183,10 +183,11 @@ A: 本版本 6 个 prompt 里:
 1. 你的原始 `buckets/` 备份在 `buckets.backup-时间戳/`,数据没丢
 2. GitHub 仓库里有完整源码历史,代码层任何问题都能 reset
 
-**找帮助**:
+**遇到问题**:
 
-- GitHub Issues: https://github.com/ceshihaox-dotcom/OmbreBrain-folio/issues
-- 写明 1) 你做了什么 2) 期望什么 3) 实际看到什么 4) 报错日志(如有)
+- 数据没丢(见上),代码层可随时 reset;不会造成不可逆的损失
+- 这是个人自用版,我精力/时间有限,不保证响应或修复
+- 需要稳定、及时的支持,建议使用 [原作者版本](https://github.com/P0luz/Ombre-Brain)
 
 **回滚到上游版**:
 
@@ -231,4 +232,4 @@ protected/highlight → pinned、internalized → digested,保留迁移后全部
 
 ---
 
-最后:这套迁移工具是为了让你**百分百安心**地切到本版本。如果有任何 edge case 我没覆盖,请开 issue 告诉我,我会在 24 小时内回复。
+最后:这套迁移工具是为了让你尽量安心地切到本版本。如果有 edge case 我没覆盖,欢迎反馈——但这是自用版,我精力有限,不保证及时处理。
