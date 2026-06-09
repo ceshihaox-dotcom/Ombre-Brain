@@ -907,7 +907,7 @@ async def trace(
         return "请提供有效的 bucket_id。"
 
     # --- 闸门:用户手写的桶,AI 没权限改/删/归档 ---
-    # --- created_by="user" 是 dashboard 新建桶时打的标记,代表"这是 rin 写的事实",
+    # --- created_by="user" 是 dashboard 新建桶时打的标记,代表"这是用户手写的事实",
     #     你只能引用,不能改写 / 删除 / 归档。需要修改请告诉用户去 dashboard 改 ---
     bucket = await bucket_mgr.get(bucket_id)
     if not bucket:

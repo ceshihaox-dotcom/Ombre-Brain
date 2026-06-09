@@ -1211,7 +1211,7 @@ function ImportWorkbench() {
                       <button
                         key={k}
                         className={`imp-batch-pill${(active.createdBy || 'ai') === k ? ' on' : ''}`}
-                        title={k === 'import' ? '从聊天记录导入的(主流)' : k === 'ai' ? 'AI 主动写入(KE/breath/grow)' : '在写入抽屉手写的'}
+                        title={k === 'import' ? '从聊天记录导入的(主流)' : k === 'ai' ? 'AI 主动写入(breath/grow)' : '在写入抽屉手写的'}
                         onClick={() => updateActive({ createdBy: k })}
                         style={{ whiteSpace: 'nowrap' }}
                       >{label}</button>

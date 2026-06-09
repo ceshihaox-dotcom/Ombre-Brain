@@ -163,7 +163,7 @@ def _parse_markdown(text: str) -> list[dict]:
     header_re = re.compile(r'^#{2,6}\s*(?:\*\*\s*)?([^*#·\n]{1,40})(?:\s*\*\*)?\s*(·[^\n]*)?$')
     ts_re = re.compile(r'\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}')
     name_role: dict[str, str] = {}
-    _known_ai = ("assistant", "claude", "ai", "gpt", "bot", "deepseek", "soren", "助手", "模型", "机器人")
+    _known_ai = ("assistant", "claude", "ai", "gpt", "bot", "deepseek", "助手", "模型", "机器人")
 
     def role_for(name: str) -> str:
         low = name.strip().lower()
@@ -572,7 +572,7 @@ class ImportEngine:
         #                  让"查看原文"显示完整对话片段而非整 chunk 杂烩
         # 默认 false 是为了开源用户(很多用 DeepSeek,弱模型可能越界/欠抄)
         # 优先级:env OMBRE_LONG_EXCERPT > config.yaml import.long_excerpt > 默认 false
-        # rin 在 Railway/Zeabur 部署加 env 变量 OMBRE_LONG_EXCERPT=true 即可个人启用,
+        # 在 Railway/Zeabur 部署加 env 变量 OMBRE_LONG_EXCERPT=true 即可启用,
         # 公仓库代码默认 false,开源用户行为不变(等测过 DeepSeek 再考虑翻默认)
         env_long = os.environ.get("OMBRE_LONG_EXCERPT", "").strip().lower()
         if env_long in ("1", "true", "yes", "on"):
@@ -794,7 +794,7 @@ class ImportEngine:
             raise RuntimeError("API not available")
 
         # [DEBUG] 排查 source_excerpt 链路:确认 long_excerpt 开关实际值 + 用的是哪份 prompt
-        # rin 反馈 OMBRE_LONG_EXCERPT 设了但新导入仍然没原文 — 用此 log 定位卡在哪一环
+        # 若 OMBRE_LONG_EXCERPT 设了但新导入仍然没原文 — 用此 log 定位卡在哪一环
         # 同时用 print() 绕过 logger,直接 stdout/stderr,Render Logs 一定能拿到
         prompt_kind = "LONG (含 source_excerpt 强制要求)" if self.long_excerpt else "STD (无 source_excerpt 要求)"
         logger.info(f"[Import LLM] long_excerpt={self.long_excerpt} prompt={prompt_kind}")
