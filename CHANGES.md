@@ -305,7 +305,7 @@ LLM 生成 JSON 时如果对话里有引号，容易因为引号嵌套导致 JSO
 2. **本版本可以直接 fork 部署** — 部署方式跟原版一样
 3. 默认行为和原作者一致
 4. 配置页的 Prompt / Decay / API profile 高级设置，用顺了再玩
-5. 有问题在 GitHub Issues 提
+5. 这是个人自用版,我精力/时间有限,不保证及时响应或修复;需要稳定支持建议用[原作者版本](https://github.com/P0luz/Ombre-Brain)
 
 ## 如何反向同步原作者更新
 
