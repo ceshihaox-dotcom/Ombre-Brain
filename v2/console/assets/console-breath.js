@@ -284,6 +284,11 @@ function ObxRecentPanel({ items, defaultCollapsed, onRefresh, loading }) {
                   </button>
                   {expanded[i] && it.top && (
                     <div className="obx-recent-detail">
+                      {it.result_count > it.top.length && (
+                        <div style={{ fontSize: 11, color: 'var(--ink-4)', fontFamily: 'var(--mono)', paddingBottom: 4 }}>
+                          显示前 {it.top.length} · 共命中 {it.result_count} 条
+                        </div>
+                      )}
                       {it.top.map((h, j) => (
                         <div key={(h.id || '') + '-' + j} className="obx-recent-hit">
                           <span className="obx-recent-hit-name">{h.name}{h.type === 'feel' ? ' [feel]' : h.type === 'permanent' ? ' [钉]' : ''}</span>
