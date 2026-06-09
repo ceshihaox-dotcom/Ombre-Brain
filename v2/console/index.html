@@ -6749,6 +6749,124 @@ body {
 }
 .oc-net-stats b { color: var(--ink); font-weight: 500; }
 
+/* ────────── 检索/浮现观测台 (Claude Design 改版 · obx- · 2026-06-09) ────────── */
+.obx-observatory{
+  --accent-bg: color-mix(in oklab, var(--accent) 10%, var(--paper));
+  --obx-radius: 8px;
+  --obx-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  display:flex; flex-direction:column;
+}
+.obx-card{ background:var(--paper-2); border:1px solid var(--line); border-radius:var(--obx-radius); padding:24px 28px; margin-bottom:16px; box-shadow:var(--obx-shadow); }
+.obx-card--quiet{ background:transparent; box-shadow:none; }
+.obx-panel-title{ font-family:var(--serif); font-weight:500; font-style:italic; font-size:18px; color:var(--ink); margin:0; line-height:1.3; }
+.obx-dual-pane{ display:flex; gap:0; padding:0; }
+.obx-dual-left{ flex:0 0 340px; padding:24px 24px 24px 28px; }
+.obx-dual-divider{ width:1px; background:var(--line); flex-shrink:0; }
+.obx-dual-right{ flex:1; min-width:0; padding:24px 28px 24px 24px; }
+@media (max-width:840px){
+  .obx-dual-pane{ flex-direction:column; }
+  .obx-dual-left{ flex:none; padding:24px 28px; }
+  .obx-dual-divider{ width:auto; height:1px; }
+  .obx-dual-right{ padding:24px 28px; }
+}
+.obx-toggle{ position:relative; width:36px; height:20px; border-radius:10px; border:none; background:var(--line-2); cursor:pointer; padding:0; transition:background .2s; flex-shrink:0; }
+.obx-toggle--on{ background:var(--accent); }
+.obx-toggle-thumb{ position:absolute; top:2px; left:2px; width:16px; height:16px; background:var(--paper-2); border-radius:50%; transition:transform .2s; box-shadow:0 1px 2px rgba(0,0,0,0.1); }
+.obx-toggle--on .obx-toggle-thumb{ transform:translateX(16px); }
+.obx-slider-row{ margin-bottom:16px; }
+.obx-slider-row:last-child{ margin-bottom:0; }
+.obx-slider-head{ display:flex; align-items:baseline; gap:8px; margin-bottom:6px; }
+.obx-slider-label{ font-size:13px; color:var(--ink-2); font-weight:500; }
+.obx-slider-label--dev{ color:var(--accent); }
+.obx-slider-val{ font-size:12px; color:var(--ink-3); margin-left:auto; }
+.obx-slider-reset{ background:none; border:none; cursor:pointer; font-size:14px; color:var(--accent); padding:0 2px; line-height:1; opacity:.7; }
+.obx-slider-reset:hover{ opacity:1; }
+.obx-slider-track-wrap{ position:relative; height:20px; display:flex; align-items:center; }
+.obx-slider{ -webkit-appearance:none; appearance:none; width:100%; height:3px; background:linear-gradient(to right, var(--accent) var(--pct,0%), var(--line) var(--pct,0%)); border-radius:2px; outline:none; cursor:pointer; }
+.obx-slider::-webkit-slider-thumb{ -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:var(--accent); border:2px solid var(--paper-2); box-shadow:0 1px 3px rgba(0,0,0,0.15); cursor:pointer; }
+.obx-slider::-moz-range-thumb{ width:14px; height:14px; border-radius:50%; background:var(--accent); border:2px solid var(--paper-2); box-shadow:0 1px 3px rgba(0,0,0,0.15); cursor:pointer; }
+.obx-slider-default-mark{ position:absolute; top:50%; width:4px; height:4px; border-radius:50%; background:var(--ink-4); transform:translate(-50%,-50%); pointer-events:none; }
+.obx-slider-hint{ font-size:11.5px; color:var(--ink-4); margin-top:3px; line-height:1.4; }
+.obx-knob-hd{ display:flex; align-items:center; justify-content:space-between; margin-bottom:18px; gap:8px; }
+.obx-knob-bool-row{ display:flex; align-items:flex-start; gap:10px; margin-bottom:14px; padding-top:2px; }
+.obx-knob-bool-info{ display:flex; flex-direction:column; gap:1px; }
+.obx-knob-bool-label{ font-size:13px; color:var(--ink-2); font-weight:500; }
+.obx-knob-bool-label--dev{ color:var(--accent); }
+.obx-knob-bool-hint{ font-size:11.5px; color:var(--ink-4); }
+.obx-btn-primary{ background:var(--ink); color:var(--paper); border:none; border-radius:6px; padding:7px 16px; font-size:13px; font-weight:500; cursor:pointer; font-family:var(--sans); white-space:nowrap; flex-shrink:0; }
+.obx-btn-primary:hover{ opacity:.85; }
+.obx-btn-primary:disabled{ opacity:.4; cursor:default; }
+.obx-btn-ghost{ background:none; border:1px solid var(--line); border-radius:6px; padding:5px 12px; font-size:12px; color:var(--ink-3); cursor:pointer; font-family:var(--sans); white-space:nowrap; }
+.obx-btn-ghost:hover{ border-color:var(--accent); color:var(--accent); }
+.obx-btn-sm{ padding:5px 12px; font-size:12px; }
+.obx-sim-hd{ display:flex; align-items:baseline; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
+.obx-sim-dirty{ font-size:12px; color:var(--accent); font-style:italic; font-family:var(--serif); }
+.obx-sim-input-row{ display:flex; gap:8px; margin-bottom:16px; }
+.obx-sim-input-wrap{ flex:1; position:relative; display:flex; align-items:center; }
+.obx-sim-icon{ position:absolute; left:12px; width:16px; height:16px; color:var(--ink-4); pointer-events:none; }
+.obx-sim-input{ width:100%; padding:8px 12px 8px 36px; border:1px solid var(--line); border-radius:6px; font-size:13px; font-family:var(--sans); color:var(--ink); background:var(--paper); outline:none; }
+.obx-sim-input::placeholder{ color:var(--ink-4); }
+.obx-sim-input:focus{ border-color:var(--accent); }
+.obx-sim-err{ font-size:12px; color:#c44; padding:4px 0; }
+.obx-sim-results{ display:flex; flex-direction:column; gap:16px; }
+.obx-sim-group-title{ font-size:12px; color:var(--ink-3); text-transform:uppercase; letter-spacing:.05em; font-family:var(--mono); margin-bottom:8px; }
+.obx-sim-group-count{ color:var(--ink-4); }
+.obx-sim-group-empty{ font-size:13px; color:var(--ink-4); font-style:italic; font-family:var(--serif); }
+.obx-sim-group-list{ display:flex; flex-direction:column; }
+.obx-sim-hit{ display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--line); }
+.obx-sim-hit:last-child{ border-bottom:none; }
+.obx-sim-hit-name{ font-size:13.5px; color:var(--ink); flex:1; min-width:0; }
+.obx-sim-hit-score{ font-size:12px; color:var(--ink-3); flex-shrink:0; }
+.obx-sim-hit-fields{ display:flex; gap:4px; flex-shrink:0; }
+.obx-field-badge{ display:inline-block; font-size:10.5px; font-family:var(--mono); color:var(--ink-4); padding:1px 6px; border-radius:3px; background:var(--paper); border:1px solid var(--line); }
+.obx-field-badge--title{ color:var(--accent); border-color:var(--accent); background:var(--accent-bg); }
+.obx-badge{ display:inline-block; font-size:10px; font-family:var(--mono); padding:1px 6px; border-radius:3px; color:var(--ink-3); background:var(--paper); border:1px solid var(--line); }
+.obx-badge--pinned{ color:var(--c-pin); border-color:var(--c-pin); }
+.obx-badge--feel{ color:var(--c-feel); border-color:var(--c-feel); }
+.obx-stats-hd{ display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:16px; gap:16px; flex-wrap:wrap; }
+.obx-stats-hd-left{ flex:1; min-width:200px; }
+.obx-stats-sub{ font-size:12.5px; color:var(--ink-3); margin-top:4px; }
+.obx-dot{ margin:0 5px; color:var(--ink-4); }
+.obx-stats-list{ border-top:1px solid var(--line); }
+.obx-stats-list::-webkit-scrollbar{ width:4px; }
+.obx-stats-list::-webkit-scrollbar-thumb{ background:var(--line-2); border-radius:2px; }
+.obx-stats-foot{ font-size:11.5px; color:var(--ink-4); margin-top:10px; font-family:var(--mono); }
+.obx-stat-row{ display:flex; align-items:baseline; gap:10px; flex-wrap:wrap; padding:10px 8px; border-bottom:1px solid var(--line); margin:0 -8px; border-radius:4px; }
+.obx-stat-row:hover{ background:var(--accent-bg); }
+.obx-stat-row:last-child{ border-bottom:none; }
+.obx-stat-row-main{ display:flex; align-items:baseline; gap:6px; flex:1; min-width:0; }
+.obx-stat-row-name{ font-size:13.5px; color:var(--ink); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.obx-stat-row--never .obx-stat-row-name{ color:var(--ink-2); }
+.obx-stat-row-missing{ font-size:10px; color:var(--ink-4); font-family:var(--mono); }
+.obx-stat-row-meta{ display:flex; align-items:baseline; gap:8px; margin-left:auto; flex-shrink:0; }
+.obx-stat-row-time{ font-family:var(--serif); font-style:italic; font-size:13px; color:var(--ink-3); white-space:nowrap; }
+.obx-stat-row-time--never{ color:var(--accent); }
+.obx-stat-row-counts{ font-size:11px; color:var(--ink-4); white-space:nowrap; }
+.obx-stat-row-counts em{ font-style:normal; font-family:var(--mono); font-size:10.5px; }
+.obx-tab-bar{ display:flex; gap:2px; background:var(--paper); border-radius:6px; padding:2px; border:1px solid var(--line); }
+.obx-tab{ padding:5px 16px; border-radius:4px; border:none; background:transparent; font-size:12.5px; font-family:var(--sans); color:var(--ink-3); cursor:pointer; display:flex; align-items:center; gap:5px; white-space:nowrap; }
+.obx-tab--active{ background:var(--paper-2); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,0.06); }
+.obx-tab:not(.obx-tab--active):hover{ color:var(--ink-2); }
+.obx-tab-count{ font-family:var(--mono); font-size:11px; color:var(--ink-4); }
+.obx-recent-bar{ display:flex; align-items:center; gap:8px; }
+.obx-recent-hd{ display:flex; align-items:center; justify-content:space-between; flex:1; background:none; border:none; cursor:pointer; padding:0; text-align:left; }
+.obx-recent-count{ font-size:12px; color:var(--ink-4); }
+.obx-chevron{ display:inline-block; font-size:11px; color:var(--ink-4); transition:transform .2s; margin-right:6px; }
+.obx-chevron--open{ transform:rotate(90deg); }
+.obx-chevron--sm{ font-size:10px; margin-right:0; margin-left:auto; }
+.obx-recent-list{ margin-top:14px; border-top:1px solid var(--line); }
+.obx-recent-item{ border-bottom:1px solid var(--line); }
+.obx-recent-item-hd{ display:flex; align-items:center; gap:10px; padding:10px 0; width:100%; background:none; border:none; cursor:pointer; text-align:left; font-family:var(--sans); color:var(--ink); }
+.obx-recent-item-hd:hover{ opacity:.8; }
+.obx-recent-ts{ font-size:12px; color:var(--ink-3); flex-shrink:0; width:110px; }
+.obx-recent-query{ font-size:13px; color:var(--ink); flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-style:italic; font-family:var(--serif); }
+.obx-recent-rc{ font-size:11.5px; color:var(--ink-4); flex-shrink:0; }
+.obx-recent-detail{ padding:4px 0 12px 122px; }
+.obx-recent-hit{ display:flex; align-items:center; gap:8px; padding:5px 0; font-size:13px; }
+.obx-recent-hit-name{ color:var(--ink-2); flex:1; }
+.obx-recent-hit-score{ font-size:11.5px; color:var(--ink-4); }
+.obx-empty{ padding:32px 20px; text-align:center; font-family:var(--serif); font-style:italic; font-size:14px; color:var(--ink-4); }
+
 /* ────────── 导入 ────────── */
 .oc-drop {
   border: 1.5px dashed var(--line-2);

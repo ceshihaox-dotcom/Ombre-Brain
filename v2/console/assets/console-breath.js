@@ -8,6 +8,300 @@ const BREATH_THRESHOLD = 50;
 const BREATH_TOP_N = 4;
 const DEFAULT_WEIGHTS = { topic: 4, emotion: 2, time: 2.5, importance: 1 };
 
+// ─────────────────────────────────────────────────────────────────────────
+// 检索 / 浮现观测台 (Claude Design 改版 · 方案 α「实验与观察」)
+// 颜色全走 var(--*) (沿用 app 月光紫主题, 不带 CD demo 自定义紫); 类名 obx- 前缀防撞
+// ─────────────────────────────────────────────────────────────────────────
+
+function obxTimeAgoLong(dateStr) {
+  if (!dateStr) return '从未被想起';
+  const then = new Date(dateStr);
+  if (isNaN(then.getTime())) return '从未被想起';
+  const days = Math.floor((Date.now() - then.getTime()) / 86400000);
+  if (days <= 0) return '今天刚被想起';
+  if (days === 1) return '昨天被想起';
+  if (days < 7) return '最近一次 ' + days + ' 天前';
+  if (days < 30) return '最近一次 ' + Math.floor(days / 7) + ' 周前';
+  if (days < 90) return '最近一次 ' + Math.floor(days / 30) + ' 个月前';
+  return '很久没被想起 · ' + Math.floor(days / 30) + ' 个月前';
+}
+function obxFmtTs(iso) {
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return String(iso || '').slice(0, 16);
+  const mo = d.getMonth() + 1, day = d.getDate();
+  const h = String(d.getHours()).padStart(2, '0');
+  const mi = String(d.getMinutes()).padStart(2, '0');
+  return mo + '月' + day + '日 ' + h + ':' + mi;
+}
+
+function ObxToggle({ checked, onChange }) {
+  return (
+    <button type="button" role="switch" aria-checked={checked}
+      className={'obx-toggle' + (checked ? ' obx-toggle--on' : '')}
+      onClick={() => onChange(!checked)}>
+      <span className="obx-toggle-thumb" />
+    </button>
+  );
+}
+
+function ObxSlider({ value, min, max, step, defaultVal, onChange, label, hint }) {
+  const v = (value == null ? defaultVal : value);
+  const deviated = v !== defaultVal;
+  const span = (max - min) || 1;
+  const pct = ((v - min) / span) * 100;
+  const decimals = step < 0.01 ? 3 : step < 1 ? 2 : 0;
+  return (
+    <div className="obx-slider-row">
+      <div className="obx-slider-head">
+        <span className={'obx-slider-label' + (deviated ? ' obx-slider-label--dev' : '')}>{label}</span>
+        <span className="obx-slider-val" style={{ fontFamily: 'var(--mono)' }}>{Number(v).toFixed(decimals)}</span>
+        {deviated && <button className="obx-slider-reset" title={'复位到默认 ' + defaultVal} onClick={() => onChange(defaultVal)}>↺</button>}
+      </div>
+      <div className="obx-slider-track-wrap">
+        <input type="range" className="obx-slider" min={min} max={max} step={step} value={v}
+          onChange={e => onChange(parseFloat(e.target.value))} style={{ '--pct': pct + '%' }} />
+        <span className="obx-slider-default-mark" style={{ left: ((defaultVal - min) / span) * 100 + '%' }} title={'默认 ' + defaultVal} />
+      </div>
+      {hint && <p className="obx-slider-hint">{hint}</p>}
+    </div>
+  );
+}
+
+function ObxBadge({ children, variant }) {
+  return <span className={'obx-badge' + (variant ? ' obx-badge--' + variant : '')}>{children}</span>;
+}
+function ObxFieldBadge({ field }) {
+  return <span className={'obx-field-badge' + (field === 'title' ? ' obx-field-badge--title' : '')}>{field}</span>;
+}
+function ObxEmpty({ text }) {
+  return <div className="obx-empty"><span>{text || '暂无数据'}</span></div>;
+}
+function ObxTabBar({ tabs, active, onChange }) {
+  return (
+    <div className="obx-tab-bar" role="tablist">
+      {tabs.map(t => (
+        <button key={t.key} role="tab" aria-selected={active === t.key}
+          className={'obx-tab' + (active === t.key ? ' obx-tab--active' : '')}
+          onClick={() => onChange(t.key)}>
+          {t.label}
+          {t.count != null && <span className="obx-tab-count">{t.count}</span>}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// A2 · 检索调参
+function ObxKnobPanel({ config, defaults, schema, onChange, onReset }) {
+  const anyDeviated = schema.some(s => config[s.key] !== defaults[s.key]);
+  return (
+    <div className="obx-knob-panel">
+      <div className="obx-knob-hd">
+        <h3 className="obx-panel-title">检索调参</h3>
+        {anyDeviated && <button className="obx-btn-ghost obx-btn-sm" onClick={onReset}>全部复位</button>}
+      </div>
+      <div className="obx-knob-list">
+        {schema.map(s => {
+          if (s.type === 'bool') {
+            return (
+              <div key={s.key} className="obx-knob-bool-row">
+                <ObxToggle checked={!!config[s.key]} onChange={v => onChange(s.key, v)} />
+                <div className="obx-knob-bool-info">
+                  <span className={'obx-knob-bool-label' + (config[s.key] !== defaults[s.key] ? ' obx-knob-bool-label--dev' : '')}>{s.label}</span>
+                  <span className="obx-knob-bool-hint">{s.hint}</span>
+                </div>
+              </div>
+            );
+          }
+          return (
+            <ObxSlider key={s.key} value={config[s.key]} min={s.min} max={s.max} step={s.step}
+              defaultVal={defaults[s.key]} onChange={v => onChange(s.key, v)} label={s.label} hint={s.hint} />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// A1 · 即时模拟
+function ObxSimGroup({ title, items, type }) {
+  if (!items || items.length === 0) {
+    return (
+      <div className="obx-sim-group">
+        <p className="obx-sim-group-title">{title} <span className="obx-sim-group-count">0</span></p>
+        <p className="obx-sim-group-empty">无命中</p>
+      </div>
+    );
+  }
+  return (
+    <div className="obx-sim-group">
+      <p className="obx-sim-group-title">{title} <span className="obx-sim-group-count">{items.length}</span></p>
+      <div className="obx-sim-group-list">
+        {items.map((it, i) => (
+          <div key={(it.id || '') + '-' + i} className="obx-sim-hit">
+            <span className="obx-sim-hit-name">{it.name}</span>
+            <span className="obx-sim-hit-score" style={{ fontFamily: 'var(--mono)' }}>
+              {type === 'keyword' ? Number(it.score || 0).toFixed(1) : ('~' + Number(it.similarity || 0).toFixed(2))}
+            </span>
+            {type === 'keyword' && it.matched_in && (
+              <span className="obx-sim-hit-fields">
+                {it.matched_in.map(f => <ObxFieldBadge key={f} field={f} />)}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+function ObxSimPanel({ results, query, onQueryChange, onSimulate, dirty, loading }) {
+  const handleKey = e => { if (e.key === 'Enter' && query.trim()) onSimulate(); };
+  const err = results && results.error;
+  const kw = (results && results.keyword_hits) || [];
+  const vec = (results && results.vector_hits) || [];
+  return (
+    <div className="obx-sim-panel">
+      <div className="obx-sim-hd">
+        <h3 className="obx-panel-title">即时模拟</h3>
+        {dirty && results && !err && <span className="obx-sim-dirty">参数已变更 · 重新模拟查看效果</span>}
+      </div>
+      <div className="obx-sim-input-row">
+        <div className="obx-sim-input-wrap">
+          <svg className="obx-sim-icon" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <circle cx="8.5" cy="8.5" r="5.5" /><line x1="12.5" y1="12.5" x2="17" y2="17" />
+          </svg>
+          <input className="obx-sim-input" type="text" placeholder="输入一句话，dry-run 看会命中哪些记忆…"
+            value={query} onChange={e => onQueryChange(e.target.value)} onKeyDown={handleKey} />
+        </div>
+        <button className="obx-btn-primary obx-btn-sm" disabled={!query.trim() || loading} onClick={onSimulate}>
+          {loading ? '…' : '模拟'}
+        </button>
+      </div>
+      {err && <div className="obx-sim-err">出错: {String(results.error)}</div>}
+      {!results && !loading && <ObxEmpty text="输入查询后点「模拟」，dry-run 不记统计" />}
+      {results && !err && (
+        <div className="obx-sim-results">
+          <ObxSimGroup title="关键词命中" items={kw} type="keyword" />
+          <ObxSimGroup title="语义召回" items={vec} type="vector" />
+        </div>
+      )}
+    </div>
+  );
+}
+
+// A3 · 记忆被想起 (controlled view, 长期相对时间)
+function ObxStatRow({ item, view }) {
+  const it = item;
+  const isNever = (it.count || 0) === 0 && (it.surface_count || 0) === 0;
+  const timeLabel = obxTimeAgoLong(it.last_hit);
+  const badge = it.type === 'permanent' ? 'pinned' : it.type === 'feel' ? 'feel' : null;
+  const showCounts = view === 'hot' || !isNever;
+  return (
+    <div className={'obx-stat-row' + (isNever ? ' obx-stat-row--never' : '')} title={it.id}>
+      <div className="obx-stat-row-main">
+        <span className="obx-stat-row-name">{it.name || it.id}</span>
+        {badge && <ObxBadge variant={badge}>{badge === 'pinned' ? '钉' : 'feel'}</ObxBadge>}
+        {it.missing && <span className="obx-stat-row-missing">已删/归档</span>}
+        {showCounts && (
+          <span className="obx-stat-row-counts">关键词 <em>{it.count || 0}</em> · 浮现 <em>{it.surface_count || 0}</em></span>
+        )}
+      </div>
+      <div className="obx-stat-row-meta">
+        <span className={'obx-stat-row-time' + (isNever ? ' obx-stat-row-time--never' : '')}>{timeLabel}</span>
+      </div>
+    </div>
+  );
+}
+function ObxStatsPanel({ meta, items, view, onView, loading }) {
+  const m = meta || {};
+  const list = items || [];
+  return (
+    <div className="obx-stats-panel">
+      <div className="obx-stats-hd">
+        <div className="obx-stats-hd-left">
+          <h3 className="obx-panel-title">记忆被想起</h3>
+          <p className="obx-stats-sub">
+            <span style={{ fontFamily: 'var(--mono)' }}>{m.total_searches ?? 0}</span> 次搜索
+            {m.total_buckets != null && <React.Fragment>
+              <span className="obx-dot">·</span>
+              <span style={{ fontFamily: 'var(--mono)' }}>{m.hit_buckets}/{m.total_buckets}</span> 格命中
+              <span className="obx-dot">·</span>
+              <span style={{ fontFamily: 'var(--mono)' }}>{m.zero_buckets}</span> 格沉默
+            </React.Fragment>}
+          </p>
+        </div>
+        <ObxTabBar tabs={[
+          { key: 'cold', label: '冷落', count: m.zero_buckets },
+          { key: 'hot', label: '高频', count: m.hit_buckets },
+        ]} active={view} onChange={onView} />
+      </div>
+      <div className="obx-stats-list" style={{ maxHeight: 420, overflowY: 'auto' }}>
+        {loading && list.length === 0 ? (
+          <ObxEmpty text="载入中…" />
+        ) : list.length === 0 ? (
+          <ObxEmpty text={view === 'cold' ? '没有被冷落的记忆 — 每条都被想起过' : '尚未有高频命中'} />
+        ) : list.map(it => <ObxStatRow key={it.id} item={it} view={view} />)}
+      </div>
+      <p className="obx-stats-foot">
+        {view === 'cold'
+          ? '冷落视图 · 已排除钉决/永久/feel/已消化 · 累计落盘, 重启不清零'
+          : '累计落盘, 重启不清零 · 切「冷落」看哪些一直没被想起'}
+      </p>
+    </div>
+  );
+}
+
+// A4 · 最近搜索追溯
+function ObxRecentPanel({ items, defaultCollapsed, onRefresh, loading }) {
+  const [collapsed, setCollapsed] = React.useState(!!defaultCollapsed);
+  const [expanded, setExpanded] = React.useState({});
+  const toggle = i => setExpanded(p => ({ ...p, [i]: !p[i] }));
+  const list = items || [];
+  return (
+    <div className="obx-recent-panel">
+      <div className="obx-recent-bar">
+        <button className="obx-recent-hd" onClick={() => setCollapsed(!collapsed)}>
+          <h3 className="obx-panel-title">
+            <span className={'obx-chevron' + (collapsed ? '' : ' obx-chevron--open')}>▸</span>
+            最近搜索追溯
+          </h3>
+        </button>
+        <span className="obx-recent-count" style={{ fontFamily: 'var(--mono)' }}>{list.length} 条</span>
+        {onRefresh && <button className="obx-btn-ghost obx-btn-sm" onClick={onRefresh} disabled={loading} style={{ marginLeft: 8 }}>{loading ? '⌛' : '↻'}</button>}
+      </div>
+      {!collapsed && (
+        list.length === 0
+          ? <ObxEmpty text="还没有搜索记录 · 发条消息或搜一下记忆就有" />
+          : (
+            <div className="obx-recent-list">
+              {list.map((it, i) => (
+                <div key={(it.ts || '') + '-' + i} className="obx-recent-item">
+                  <button className="obx-recent-item-hd" onClick={() => toggle(i)}>
+                    <span className="obx-recent-ts" style={{ fontFamily: 'var(--mono)' }}>{obxFmtTs(it.ts)}</span>
+                    <span className="obx-recent-query">"{it.query}"</span>
+                    <span className="obx-recent-rc" style={{ fontFamily: 'var(--mono)' }}>→ {it.result_count} 条</span>
+                    <span className={'obx-chevron obx-chevron--sm' + (expanded[i] ? ' obx-chevron--open' : '')}>▸</span>
+                  </button>
+                  {expanded[i] && it.top && (
+                    <div className="obx-recent-detail">
+                      {it.top.map((h, j) => (
+                        <div key={(h.id || '') + '-' + j} className="obx-recent-hit">
+                          <span className="obx-recent-hit-name">{h.name}{h.type === 'feel' ? ' [feel]' : h.type === 'permanent' ? ' [钉]' : ''}</span>
+                          <span className="obx-recent-hit-score" style={{ fontFamily: 'var(--mono)', color: h.title_hit ? 'var(--accent)' : 'var(--ink-4)' }}>{Number(h.score || 0).toFixed(1)}</span>
+                          {(h.matched_in || []).map(f => <ObxFieldBadge key={f} field={f} />)}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )
+      )}
+    </div>
+  );
+}
+
 function BreathPage({ items }) {
   const [query, setQuery] = cbS('记忆');
   const [valence, setValence] = cbS(0.6);
@@ -35,13 +329,14 @@ function BreathPage({ items }) {
   const [scoringResetting, setScoringResetting] = cbS(false);
   const [hitStats, setHitStats] = cbS(null);
   const [hitStatsLoading, setHitStatsLoading] = cbS(false);
-  const [hitView, setHitView] = cbS('hot');           // 'hot' 高频在前 / 'cold' 冷门在前
+  const [hitView, setHitView] = cbS('cold');          // 默认冷落视图 (稀疏用户最该看"哪些一直没被想起") / 'hot' 高频在前
   const [recentSearches, setRecentSearches] = cbS(null);
   const [recentLoading, setRecentLoading] = cbS(false);
   const [recentOpen, setRecentOpen] = cbS({});
   const [simQuery, setSimQuery] = cbS('');             // 即时模拟: /api/search dry-run (区别于上面 breath-debug 管线)
   const [simResult, setSimResult] = cbS(null);
   const [simLoading, setSimLoading] = cbS(false);
+  const [simDirty, setSimDirty] = cbS(false);          // 调参后置脏 → 提示"重新模拟看效果"
 
   const fetchScoring = async () => {
     try {
@@ -53,6 +348,7 @@ function BreathPage({ items }) {
     if (!scoringCfg) return;
     const old = scoringCfg.current[key];
     setScoringCfg(c => ({ ...c, current: { ...c.current, [key]: value } }));
+    setSimDirty(true);
     setScoringSaving(true);
     try {
       const r = await fetch('/api/scoring-config', {
@@ -117,7 +413,7 @@ function BreathPage({ items }) {
       if (r.ok) setSimResult(await r.json());
       else setSimResult({ error: 'HTTP ' + r.status });
     } catch (e) { setSimResult({ error: String(e) }); }
-    finally { setSimLoading(false); }
+    finally { setSimLoading(false); setSimDirty(false); }
   };
 
   const fetchBreath = async () => {
@@ -320,301 +616,31 @@ function BreathPage({ items }) {
         )}
       </ConsoleCard>
 
-      {/* ═══ 以下从配置页迁来: 检索打分微调 / 即时模拟 / 被想起 / 最近搜索 (2026-06-07) ═══ */}
+      {/* ═══ 检索 / 浮现观测台 (Claude Design 改版 · 方案 α「实验与观察」, 2026-06-09) ═══ */}
+      <div className="obx-observatory">
+        {/* 实验区: 调参(A2) + 模拟(A1) 并排 — 边调边看 */}
+        <section className="obx-card obx-dual-pane">
+          <div className="obx-dual-left">
+            {scoringCfg
+              ? <ObxKnobPanel config={scoringCfg.current} defaults={scoringCfg.defaults} schema={scoringCfg.schema} onChange={updateScoring} onReset={resetScoringAll} />
+              : <ObxEmpty text="载入中…" />}
+          </div>
+          <div className="obx-dual-divider" />
+          <div className="obx-dual-right">
+            <ObxSimPanel results={simResult} query={simQuery} onQueryChange={setSimQuery} onSimulate={runSimulate} dirty={simDirty} loading={simLoading} />
+          </div>
+        </section>
 
-      {/* 检索打分微调 (title 命中加分 / 关键词优先 / dryrun 日志) */}
-      <ConsoleCard label="检索打分微调" sub="解决「关键词在 title 命中却被弱命中桶顶下去」· 默认全关 = 零影响">
-        {!scoringCfg && <div style={{ color: 'var(--ink-4)', fontSize: 12 }}>载入中…</div>}
-        {scoringCfg && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-            <button
-              className="oc-btn oc-btn-ghost"
-              onClick={resetScoringAll}
-              disabled={scoringResetting}
-              style={{ fontSize: 11, padding: '3px 12px' }}
-            >{scoringResetting ? '⌛' : '↺ 全部关掉'}</button>
-          </div>
-        )}
-        {scoringCfg && scoringCfg.schema.map(item => {
-          const cur = scoringCfg.current[item.key];
-          const def = scoringCfg.defaults[item.key];
-          const isDefault = item.type === 'bool'
-            ? (!!cur === !!def)
-            : Math.abs((cur ?? 0) - (def ?? 0)) < 1e-6;
-          return (
-            <div className="oc-field" key={item.key} style={{ alignItems: 'flex-start' }}>
-              <div className="oc-field-label" style={{ paddingTop: 6 }}>{item.label}</div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  {item.type === 'bool' ? (
-                    <button
-                      onClick={() => updateScoring(item.key, !cur)}
-                      disabled={scoringSaving}
-                      className="oc-btn"
-                      style={{
-                        flex: 'none',
-                        background: cur ? 'var(--accent)' : 'transparent',
-                        color: cur ? 'var(--paper)' : 'var(--ink-3)',
-                        border: '1px solid var(--ink-4)',
-                        fontSize: 12, padding: '4px 14px', minWidth: 60,
-                      }}
-                    >{cur ? '已开' : '关'}</button>
-                  ) : (
-                    <>
-                      <input
-                        type="range"
-                        min={item.min}
-                        max={item.max}
-                        step={item.step}
-                        value={cur ?? 0}
-                        onChange={(e) => updateScoring(item.key, +e.target.value)}
-                        className="oc-decay-slider"
-                        style={{ flex: 1, accentColor: 'var(--accent)' }}
-                      />
-                      <span style={{
-                        fontFamily: 'var(--mono)', fontSize: 13,
-                        color: isDefault ? 'var(--ink-3)' : 'var(--accent)',
-                        fontWeight: isDefault ? 400 : 600,
-                        minWidth: 56, textAlign: 'right',
-                      }}>
-                        {item.step < 1 ? Number(cur ?? 0).toFixed(2) : Math.round(cur ?? 0)}
-                      </span>
-                      <button
-                        className="oc-btn oc-btn-ghost"
-                        title={`恢复默认 ${def}`}
-                        onClick={() => updateScoring(item.key, def)}
-                        disabled={isDefault || scoringSaving}
-                        style={{ fontSize: 10, padding: '2px 8px', minWidth: 32 }}
-                      >↺</button>
-                    </>
-                  )}
-                </div>
-                <div style={{ fontSize: 10, color: 'var(--ink-4)', fontFamily: 'var(--mono)' }}>
-                  {item.hint}
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        {scoringCfg && (
-          <div className="oc-field-help" style={{ paddingLeft: 126, marginTop: 10, color: 'var(--ink-4)' }}>
-            推荐起步: title 加分 +15 + dryrun 打开, 观察一天再调
-          </div>
-        )}
-      </ConsoleCard>
+        {/* 观察区: 记忆被想起(A3) — 默认冷落视图, 长期相对时间 */}
+        <section className="obx-card">
+          <ObxStatsPanel meta={hitStats} items={hitStats && hitStats.items} view={hitView} onView={switchHitView} loading={hitStatsLoading} />
+        </section>
 
-      {/* 即时模拟: 输入一段话, dry-run 看会检索到哪些记忆 (配合上面的旋钮实时调) */}
-      <ConsoleCard label="即时模拟" sub="输入一句话 → 看 OB 会检索出哪些记忆 + 为什么命中 · dry-run 不记统计 · 调上面旋钮后在这实测效果">
-        <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-          <input
-            type="text"
-            value={simQuery}
-            onChange={(e) => setSimQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') runSimulate(); }}
-            placeholder="输入一段话试试，比如「上次去爬山」"
-            style={{ flex: 1, padding: '6px 10px', fontSize: 13, border: '1px solid var(--ink-4)', borderRadius: 4, background: 'var(--paper)', color: 'var(--ink-1)' }}
-          />
-          <button className="oc-btn oc-btn-primary" onClick={runSimulate} disabled={simLoading || !simQuery.trim()} style={{ fontSize: 12, padding: '4px 18px' }}>
-            {simLoading ? '⌛' : '模拟'}
-          </button>
-        </div>
-        {simResult && simResult.error && (
-          <div style={{ color: '#c44', fontSize: 12 }}>出错: {simResult.error}</div>
-        )}
-        {simResult && !simResult.error && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12 }}>
-            <div style={{ fontSize: 11, color: 'var(--ink-4)', fontFamily: 'var(--mono)', marginBottom: 4 }}>
-              关键词命中 {(simResult.keyword_hits || []).length} · 语义召回 {(simResult.vector_hits || []).length}
-            </div>
-            {(simResult.keyword_hits || []).length === 0 && (simResult.vector_hits || []).length === 0 && (
-              <div style={{ color: 'var(--ink-4)', padding: '8px 0' }}>没有命中 —— 这段话不会让任何记忆浮现</div>
-            )}
-            {(simResult.keyword_hits || []).map((h) => {
-              const titleHit = (h.matched_in || []).includes('title');
-              return (
-                <div key={h.id} title={h.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '4px 0', borderBottom: '1px solid var(--ink-5, rgba(0,0,0,0.05))' }}>
-                  <span style={{ fontFamily: 'var(--mono)', color: titleHit ? 'var(--accent)' : 'var(--ink-3)', minWidth: 44, textAlign: 'right' }}>{Number(h.score || 0).toFixed(1)}</span>
-                  <span style={{ flex: 1, color: 'var(--ink-2)' }}>{h.name}</span>
-                  <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-4)' }}>{(h.matched_in || []).join('/') || '—'}</span>
-                </div>
-              );
-            })}
-            {(simResult.vector_hits || []).length > 0 && (
-              <div style={{ fontSize: 10, color: 'var(--ink-4)', marginTop: 6, marginBottom: 2 }}>— 语义召回 (query 不在文本里但意思相近) —</div>
-            )}
-            {(simResult.vector_hits || []).map((h) => (
-              <div key={h.id} title={h.id} style={{ display: 'flex', alignItems: 'baseline', gap: 8, padding: '4px 0', opacity: 0.8 }}>
-                <span style={{ fontFamily: 'var(--mono)', color: 'var(--ink-4)', minWidth: 44, textAlign: 'right' }}>~{Number(h.similarity || 0).toFixed(2)}</span>
-                <span style={{ flex: 1, color: 'var(--ink-3)' }}>{h.name}</span>
-                <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-4)' }}>语义</span>
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="oc-field-help" style={{ marginTop: 10, color: 'var(--ink-4)' }}>
-          分数 = 检索权重 (紫色 = title 命中) · 右侧是命中字段 · 改上面旋钮后再模拟同一句, 看排序怎么变
-        </div>
-      </ConsoleCard>
-
-      {/* 记忆命中频次 (反向反馈写作: 哪些桶经常被检索 / 哪些从未) */}
-      <ConsoleCard label="记忆被想起" sub="被检索(关键词命中) + 被浮现(权重池自动浮现) · 哪条常被想起、哪条被冷落 · 反向指导 title 写作">
-        {/* 热门 / 冷门 视图切换 */}
-        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
-          {[['hot', '🔥 高频'], ['cold', '🧊 冷落 (含从未命中)']].map(([v, label]) => (
-            <button
-              key={v}
-              className={'oc-btn ' + (hitView === v ? 'oc-btn-primary' : 'oc-btn-ghost')}
-              onClick={() => switchHitView(v)}
-              disabled={hitStatsLoading}
-              style={{ fontSize: 11, padding: '3px 12px' }}
-            >{label}</button>
-          ))}
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ fontSize: 11, color: 'var(--ink-4)', fontFamily: 'var(--mono)' }}>
-            {hitStats
-              ? `累计 ${hitStats.total_searches ?? 0} 次搜索` +
-                (hitStats.total_buckets != null
-                  ? ` · 命中 ${hitStats.hit_buckets}/${hitStats.total_buckets} 桶 · 从未 ${hitStats.zero_buckets}`
-                  : ` · top ${(hitStats.items || []).length} 桶`)
-              : '载入中…'}
-          </div>
-          <button
-            className="oc-btn oc-btn-ghost"
-            onClick={() => fetchHitStats()}
-            disabled={hitStatsLoading}
-            style={{ fontSize: 11, padding: '3px 12px' }}
-          >{hitStatsLoading ? '⌛' : '↻ 刷新'}</button>
-        </div>
-        {hitStats && hitStats.items && hitStats.items.length === 0 && (
-          <div style={{ color: 'var(--ink-4)', fontSize: 12, padding: '12px 0' }}>
-            还没有命中记录 · 搜一下记忆或让 AI 浮现就会有数据
-          </div>
-        )}
-        {hitStats && hitStats.items && hitStats.items.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 12, maxHeight: hitView === 'cold' ? 420 : 'none', overflowY: hitView === 'cold' ? 'auto' : 'visible' }}>
-            {hitStats.items.map((it, i) => {
-              const zero = (it.count || 0) === 0;
-              return (
-                <div key={it.id} title={it.id} style={{
-                  display: 'flex', alignItems: 'baseline', gap: 8,
-                  padding: '4px 0',
-                  borderBottom: i < hitStats.items.length - 1 ? '1px solid var(--ink-5, rgba(0,0,0,0.05))' : 'none',
-                  opacity: zero ? 0.7 : 1,
-                }}>
-                  <span style={{ fontFamily: 'var(--mono)', minWidth: 64, textAlign: 'right', whiteSpace: 'nowrap' }}>
-                    <span style={{ color: zero ? 'var(--ink-4)' : 'var(--accent)' }} title="被关键词检索命中次数">×{it.count}</span>
-                    {(it.surface_count || 0) > 0 && (
-                      <span style={{ color: 'var(--ink-4)', fontSize: 10, marginLeft: 4 }} title="被权重池自动浮现次数">浮{it.surface_count}</span>
-                    )}
-                  </span>
-                  <span style={{ flex: 1, color: 'var(--ink-2)' }}>
-                    {it.name || it.id}
-                    {it.missing && <span style={{ color: 'var(--ink-4)', marginLeft: 6 }}>[已删/归档]</span>}
-                  </span>
-                  <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-4)' }}>
-                    {zero
-                      ? ((it.surface_count || 0) > 0 ? '仅浮现 · 从未被搜索' : '从未被想起')
-                      : (it.last_query ? `"${String(it.last_query).slice(0, 20)}"` : (it.last_hit ? String(it.last_hit).slice(0, 10) : ''))}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        <div className="oc-field-help" style={{ marginTop: 10, color: 'var(--ink-4)' }}>
-          {hitView === 'cold'
-            ? '冷落视图: 升序排, 已排除钉选/永久参考/feel/已消化 (它们本就不参与普通浮现/检索, ×0 是预期) · ×0 且你在意的桶 → 改 title/内容让它更容易被想起'
-            : '累计落盘, 重启不再清零 · 切到「冷落」看哪些在意的记忆没被想起'}
-        </div>
-      </ConsoleCard>
-
-      {/* 最近搜索追溯 ("我这次发消息浮现了哪些"用) */}
-      <ConsoleCard label="最近搜索追溯" sub="最近 10 次 search 的 query + top 命中 · 直击「这次发消息浮现了什么」">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-          <div style={{ fontSize: 11, color: 'var(--ink-4)', fontFamily: 'var(--mono)' }}>
-            {recentSearches ? `共 ${(recentSearches.items || []).length} 条记录` : '载入中…'}
-          </div>
-          <button
-            className="oc-btn oc-btn-ghost"
-            onClick={fetchRecentSearches}
-            disabled={recentLoading}
-            style={{ fontSize: 11, padding: '3px 12px' }}
-          >{recentLoading ? '⌛' : '↻ 刷新'}</button>
-        </div>
-        {recentSearches && recentSearches.items && recentSearches.items.length === 0 && (
-          <div style={{ color: 'var(--ink-4)', fontSize: 12, padding: '12px 0' }}>
-            还没有搜索记录 · 发条消息或在前端搜一下记忆就有
-          </div>
-        )}
-        {recentSearches && recentSearches.items && recentSearches.items.length > 0 && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12 }}>
-            {recentSearches.items.map((tr, i) => {
-              const isOpen = !!recentOpen[tr.ts];
-              const tsShort = (tr.ts || '').slice(11, 19);  // HH:MM:SS
-              return (
-                <div key={tr.ts + '_' + i} style={{
-                  border: '1px solid var(--ink-5, rgba(0,0,0,0.08))',
-                  borderRadius: 4,
-                  background: isOpen ? 'var(--paper-2, rgba(0,0,0,0.02))' : 'transparent',
-                }}>
-                  <div
-                    onClick={() => setRecentOpen(s => ({ ...s, [tr.ts]: !s[tr.ts] }))}
-                    style={{
-                      display: 'flex', alignItems: 'baseline', gap: 8,
-                      padding: '6px 10px', cursor: 'pointer', userSelect: 'none',
-                    }}
-                  >
-                    <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-4)', minWidth: 60 }}>
-                      {tsShort} UTC
-                    </span>
-                    <span style={{ flex: 1, color: 'var(--ink-2)' }}>
-                      "{tr.query}"
-                    </span>
-                    <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-4)' }}>
-                      命中 {tr.result_count}  ·  {isOpen ? '▾' : '▸'}
-                    </span>
-                  </div>
-                  {isOpen && (
-                    <div style={{ padding: '4px 10px 10px 10px', display: 'flex', flexDirection: 'column', gap: 3 }}>
-                      {(tr.top || []).map((h, j) => (
-                        <div key={h.id + '_' + j} style={{
-                          display: 'flex', alignItems: 'baseline', gap: 8,
-                          padding: '3px 0', fontSize: 11,
-                          borderTop: j === 0 ? 'none' : '1px dotted var(--ink-5, rgba(0,0,0,0.06))',
-                        }}>
-                          <span style={{ fontFamily: 'var(--mono)', color: 'var(--accent)', minWidth: 36, textAlign: 'right' }}>
-                            #{j + 1}
-                          </span>
-                          <span style={{
-                            fontFamily: 'var(--mono)', fontSize: 10,
-                            color: h.title_hit ? 'var(--accent)' : 'var(--ink-3)',
-                            fontWeight: h.title_hit ? 600 : 400,
-                            minWidth: 48,
-                          }}>
-                            {Number(h.score || 0).toFixed(1)}
-                          </span>
-                          <span style={{ flex: 1, color: 'var(--ink-2)' }}>
-                            {h.name}
-                            {h.type === 'feel' && <span style={{ color: 'var(--ink-4)', marginLeft: 6 }}>[feel]</span>}
-                            {h.type === 'permanent' && <span style={{ color: 'var(--ink-4)', marginLeft: 6 }}>[钉]</span>}
-                          </span>
-                          <span style={{ fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-4)' }}>
-                            {(h.matched_in || []).join(',') || '—'}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-        <div className="oc-field-help" style={{ marginTop: 10, color: 'var(--ink-4)' }}>
-          点条目展开看 top-10 详情 · score 紫色 = title 命中 · AI 主动检索 + 自动注入(API) 触发的 search 都在这看
-        </div>
-      </ConsoleCard>
+        {/* 最近搜索追溯(A4) — 折叠在底部 */}
+        <section className="obx-card obx-card--quiet">
+          <ObxRecentPanel items={recentSearches && recentSearches.items} defaultCollapsed={true} onRefresh={fetchRecentSearches} loading={recentLoading} />
+        </section>
+      </div>
     </main>
   );
 }
