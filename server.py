@@ -172,6 +172,32 @@ async def breath_hook(request):
         if surfaced_ids:
             bucket_mgr.record_surfacing(surfaced_ids)
 
+        # 浮现追溯 (kind='surface') — 同 breath() 主路径
+        try:
+            _surf_trace = []
+            for _b in pinned:
+                _m = _b["metadata"]
+                _surf_trace.append({"id": _b["id"], "name": _m.get("name") or _b["id"],
+                                    "type": _m.get("type", "dynamic"), "score": decay_engine.calculate_score(_m),
+                                    "highlight": True, "protected": is_protected(_m)})
+            for _b in protected_only_hook:
+                _m = _b["metadata"]
+                _surf_trace.append({"id": _b["id"], "name": _m.get("name") or _b["id"],
+                                    "type": _m.get("type", "permanent"), "score": decay_engine.calculate_score(_m),
+                                    "highlight": False, "protected": True})
+            _surf_set = set(surfaced_ids)
+            for _b in candidates:
+                if _b["id"] not in _surf_set:
+                    continue
+                _m = _b["metadata"]
+                _surf_trace.append({"id": _b["id"], "name": _m.get("name") or _b["id"],
+                                    "type": _m.get("type", "dynamic"), "score": decay_engine.calculate_score(_m),
+                                    "highlight": False, "protected": False})
+            if _surf_trace:
+                bucket_mgr.record_surface_trace(_surf_trace)
+        except Exception:
+            pass
+
         if not parts:
             return PlainTextResponse("")
         return PlainTextResponse("[Ombre Brain - 记忆浮现]\n" + "\n---\n".join(parts))
@@ -455,6 +481,33 @@ async def breath(
         # "被想起 = 被检索 + 被浮现"完整。只记动态权重池浮现的桶; 钉选/永久参考每次都在、计了无意义。
         if surfaced_ids:
             bucket_mgr.record_surfacing(surfaced_ids)
+
+        # 浮现追溯 (kind='surface'): 把这次 breath 浮现的高亮/钉决/动态记进最近追溯,
+        # 让观测台「最近浮现 · 检索」能看到"这次 breath 浮现了什么"(跟关键词检索区分)。
+        try:
+            _surf_trace = []
+            for _b in pinned_buckets:
+                _m = _b["metadata"]
+                _surf_trace.append({"id": _b["id"], "name": _m.get("name") or _b["id"],
+                                    "type": _m.get("type", "dynamic"), "score": decay_engine.calculate_score(_m),
+                                    "highlight": True, "protected": is_protected(_m)})
+            for _b in protected_only:
+                _m = _b["metadata"]
+                _surf_trace.append({"id": _b["id"], "name": _m.get("name") or _b["id"],
+                                    "type": _m.get("type", "permanent"), "score": decay_engine.calculate_score(_m),
+                                    "highlight": False, "protected": True})
+            _surf_set = set(surfaced_ids)
+            for _b in candidates:
+                if _b["id"] not in _surf_set:
+                    continue
+                _m = _b["metadata"]
+                _surf_trace.append({"id": _b["id"], "name": _m.get("name") or _b["id"],
+                                    "type": _m.get("type", "dynamic"), "score": decay_engine.calculate_score(_m),
+                                    "highlight": False, "protected": False})
+            if _surf_trace:
+                bucket_mgr.record_surface_trace(_surf_trace)
+        except Exception:
+            pass
 
         if not pinned_results and not protected_results and not dynamic_results:
             return "权重池平静，没有需要处理的记忆。"
