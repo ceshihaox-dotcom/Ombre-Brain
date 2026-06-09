@@ -6752,7 +6752,7 @@ body {
 /* ────────── 检索/浮现观测台 (Claude Design 改版 · obx- · 2026-06-09) ────────── */
 .obx-observatory{
   --accent-bg: color-mix(in oklab, var(--accent) 10%, var(--paper));
-  --obx-radius: 8px;
+  --obx-radius: 14px;
   --obx-shadow: 0 1px 3px rgba(0,0,0,0.05);
   display:flex; flex-direction:column;
 }
@@ -6793,10 +6793,10 @@ body {
 .obx-knob-bool-label{ font-size:13px; color:var(--ink-2); font-weight:500; }
 .obx-knob-bool-label--dev{ color:var(--accent); }
 .obx-knob-bool-hint{ font-size:11.5px; color:var(--ink-4); }
-.obx-btn-primary{ background:var(--ink); color:var(--paper); border:none; border-radius:6px; padding:7px 16px; font-size:13px; font-weight:500; cursor:pointer; font-family:var(--sans); white-space:nowrap; flex-shrink:0; }
+.obx-btn-primary{ background:var(--ink); color:var(--paper); border:none; border-radius:999px; padding:7px 16px; font-size:13px; font-weight:500; cursor:pointer; font-family:var(--sans); white-space:nowrap; flex-shrink:0; }
 .obx-btn-primary:hover{ opacity:.85; }
 .obx-btn-primary:disabled{ opacity:.4; cursor:default; }
-.obx-btn-ghost{ background:none; border:1px solid var(--line); border-radius:6px; padding:5px 12px; font-size:12px; color:var(--ink-3); cursor:pointer; font-family:var(--sans); white-space:nowrap; }
+.obx-btn-ghost{ background:none; border:1px solid var(--line); border-radius:999px; padding:5px 12px; font-size:12px; color:var(--ink-3); cursor:pointer; font-family:var(--sans); white-space:nowrap; }
 .obx-btn-ghost:hover{ border-color:var(--accent); color:var(--accent); }
 .obx-btn-sm{ padding:5px 12px; font-size:12px; }
 .obx-sim-hd{ display:flex; align-items:baseline; gap:12px; margin-bottom:14px; flex-wrap:wrap; }
@@ -6870,14 +6870,14 @@ body {
 /* ────────── 配置页策略面板 (Claude Design 改版 · cfg- · 2026-06-09) ────────── */
 .cfg-config{
   --accent-bg: color-mix(in oklab, var(--accent) 10%, var(--paper));
-  --cfg-radius: 8px;
+  --cfg-radius: 14px;
   --cfg-shadow: 0 1px 3px rgba(0,0,0,0.05);
 }
 .cfg-card{ background:var(--paper); border:1px solid var(--line); border-radius:var(--cfg-radius); padding:28px 32px; margin-bottom:16px; box-shadow:var(--cfg-shadow); }
 .cfg-card-hd{ display:flex; align-items:baseline; gap:12px 16px; margin-bottom:20px; flex-wrap:wrap; }
 .cfg-card-title{ font-family:var(--serif); font-weight:500; font-style:italic; font-size:20px; color:var(--ink); margin:0; white-space:nowrap; }
 .cfg-card-sub{ font-size:12.5px; color:var(--ink-3); }
-.cfg-btn-ghost{ background:none; border:1px solid var(--line); border-radius:6px; padding:5px 12px; font-size:12px; color:var(--ink-3); cursor:pointer; font-family:var(--sans); white-space:nowrap; margin-left:auto; }
+.cfg-btn-ghost{ background:none; border:1px solid var(--line); border-radius:999px; padding:5px 12px; font-size:12px; color:var(--ink-3); cursor:pointer; font-family:var(--sans); white-space:nowrap; margin-left:auto; }
 .cfg-btn-ghost:hover{ border-color:var(--accent); color:var(--accent); }
 .cfg-deviated-summary{ display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--accent); padding:4px 10px; border-radius:4px; background:var(--accent-bg); white-space:nowrap; }
 .cfg-deviated-dot{ width:6px; height:6px; border-radius:50%; background:var(--accent); }
