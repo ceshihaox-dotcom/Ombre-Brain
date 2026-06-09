@@ -150,7 +150,7 @@ def _parse_markdown(text: str) -> list[dict]:
     认两种对话格式:
       ① 行首角色前缀  user:/human:/你:/我:  和  assistant:/claude:/ai:/...
       ② markdown 标题式说话人  "### **名字** · 2026-06-06 10:30" / "## 名字"
-         (常见于聊天前端导出, 如 Rin/Soren)。名字→角色通用映射: 首个出现的说话人=user,
+         (常见于聊天前端导出, 如 用户名/AI名)。名字→角色通用映射: 首个出现的说话人=user,
          其余/已知 AI 名=assistant, 不写死具体名字。带 · 时间戳的会归一化成 [时间戳] 前缀,
          供 digest 推断 event_time。"""
     import re
