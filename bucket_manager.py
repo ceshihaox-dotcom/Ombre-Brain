@@ -536,6 +536,37 @@ class BucketManager:
         except Exception:
             pass
 
+    def record_surface_trace(self, items) -> None:
+        """把一次 breath 浮现记进最近追溯 (kind='surface'), 跟关键词 search 的 trace 区分。
+        items = [{id, name, type, score, highlight, protected}]。前端「最近浮现 · 检索」据此
+        区分"浮现"(钉决/高亮/高权重权重池) vs "检索"(关键词命中)。bounded deque(20), 不堆积。"""
+        if not items:
+            return
+        try:
+            from datetime import datetime as _dt
+            now_iso = _dt.utcnow().isoformat()
+            top = []
+            for it in items[:10]:
+                top.append({
+                    "id": it.get("id", "?"),
+                    "name": it.get("name") or it.get("id", "?"),
+                    "type": it.get("type", "dynamic"),
+                    "score": it.get("score"),
+                    "highlight": bool(it.get("highlight")),
+                    "protected": bool(it.get("protected")),
+                    "matched_in": [],
+                    "title_hit": False,
+                })
+            self._recent_searches.append({
+                "ts": now_iso,
+                "query": None,
+                "kind": "surface",
+                "result_count": len(items),
+                "top": top,
+            })
+        except Exception:
+            pass
+
     def reset_hit_stats(self) -> None:
         """清空命中统计 — 用于"清零后看哪些桶又被命中"实验。同时删盘文件。"""
         self._hit_stats.clear()
@@ -1404,6 +1435,7 @@ class BucketManager:
             self._recent_searches.append({
                 "ts": now_iso,
                 "query": q_trim,
+                "kind": "search",
                 "result_count": len(client_scored),
                 "top": trace_top,
             })

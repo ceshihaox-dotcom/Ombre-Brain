@@ -263,7 +263,7 @@ function ObxRecentPanel({ items, defaultCollapsed, onRefresh, loading }) {
         <button className="obx-recent-hd" onClick={() => setCollapsed(!collapsed)}>
           <h3 className="obx-panel-title">
             <span className={'obx-chevron' + (collapsed ? '' : ' obx-chevron--open')}>▸</span>
-            最近搜索追溯
+            最近浮现 · 检索
           </h3>
         </button>
         <span className="obx-recent-count" style={{ fontFamily: 'var(--mono)' }}>{list.length} 条</span>
@@ -271,35 +271,46 @@ function ObxRecentPanel({ items, defaultCollapsed, onRefresh, loading }) {
       </div>
       {!collapsed && (
         list.length === 0
-          ? <ObxEmpty text="还没有搜索记录 · 发条消息或搜一下记忆就有" />
+          ? <ObxEmpty text="还没有记录 · 空跑一次 breath 或搜一下记忆就有" />
           : (
             <div className="obx-recent-list">
-              {list.map((it, i) => (
-                <div key={(it.ts || '') + '-' + i} className="obx-recent-item">
-                  <button className="obx-recent-item-hd" onClick={() => toggle(i)}>
-                    <span className="obx-recent-ts" style={{ fontFamily: 'var(--mono)' }}>{obxFmtTs(it.ts)}</span>
-                    <span className="obx-recent-query">"{it.query}"</span>
-                    <span className="obx-recent-rc" style={{ fontFamily: 'var(--mono)' }}>→ {it.result_count} 条</span>
-                    <span className={'obx-chevron obx-chevron--sm' + (expanded[i] ? ' obx-chevron--open' : '')}>▸</span>
-                  </button>
-                  {expanded[i] && it.top && (
-                    <div className="obx-recent-detail">
-                      {it.result_count > it.top.length && (
-                        <div style={{ fontSize: 11, color: 'var(--ink-4)', fontFamily: 'var(--mono)', paddingBottom: 4 }}>
-                          显示前 {it.top.length} · 共命中 {it.result_count} 条
-                        </div>
-                      )}
-                      {it.top.map((h, j) => (
-                        <div key={(h.id || '') + '-' + j} className="obx-recent-hit">
-                          <span className="obx-recent-hit-name">{h.name}{h.type === 'feel' ? ' [feel]' : h.type === 'permanent' ? ' [钉]' : ''}</span>
-                          <span className="obx-recent-hit-score" style={{ fontFamily: 'var(--mono)', color: h.title_hit ? 'var(--accent)' : 'var(--ink-4)' }}>{Number(h.score || 0).toFixed(1)}</span>
-                          {(h.matched_in || []).map(f => <ObxFieldBadge key={f} field={f} />)}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ))}
+              {list.map((it, i) => {
+                const isSurface = it.kind === 'surface';
+                return (
+                  <div key={(it.ts || '') + '-' + i} className="obx-recent-item">
+                    <button className="obx-recent-item-hd" onClick={() => toggle(i)}>
+                      <span className="obx-recent-ts" style={{ fontFamily: 'var(--mono)' }}>{obxFmtTs(it.ts)}</span>
+                      <span className={'obx-recent-kind obx-recent-kind--' + (isSurface ? 'surface' : 'search')}>{isSurface ? '浮现' : '检索'}</span>
+                      <span className="obx-recent-query" style={isSurface ? { fontStyle: 'normal', fontFamily: 'var(--sans)', color: 'var(--ink-3)' } : undefined}>
+                        {isSurface ? 'breath 权重池主动浮现' : '"' + it.query + '"'}
+                      </span>
+                      <span className="obx-recent-rc" style={{ fontFamily: 'var(--mono)' }}>{isSurface ? (it.result_count + ' 条') : ('→ ' + it.result_count + ' 条')}</span>
+                      <span className={'obx-chevron obx-chevron--sm' + (expanded[i] ? ' obx-chevron--open' : '')}>▸</span>
+                    </button>
+                    {expanded[i] && it.top && (
+                      <div className="obx-recent-detail">
+                        {it.result_count > it.top.length && (
+                          <div style={{ fontSize: 11, color: 'var(--ink-4)', fontFamily: 'var(--mono)', paddingBottom: 4 }}>
+                            显示前 {it.top.length} · 共 {it.result_count} 条
+                          </div>
+                        )}
+                        {it.top.map((h, j) => (
+                          <div key={(h.id || '') + '-' + j} className="obx-recent-hit">
+                            <span className="obx-recent-hit-name">{h.name}</span>
+                            {h.protected && <ObxBadge variant="pinned">钉决</ObxBadge>}
+                            {h.highlight && !h.protected && <ObxBadge variant="highlight">高亮</ObxBadge>}
+                            {h.type === 'feel' && <ObxBadge variant="feel">feel</ObxBadge>}
+                            {isSurface
+                              ? <span className="obx-recent-hit-score" style={{ fontFamily: 'var(--mono)' }}>{Number(h.score) >= 999 ? '永久' : ('权重 ' + Number(h.score || 0).toFixed(1))}</span>
+                              : <span className="obx-recent-hit-score" style={{ fontFamily: 'var(--mono)', color: h.title_hit ? 'var(--accent)' : 'var(--ink-4)' }}>{Number(h.score || 0).toFixed(1)}</span>}
+                            {!isSurface && (h.matched_in || []).map(f => <ObxFieldBadge key={f} field={f} />)}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )
       )}
