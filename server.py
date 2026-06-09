@@ -3382,7 +3382,9 @@ def _serve_v2(rel_path: str):
     console_base = os.path.join(base, "console")
     if abs_path.startswith(console_base) and not os.path.exists(abs_path):
         # 看是不是 /v2/console/{tab}/ 或 /v2/console/{tab}
-        tail = abs_path[len(console_base):].lstrip(os.sep).rstrip(os.sep).replace("\\", "/")
+        # 跨平台: Windows 上 abs_path 可能混用 \ 和 / (os.path.join + norm 里的 /),
+        # 先统一成 / 再两头 strip, 否则 tail 会带前导 / 导致匹配失败 (本地 Windows 404)。
+        tail = abs_path[len(console_base):].replace("\\", "/").strip("/")
         if tail in ("breath", "config", "import", "trash"):
             if not rel_path.endswith("/"):
                 return RedirectResponse(url="/v2/console/" + tail + "/", status_code=301)
@@ -3916,6 +3918,10 @@ if __name__ == "__main__":
                     return await call_next(request)
                 # 要门
                 expected = os.environ.get("OMBRE_ADMIN_TOKEN", "").strip()
+                # 显式无鉴权豁免 (本地 demo/调试): 仅当未设 token 且显式 OMBRE_ALLOW_NO_AUTH=1
+                # 时放行 —— 跟启动期 fail-safe 同一开关。不设这个开关则 fail-closed 不变 (绝不裸奔)。
+                if not expected and os.environ.get("OMBRE_ALLOW_NO_AUTH", "").strip() == "1":
+                    return await call_next(request)
                 provided = request.headers.get("X-Admin-Token", "")
                 if expected and provided and _hmac.compare_digest(provided, expected):
                     return await call_next(request)
