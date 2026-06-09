@@ -11,6 +11,105 @@ const API_PRESETS = [
   { id: 'qwen3',        name: 'Qwen3 (DashScope)', model: 'qwen-max',          base_url: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
 ];
 
+// ─────────────────────────────────────────────────────────────────────────
+// 配置页策略面板 (Claude Design 改版 · 方案 β「权重双栏」, 2026-06-09)
+// 颜色全走 var(--*) (app 月光紫主题, 不带 CD demo 自定义紫); cfg- 前缀
+// ─────────────────────────────────────────────────────────────────────────
+
+function CfgSlider({ value, min, max, step, defaultVal, onChange, label, hint, compact }) {
+  const v = (value == null ? defaultVal : value);
+  const deviated = v !== defaultVal;
+  const span = (max - min) || 1;
+  const pct = ((v - min) / span) * 100;
+  const decimals = step < 0.01 ? 3 : step < 1 ? 2 : 0;
+  return (
+    <div className={'cfg-slider-row' + (compact ? ' cfg-slider-row--compact' : '')}>
+      <div className="cfg-slider-head">
+        <span className={'cfg-slider-label' + (deviated ? ' cfg-slider-label--dev' : '')}>{label}</span>
+        <span className="cfg-slider-val">{Number(v).toFixed(decimals)}</span>
+        {deviated && <button className="cfg-slider-reset" title={'复位到默认 ' + defaultVal} onClick={() => onChange(defaultVal)}>↺</button>}
+      </div>
+      <div className="cfg-slider-track-wrap">
+        <input type="range" className="cfg-slider" min={min} max={max} step={step} value={v}
+          onChange={e => onChange(parseFloat(e.target.value))} style={{ '--pct': pct + '%' }} />
+        <span className="cfg-slider-default-mark" style={{ left: ((defaultVal - min) / span) * 100 + '%' }} title={'默认 ' + defaultVal} />
+      </div>
+      {hint && <p className="cfg-slider-hint">{hint}</p>}
+      {deviated && <p className="cfg-slider-range">范围 <em>{min}</em>–<em>{max}</em> · 默认 <em>{defaultVal}</em></p>}
+    </div>
+  );
+}
+
+function CfgNumberInput({ value, min, max, step, onChange }) {
+  return (
+    <div className="cfg-number-row">
+      <div className="cfg-number-ctrl">
+        <button className="cfg-number-btn" disabled={value <= min} onClick={() => onChange(Math.max(min, value - (step || 1)))}>−</button>
+        <span className="cfg-number-val">{value}</span>
+        <button className="cfg-number-btn" disabled={value >= max} onClick={() => onChange(Math.min(max, value + (step || 1)))}>+</button>
+      </div>
+    </div>
+  );
+}
+
+function CfgStrategyPanel({ strategy, onChange, onCommit }) {
+  const t = strategy.merge_threshold;
+  const threshLabel = t <= 30 ? '宽松 — 频繁合并' : t <= 60 ? '适中' : t <= 80 ? '严格 — 较少合并' : '极严格 — 几乎不合并';
+  return (
+    <div className="cfg-strategy">
+      <div className="cfg-card-hd"><h3 className="cfg-card-title">回忆 / 合并策略</h3></div>
+      <div className="cfg-param-block">
+        <div className="cfg-param-head"><span className="cfg-param-name">合并阈值</span><span className="cfg-param-val">{t}</span></div>
+        <div className="cfg-threshold-bar">
+          <div className="cfg-threshold-labels"><span>松</span><span>严</span></div>
+          <input type="range" className="cfg-slider cfg-slider--wide" min={0} max={100} step={1}
+            value={t}
+            onChange={e => onChange({ merge_threshold: parseInt(e.target.value) })}
+            onMouseUp={e => onCommit({ merge_threshold: parseInt(e.target.value) })}
+            onTouchEnd={e => onCommit({ merge_threshold: parseInt(e.target.value) })}
+            style={{ '--pct': t + '%' }} />
+          <p className="cfg-threshold-hint">{threshLabel}</p>
+        </div>
+        <p className="cfg-slider-hint">导入时相似记忆的合并严格度。0 = 几乎都合并，100 = 几乎不合并。</p>
+      </div>
+      <div className="cfg-param-block">
+        <div className="cfg-param-head"><span className="cfg-param-name">Max Recall</span><span className="cfg-param-val">{strategy.max_recall}</span></div>
+        <div className="cfg-recall-ctrl">
+          <input type="range" className="cfg-slider cfg-slider--wide" min={1} max={50} step={1}
+            value={strategy.max_recall}
+            onChange={e => onChange({ max_recall: parseInt(e.target.value) })}
+            onMouseUp={e => onCommit({ max_recall: parseInt(e.target.value) })}
+            onTouchEnd={e => onCommit({ max_recall: parseInt(e.target.value) })}
+            style={{ '--pct': ((strategy.max_recall - 1) / 49) * 100 + '%' }} />
+          <CfgNumberInput value={strategy.max_recall} min={1} max={50} step={1} onChange={v => onCommit({ max_recall: v })} />
+        </div>
+        <p className="cfg-slider-hint">检索默认返回条数 & breath 工具的兜底上限。</p>
+      </div>
+    </div>
+  );
+}
+
+function CfgDecayPanel({ config, defaults, schema, onChange, onReset, saving }) {
+  const deviatedKeys = schema.filter(s => config[s.key] !== defaults[s.key]).map(s => s.key);
+  const anyDeviated = deviatedKeys.length > 0;
+  return (
+    <div className="cfg-decay">
+      <div className="cfg-card-hd">
+        <h3 className="cfg-card-title">权重配置</h3>
+        <span className="cfg-card-sub">衰减引擎参数 · 改完即时生效</span>
+        {anyDeviated && <span className="cfg-deviated-summary"><span className="cfg-deviated-dot" />{deviatedKeys.length} 项已偏离默认</span>}
+        {anyDeviated && <button className="cfg-btn-ghost" onClick={onReset} disabled={saving}>全部恢复默认</button>}
+      </div>
+      <div className="cfg-decay-grid cfg-decay-grid--two">
+        {schema.map(s => (
+          <CfgSlider key={s.key} value={config[s.key]} min={s.min} max={s.max} step={s.step}
+            defaultVal={defaults[s.key]} onChange={v => onChange(s.key, v)} label={s.label} hint={s.hint} compact />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ConfigPage() {
   const [data, setData] = ccS(null);
   const [loadErr, setLoadErr] = ccS(null);
@@ -554,110 +653,28 @@ function ConfigPage() {
         </div>
       </ConsoleCard>
 
-      {/* 回忆 / 合并策略 */}
-      <ConsoleCard label="回忆 / 合并策略" sub={<>合并阈值 / Max Recall · 即时生效 {strategySaving && <span style={{ color: 'var(--accent)', fontFamily: 'var(--mono)' }}>· 保存中…</span>}</>}>
-        <div className="oc-field">
-          <div className="oc-field-label">合并阈值</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <input
-              type="range" min={0} max={100} step={1}
-              value={strategy.merge_threshold}
-              onChange={(e) => setStrategy(s => ({ ...s, merge_threshold: +e.target.value }))}
-              onMouseUp={(e) => saveStrategy({ merge_threshold: +e.target.value })}
-              onTouchEnd={(e) => saveStrategy({ merge_threshold: +e.target.value })}
-              className="oc-slider" style={{ flex: 1 }}
-            />
-            <input
-              className="oc-input oc-input-mono" style={{ width: 80 }} type="number"
-              min={0} max={100}
-              value={strategy.merge_threshold}
-              onChange={(e) => setStrategy(s => ({ ...s, merge_threshold: +e.target.value }))}
-              onBlur={(e) => saveStrategy({ merge_threshold: +e.target.value })}
-            />
-          </div>
-        </div>
-        <div className="oc-field-help" style={{ paddingLeft: 126, marginTop: -8 }}>
-          0–100 · 越高越严格(少合并),越低越松(频繁合并) · 导入时用
-        </div>
-
-        <div className="oc-field">
-          <div className="oc-field-label">Max Recall</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-            <input
-              className="oc-input oc-input-mono" type="number" min={1} max={50}
-              value={strategy.max_recall}
-              onChange={(e) => setStrategy(s => ({ ...s, max_recall: +e.target.value }))}
-              onBlur={(e) => saveStrategy({ max_recall: +e.target.value })}
-            />
-          </div>
-        </div>
-        <div className="oc-field-help" style={{ paddingLeft: 126, marginTop: -6 }}>
-          1–50 · bucket_mgr.search 默认返回数;breath 工具 max_results 兜底
-        </div>
-      </ConsoleCard>
-
-      {/* 权重配置 (decay 引擎参数) */}
-      <ConsoleCard label="权重配置" sub="调 score 公式 · 改完即刻生效 · 重启后保留">
-        {!decayCfg && <div style={{ color: 'var(--ink-4)', fontSize: 12 }}>载入中…</div>}
-        {decayCfg && (
-          <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 12 }}>
-            <button
-              className="oc-btn oc-btn-ghost"
-              onClick={resetDecayAll}
-              disabled={decayResetting}
-              style={{ fontSize: 11, padding: '3px 12px' }}
-            >{decayResetting ? '⌛' : '↺ 全部恢复默认'}</button>
-          </div>
-        )}
-        {decayCfg && decayCfg.schema.map(item => {
-          const cur = decayCfg.current[item.key];
-          const def = decayCfg.defaults[item.key];
-          const isDefault = Math.abs((cur ?? 0) - (def ?? 0)) < 1e-6;
-          return (
-            <div className="oc-field" key={item.key} style={{ alignItems: 'flex-start' }}>
-              <div className="oc-field-label" style={{ paddingTop: 6 }}>{item.label}</div>
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                  <input
-                    type="range"
-                    min={item.min}
-                    max={item.max}
-                    step={item.step}
-                    value={cur}
-                    onChange={(e) => updateDecay(item.key, +e.target.value)}
-                    className="oc-decay-slider"
-                    style={{ flex: 1, accentColor: 'var(--accent)' }}
-                  />
-                  <span style={{
-                    fontFamily: 'var(--mono)', fontSize: 13,
-                    color: isDefault ? 'var(--ink-3)' : 'var(--accent)',
-                    fontWeight: isDefault ? 400 : 600,
-                    minWidth: 56, textAlign: 'right',
-                  }}>
-                    {item.step < 1 ? Number(cur).toFixed(2) : Math.round(cur)}
-                  </span>
-                  <button
-                    className="oc-btn oc-btn-ghost"
-                    title={`恢复默认 ${def}`}
-                    onClick={() => updateDecay(item.key, def)}
-                    disabled={isDefault || decaySaving}
-                    style={{ fontSize: 10, padding: '2px 8px', minWidth: 32 }}
-                  >↺</button>
-                </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 10, color: 'var(--ink-4)', fontFamily: 'var(--mono)' }}>
-                  <span>{item.hint}</span>
-                  <span>范围 {item.min} – {item.max} · 默认 {item.step < 1 ? Number(def).toFixed(2) : Math.round(def)}</span>
-                </div>
-              </div>
-            </div>
-          );
-        })}
-        {decayCfg && (
-          <div className="oc-field-help" style={{ paddingLeft: 126, marginTop: 10, color: 'var(--ink-4)' }}>
-            高亮 = 已偏离默认 · 改动写入 buckets/runtime_config.json, 重启自动加载
-          </div>
-        )}
-      </ConsoleCard>
+      {/* ═══ 配置页策略面板 (Claude Design 改版 · 方案 β「权重双栏」, 2026-06-09) ═══ */}
+      <div className="cfg-config">
+        <section className="cfg-card">
+          <CfgStrategyPanel
+            strategy={strategy}
+            onChange={(patch) => setStrategy(s => ({ ...s, ...patch }))}
+            onCommit={saveStrategy}
+          />
+        </section>
+        <section className="cfg-card">
+          {!decayCfg
+            ? <div style={{ color: 'var(--ink-4)', fontSize: 12 }}>载入中…</div>
+            : <CfgDecayPanel
+                config={decayCfg.current}
+                defaults={decayCfg.defaults}
+                schema={decayCfg.schema}
+                onChange={updateDecay}
+                onReset={resetDecayAll}
+                saving={decaySaving || decayResetting}
+              />}
+        </section>
+      </div>
 
       {/* 注: 检索打分微调 / 即时模拟 / 记忆被想起 / 最近搜索追溯 已迁到 Breath tab (2026-06-07) */}
 
