@@ -700,6 +700,9 @@ async def hold(
             arousal=feel_arousal,
             name=None,
             bucket_type="feel",
+            # 2026-06-10: feel 也接 event_time — 平时随手写 feel 当下即事发时间(不传=created, 行为不变),
+            # 但批量回写历史(记忆写入工作台)时, 没有它 feel 的时间会全挤在写入批次那一刻
+            event_time=event_time or None,
         )
         try:
             await embedding_engine.generate_and_store(bucket_id, content)
