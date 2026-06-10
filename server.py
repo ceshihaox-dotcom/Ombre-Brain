@@ -2826,6 +2826,12 @@ async def api_bucket_create(request):
     if bucket_type not in ("dynamic", "feel", "permanent"):
         bucket_type = "dynamic"
 
+    # created_by 可选覆盖 (2026-06-11): 服务端程序化写入 (如分日摘要) 传 'ai' 保持来源标记准确,
+    # 不传维持原行为 'user' (dashboard 手动新建)
+    created_by = body.get("created_by", "user")
+    if created_by not in ("user", "ai", "import"):
+        created_by = "user"
+
     try:
         bucket_id = await bucket_mgr.create(
             content=content,
@@ -2839,7 +2845,7 @@ async def api_bucket_create(request):
             highlight=highlight,
             event_time=event_time,
             bucket_type=bucket_type,  # feel 切换时这里写入 metadata.type='feel'
-            created_by="user",  # dashboard 手动新建标记,跟 AI 写入区分
+            created_by=created_by,  # 默认 'user' (dashboard 手动新建); 程序化写入可传 'ai'
             summary=summary,
         )
     except Exception as e:
