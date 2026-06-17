@@ -337,6 +337,34 @@ Add to your Claude Desktop config:
 }
 ```
 
+> 上面是**本地同机直跑**（stdio 传输）的配置，不需要 token。配置文件位置：macOS `~/Library/Application Support/Claude/claude_desktop_config.json`，Windows `%APPDATA%\Claude\claude_desktop_config.json`。
+> The block above is **local same-machine** (stdio) — no token needed. Config file: macOS `~/Library/Application Support/Claude/claude_desktop_config.json`, Windows `%APPDATA%\Claude\claude_desktop_config.json`.
+
+#### 连接远程部署实例（Railway / Render 等）/ Connect to a remote deployment
+
+如果 OB 部署在远程、且设了 `OMBRE_ADMIN_TOKEN`，Claude Desktop 不能直接填 URL —— 它需要一个 stdio↔HTTP 的桥。用 `mcp-remote`，并带上鉴权 header：
+
+If OB runs remotely with `OMBRE_ADMIN_TOKEN` set, Claude Desktop can't take a bare URL — it needs a stdio↔HTTP bridge. Use `mcp-remote` with the auth header:
+
+```json
+{
+  "mcpServers": {
+    "ombre-brain": {
+      "command": "npx",
+      "args": [
+        "-y", "mcp-remote",
+        "https://<你的域名>/mcp",
+        "--header", "X-Admin-Token:<你的 OMBRE_ADMIN_TOKEN>"
+      ]
+    }
+  }
+}
+```
+
+- `<你的 OMBRE_ADMIN_TOKEN>`：部署平台环境变量里那个值，原样粘贴，**冒号后不要加空格**。Paste the value from your deploy platform's env vars; **no space after the colon**.
+- 前置：本机需装 [Node.js](https://nodejs.org)（`mcp-remote` 通过 `npx` 运行）。改完配置后**彻底退出并重开** Claude Desktop（托盘里 Quit，不是关窗口）。Requires [Node.js](https://nodejs.org) (run via `npx`); fully quit & reopen Claude Desktop after editing.
+- 不要用 `cmd /c curl ... /mcp` 之类的写法：`curl` 是单向 HTTP，承载不了 MCP 的双向 JSON-RPC，必然 `Server disconnected`。Don't wrap the endpoint in `cmd /c curl ... /mcp` — `curl` is one-way HTTP and can't carry MCP's bidirectional JSON-RPC, so it always fails with `Server disconnected`.
+
 ### 接入 Claude.ai (远程) / Connect to Claude.ai (remote)
 
 需要 HTTP 传输 + 隧道。可以用 Docker：
