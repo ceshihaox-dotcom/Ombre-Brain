@@ -959,7 +959,7 @@ class BucketManager:
         # 注:resolved 不再立即归档(2026-06-08 对齐上游 + USAGE)——留在 dynamic/ 随衰减自然沉降,
         #    score < 阈值后由衰减引擎归档;期间关键词检索仍可捞回(breath 浮现仍排除 resolved)。
         #    既有已归档的 resolved 桶不动,本改动只影响之后新标记的。
-        domain = post.get("domain", ["未分类"])
+        domain = post.get("domain") or ["未分类"]
         if kwargs.get("protected") and post.get("type") != "permanent":
             post["type"] = "permanent"
             with open(file_path, "w", encoding="utf-8") as f:
@@ -1006,7 +1006,7 @@ class BucketManager:
 
         try:
             post = frontmatter.load(file_path)
-            domain = post.get("domain", ["未分类"])
+            domain = post.get("domain") or ["未分类"]
             primary_domain = sanitize_name(domain[0]) if domain else "未分类"
             trash_subdir = os.path.join(self.trash_dir, primary_domain)
             os.makedirs(trash_subdir, exist_ok=True)
@@ -1041,7 +1041,7 @@ class BucketManager:
         try:
             post = frontmatter.load(file_path)
             original_type = post.get("original_type", "dynamic")
-            domain = post.get("domain", ["未分类"])
+            domain = post.get("domain") or ["未分类"]
             primary_domain = sanitize_name(domain[0]) if domain else "未分类"
 
             if original_type == "permanent":
@@ -1147,7 +1147,7 @@ class BucketManager:
         try:
             post = frontmatter.load(file_path)
             post["last_active"] = now_iso()
-            post["activation_count"] = post.get("activation_count", 0) + 1
+            post["activation_count"] = (post.get("activation_count") or 0) + 1
 
             with open(file_path, "w", encoding="utf-8") as f:
                 f.write(frontmatter.dumps(post))
@@ -1196,7 +1196,7 @@ class BucketManager:
                     continue
                 try:
                     post = frontmatter.load(file_path)
-                    current_count = post.get("activation_count", 1)
+                    current_count = post.get("activation_count") or 1
                     # Store as float for fractional increments; calculate_score handles it
                     post["activation_count"] = round(current_count + 0.3, 1)
                     with open(file_path, "w", encoding="utf-8") as f:
@@ -1307,7 +1307,7 @@ class BucketManager:
                 time_score = self._calc_time_score(meta)
 
                 # Dim 4: importance (direct normalization)
-                importance_score = max(1, min(10, int(meta.get("importance", 5)))) / 10.0
+                importance_score = max(1, min(10, int(meta.get("importance") or 5))) / 10.0
 
                 # --- Weighted sum / 加权求和 ---
                 total = (
@@ -1693,7 +1693,7 @@ class BucketManager:
         try:
             # Read once, get domain info and update type / 一次性读取
             post = frontmatter.load(file_path)
-            domain = post.get("domain", ["未分类"])
+            domain = post.get("domain") or ["未分类"]
             primary_domain = sanitize_name(domain[0]) if domain else "未分类"
             archive_subdir = os.path.join(self.archive_dir, primary_domain)
             os.makedirs(archive_subdir, exist_ok=True)
@@ -1734,7 +1734,7 @@ class BucketManager:
 
         try:
             post = frontmatter.load(file_path)
-            domain = post.get("domain", ["未分类"])
+            domain = post.get("domain") or ["未分类"]
             primary_domain = sanitize_name(domain[0]) if domain else "未分类"
             dynamic_subdir = os.path.join(self.dynamic_dir, primary_domain)
             os.makedirs(dynamic_subdir, exist_ok=True)

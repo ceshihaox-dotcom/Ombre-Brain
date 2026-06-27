@@ -233,7 +233,7 @@ async def dream_hook(request):
             resolved_tag = "[已解决]" if meta.get("resolved", False) else "[未解决]"
             parts.append(
                 f"{meta.get('name', b['id'])} {resolved_tag} "
-                f"V{meta.get('valence', 0.5):.1f}/A{meta.get('arousal', 0.3):.1f}\n"
+                f"V{float(meta.get('valence') or 0.5):.1f}/A{float(meta.get('arousal') or 0.3):.1f}\n"
                 f"{strip_wikilinks(b['content'][:200])}"
             )
 
@@ -283,15 +283,15 @@ async def _merge_or_create(
         if not (bucket["metadata"].get("pinned") or bucket["metadata"].get("protected")):
             try:
                 merged = await dehydrator.merge(bucket["content"], content)
-                old_v = bucket["metadata"].get("valence", 0.5)
-                old_a = bucket["metadata"].get("arousal", 0.3)
-                merged_valence = round((old_v + valence) / 2, 2)
-                merged_arousal = round((old_a + arousal) / 2, 2)
+                old_v = bucket["metadata"].get("valence") or 0.5
+                old_a = bucket["metadata"].get("arousal") or 0.3
+                merged_valence = round((old_v + valence) / 2, 2) if 0 <= valence <= 1 else old_v
+                merged_arousal = round((old_a + arousal) / 2, 2) if 0 <= arousal <= 1 else old_a
                 update_kwargs = dict(
                     content=merged,
-                    tags=list(set(bucket["metadata"].get("tags", []) + tags)),
-                    importance=max(bucket["metadata"].get("importance", 5), importance),
-                    domain=list(set(bucket["metadata"].get("domain", []) + domain)),
+                    tags=list(set((bucket["metadata"].get("tags") or []) + tags)),
+                    importance=max(bucket["metadata"].get("importance") or 5, importance),
+                    domain=list(set((bucket["metadata"].get("domain") or []) + domain)),
                     valence=merged_valence,
                     arousal=merged_arousal,
                 )
@@ -357,8 +357,8 @@ async def breath(
     if domain.strip().lower() == "feel":
         try:
             all_buckets = await bucket_mgr.list_all(include_archive=False)
-            feels = [b for b in all_buckets if b["metadata"].get("type") == "feel"]
-            feels.sort(key=lambda b: b["metadata"].get("created", ""), reverse=True)
+            feels = [b for b in all_buckets if b.get("metadata", {}).get("type") == "feel"]
+            feels.sort(key=lambda b: b.get("metadata", {}).get("created", ""), reverse=True)
             if not feels:
                 return "没有留下过 feel。"
             results = []
@@ -460,8 +460,8 @@ async def breath(
         # 让你新存的重要记忆有机会先被想起一次，而不是没露过脸就沉底（对齐上游 B-04）。
         cold_start = [
             b for b in unresolved
-            if int(b["metadata"].get("activation_count", 0)) == 0
-            and int(b["metadata"].get("importance", 0)) >= 8
+            if int(b["metadata"].get("activation_count") or 0) == 0
+            and int(b["metadata"].get("importance") or 0) >= 8
         ][:2]
         cold_start_ids = {b["id"] for b in cold_start}
         scored_with_cold = cold_start + [b for b in scored if b["id"] not in cold_start_ids]
@@ -614,7 +614,7 @@ async def breath(
             # --- Memory reconstruction: shift displayed valence by current mood ---
             # --- 记忆重构：根据当前情绪微调展示层 valence（±0.1）---
             if q_valence is not None and "valence" in clean_meta:
-                original_v = float(clean_meta.get("valence", 0.5))
+                original_v = float(clean_meta.get("valence") or 0.5)
                 shift = (q_valence - 0.5) * 0.2  # ±0.1 max shift
                 clean_meta["valence"] = max(0.0, min(1.0, original_v + shift))
             summary = await dehydrator.dehydrate(strip_wikilinks(bucket["content"]), clean_meta)
@@ -685,7 +685,10 @@ async def hold(
         return "内容为空，无法存储。"
 
     importance = max(1, min(10, importance))
-    extra_tags = [t.strip() for t in tags.split(",") if t.strip()]
+    if isinstance(tags, list):
+        extra_tags = [str(t).strip() for t in tags if t]
+    else:
+        extra_tags = [t.strip() for t in str(tags).split(",") if t.strip()]
 
     # --- Feel mode: store as feel type, minimal metadata ---
     # --- Feel 模式：存为 feel 类型，最少元数据 ---
@@ -732,10 +735,15 @@ async def hold(
             "tags": [], "suggested_name": "",
         }
 
-    domain = analysis["domain"]
-    valence = analysis["valence"]
-    arousal = analysis["arousal"]
-    auto_tags = analysis["tags"]
+    domain = analysis.get("domain") or ["未分类"]
+    if not isinstance(domain, list):
+        domain = ["未分类"]
+    _v = analysis.get("valence")
+    valence = float(_v) if _v is not None else 0.5
+    _a = analysis.get("arousal")
+    arousal = float(_a) if _a is not None else 0.3
+    _raw_tags = analysis.get("tags") or []
+    auto_tags = _raw_tags if isinstance(_raw_tags, list) else []
     suggested_name = analysis.get("suggested_name", "")
 
     all_tags = list(dict.fromkeys(auto_tags + extra_tags))
@@ -759,7 +767,7 @@ async def hold(
             await embedding_engine.generate_and_store(bucket_id, content)
         except Exception:
             pass
-        return f"📌钉选→{bucket_id} {','.join(domain)}"
+        return f"📌钉选→{bucket_id} {','.join(str(d) for d in domain if d is not None)}"
 
     # --- Step 2: merge or create / 合并或新建 ---
     result_name, is_merged = await _merge_or_create(
@@ -774,7 +782,7 @@ async def hold(
     )
 
     action = "合并→" if is_merged else "新建→"
-    return f"{action}{result_name} {','.join(domain)}"
+    return f"{action}{result_name} {','.join(str(d) for d in domain if d is not None)}"
 
 
 # =============================================================
@@ -806,16 +814,16 @@ async def grow(content: str, event_time: str = "") -> str:
             }
         result_name, is_merged = await _merge_or_create(
             content=content.strip(),
-            tags=analysis.get("tags", []),
+            tags=analysis.get("tags") or [],
             importance=analysis.get("importance", 5) if isinstance(analysis.get("importance"), int) else 5,
-            domain=analysis.get("domain", ["未分类"]),
-            valence=analysis.get("valence", 0.5),
-            arousal=analysis.get("arousal", 0.3),
+            domain=analysis.get("domain") or ["未分类"],
+            valence=analysis.get("valence") or 0.5,
+            arousal=analysis.get("arousal") or 0.3,
             name=analysis.get("suggested_name", ""),
             event_time=event_time or None,
         )
         action = "合并" if is_merged else "新建"
-        return f"{action} → {result_name} | {','.join(analysis.get('domain', []))} V{analysis.get('valence', 0.5):.1f}/A{analysis.get('arousal', 0.3):.1f}"
+        return f"{action} → {result_name} | {','.join(str(d) for d in (analysis.get('domain') or []) if d is not None)} V{float(analysis.get('valence') or 0.5):.1f}/A{float(analysis.get('arousal') or 0.3):.1f}"
 
     # --- Step 1: let API split and organize / 让 API 拆分整理 ---
     try:
@@ -836,11 +844,11 @@ async def grow(content: str, event_time: str = "") -> str:
                         "tags": [], "suggested_name": ""}
         result_name, _is_merged = await _merge_or_create(
             content=content.strip(),
-            tags=analysis.get("tags", []),
+            tags=analysis.get("tags") or [],
             importance=analysis.get("importance", 5) if isinstance(analysis.get("importance"), int) else 5,
-            domain=analysis.get("domain", ["未分类"]),
-            valence=analysis.get("valence", 0.5),
-            arousal=analysis.get("arousal", 0.3),
+            domain=analysis.get("domain") or ["未分类"],
+            valence=analysis.get("valence") or 0.5,
+            arousal=analysis.get("arousal") or 0.3,
             name=analysis.get("suggested_name", ""),
             event_time=event_time or None,
         )
@@ -1165,7 +1173,7 @@ async def dream() -> str:
     crystal_hint = ""
     if embedding_engine and embedding_engine.enabled:
         try:
-            feels = [b for b in all_buckets if b["metadata"].get("type") == "feel"]
+            feels = [b for b in all_buckets if b.get("metadata", {}).get("type") == "feel"]
             if len(feels) >= 3:
                 feel_embeddings = {}
                 for f in feels:
@@ -3773,9 +3781,7 @@ async def api_import_review(request):
             elif action == "noise":
                 await bucket_mgr.update(bid, resolved=True, importance=1)
             elif action == "delete":
-                file_path = bucket_mgr._find_bucket_file(bid)
-                if file_path:
-                    os.remove(file_path)
+                await bucket_mgr.delete(bid)
             applied += 1
         except Exception as e:
             logger.warning(f"Review action failed for {bid}: {e}")

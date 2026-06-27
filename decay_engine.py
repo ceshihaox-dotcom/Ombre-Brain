@@ -160,9 +160,9 @@ class DecayEngine:
         if metadata.get("type") == "feel" and self.feel_score > 0:
             return self.feel_score
 
-        importance = max(1, min(10, int(metadata.get("importance", 5))))
+        importance = max(1, min(10, int(metadata.get("importance") or 5)))
         # B-03 对齐上游: float 不截断 → time-ripple 的 +0.3 涟漪(相邻桶连带激活)能真正生效
-        activation_count = max(1.0, float(metadata.get("activation_count", 1)))
+        activation_count = max(1.0, float(metadata.get("activation_count") or 1))
 
         # --- Days since last activation ---
         last_active_str = metadata.get("last_active", metadata.get("created", ""))
