@@ -1526,6 +1526,24 @@ async def api_recent_searches(request):
         return JSONResponse({"error": str(e)}, status_code=500)
 
 
+@mcp.custom_route("/api/search-log", methods=["GET"])
+async def api_search_log(request):
+    """持久检索日志 (search_log.jsonl) 的最后 N 条, newest first。
+    与 /api/recent-searches 的区别: 那个是内存 deque(重启即失, query 截 80 字),
+    这个落盘长期攒(query 留 200 字, 带 caller 标注) — 评测集原料从这里挑。
+    Query param: limit (默认 100, 上限 1000)。"""
+    from starlette.responses import JSONResponse
+    try:
+        limit = int(request.query_params.get("limit", "100"))
+    except ValueError:
+        limit = 100
+    try:
+        items = bucket_mgr.read_search_log(limit=limit)
+        return JSONResponse({"count": len(items), "items": items})
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 # =============================================================
 # Prompts config — 让前端配置页直接编辑系统 prompt, 不动代码
 # 数据流: GET → 当前生效 + 出厂默认 + schema(标签/说明)
@@ -2946,9 +2964,12 @@ async def api_search(request):
     def _is_pinned(meta):
         return is_highlighted(meta) or is_protected(meta)
 
+    # caller: 调用来源标注(auto-inject / eval / dashboard...), 进检索日志区分流量
+    caller = (request.query_params.get("caller", "") or "")[:32]
+
     try:
         # === 关键词通道 ===
-        matches = await bucket_mgr.search(query, limit=limit, record_stats=not simulate)
+        matches = await bucket_mgr.search(query, limit=limit, record_stats=not simulate, caller=caller)
         if not include_noise:
             matches = [b for b in matches if not _is_noise(b.get("metadata", {}))]
         if not include_feel:

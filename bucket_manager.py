@@ -134,7 +134,10 @@ class BucketManager:
         # 结构: deque([{ts, query, top: [{id, name, score, matched_in, title_hit}, ...]}, ...])
         # 跟 dryrun_log 内容相似但是结构化 + 走 endpoint 而不是 Render 日志, 体感顺很多。
         from collections import deque as _deque
-        self._recent_searches = _deque(maxlen=20)
+        self._recent_searches = _deque(maxlen=100)
+        # 持久检索日志 (JSONL, 追加写): 评测集原料 + 注入调参依据。
+        # in-memory deque 重启即失(Render 冷睡/重启频繁), 这份落盘的才攒得起来。
+        self._search_log_path = os.path.join(self.base_dir, "search_log.jsonl")
 
         # title_hit_bonus: title 字段 partial_ratio ≥ _MATCH_THRESHOLD 时给 final normalized 加此分。
         # 解决场景: 关键词正好在 title 命中, 但桶因 time/importance 拖低总分排到弱命中之后。
@@ -583,11 +586,52 @@ class BucketManager:
         """Return list of recent search traces, newest first.
         每条 = {ts, query, result_count, top: [{id, name, type, score, matched_in, title_hit, field_scores}]}。
         给前端"我这次发消息浮现了哪些"看, 也方便排查"为什么这条没浮现"。"""
-        n = max(1, min(20, int(limit)))
+        n = max(1, min(100, int(limit)))
         # deque 是 oldest-first; 反转给 newest-first 更符合"最近"语义
         items = list(self._recent_searches)
         items.reverse()
         return items[:n]
+
+    # --- 持久检索日志 (search_log.jsonl) ---
+    # 与 hit_stats 的分工: hit_stats 是聚合计数, 这份是逐次明细 — 攒评测集、
+    # 复盘"哪条 query 捞回了什么"都靠它。simulate/dry-run(record_stats=False)不写。
+    _SEARCH_LOG_MAX_BYTES = 5 * 1024 * 1024  # 超 5MB 轮转到 .1 (单份保留)
+
+    def _append_search_log(self, entry: dict) -> None:
+        """追加一行 JSONL; 任何失败都吞掉, 绝不影响搜索。"""
+        try:
+            try:
+                if (os.path.exists(self._search_log_path)
+                        and os.path.getsize(self._search_log_path) > self._SEARCH_LOG_MAX_BYTES):
+                    os.replace(self._search_log_path, self._search_log_path + ".1")
+            except OSError:
+                pass
+            with open(self._search_log_path, "a", encoding="utf-8") as f:
+                f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+
+    def read_search_log(self, limit: int = 100) -> list:
+        """读持久检索日志的最后 N 条, newest first。文件不存在返回空表。"""
+        n = max(1, min(1000, int(limit)))
+        try:
+            if not os.path.exists(self._search_log_path):
+                return []
+            with open(self._search_log_path, "r", encoding="utf-8") as f:
+                lines = f.readlines()
+            out = []
+            for line in reversed(lines[-n:]):
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    out.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+            return out
+        except Exception as e:
+            logger.warning(f"[search-log] read failed: {e}")
+            return []
 
     # ---------------------------------------------------------
     # Create a new bucket
@@ -1230,6 +1274,7 @@ class BucketManager:
         query_valence: float = None,
         query_arousal: float = None,
         record_stats: bool = True,
+        caller: str = "",
     ) -> list[dict]:
         """
         Multi-dimensional indexed search for memory buckets.
@@ -1436,8 +1481,18 @@ class BucketManager:
                 "ts": now_iso,
                 "query": q_trim,
                 "kind": "search",
+                "caller": caller or "",
                 "result_count": len(client_scored),
                 "top": trace_top,
+            })
+
+            # 持久检索日志 (JSONL 追加) — 评测集原料; query 留 200 字(deque 只留 80 不够标注用)
+            self._append_search_log({
+                "ts": now_iso,
+                "caller": caller or "",
+                "query": (query or "")[:200],
+                "result_count": len(client_scored),
+                "top": trace_top[:5],
             })
 
             # 持久化: 打 dirty 标记并尝试落盘 (防抖, 多数调用直接 return)
