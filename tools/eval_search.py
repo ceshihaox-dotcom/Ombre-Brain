@@ -37,6 +37,22 @@ if sys.stdout.encoding and sys.stdout.encoding.lower() not in ("utf-8", "utf8"):
 
 NEG_LEAK_SCORE = 70
 
+def rerank_via_api(query, docs, model, api_key, base_url):
+    """调外部 reranker(OpenAI 兼容 /rerank, SiliconFlow 等)对候选重排。
+    返回按相关度降序的 doc 下标列表; 失败返回 None(调用方回退原序)。
+    注意: 绝对分数不可靠(Qwen3-Reranker 相关文档也常 <0.2), 只用相对序。"""
+    body = json.dumps({"model": model, "query": query, "documents": docs}).encode()
+    req = urllib.request.Request(
+        base_url.rstrip("/") + "/rerank", data=body,
+        headers={"Authorization": "Bearer " + api_key, "Content-Type": "application/json"},
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=40) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        return [it["index"] for it in data.get("results", [])]
+    except Exception:
+        return None
+
 def fetch_search(base, token, query, include_vector):
     params = urllib.parse.urlencode({
         "q": query,
@@ -64,8 +80,15 @@ def main():
     ap.add_argument("--token", default=os.environ.get("OMBRE_ADMIN_TOKEN", ""))
     ap.add_argument("--set", default=os.path.join(os.path.dirname(__file__), "eval_set.json"))
     ap.add_argument("--vector", action="store_true", help="同时开向量通道")
+    ap.add_argument("--rerank", action="store_true",
+                    help="评测侧 reranker A/B 模拟(不动生产链路): 需 env SILICONFLOW_API_KEY")
+    ap.add_argument("--rerank-model", default=os.environ.get("OMBRE_RERANK_MODEL", "Qwen/Qwen3-Reranker-8B"))
+    ap.add_argument("--rerank-url", default=os.environ.get("OMBRE_RERANK_BASE_URL", "https://api.siliconflow.com/v1"))
     ap.add_argument("--save", action="store_true", help="结果落盘 eval_results_<ts>.json")
     args = ap.parse_args()
+    rerank_key = os.environ.get("SILICONFLOW_API_KEY", "")
+    if args.rerank and not rerank_key:
+        sys.exit("--rerank 需要 env SILICONFLOW_API_KEY")
 
     base = args.url.rstrip("/")
     if not base:
@@ -91,11 +114,25 @@ def main():
             print(f"✗ 请求失败「{q[:30]}」: {ex}")
             continue
         ordered = (data.get("keyword_hits") or []) + (data.get("vector_hits") or [])
-        rank = 0
+        rank_raw = 0
         for i, h in enumerate(ordered, start=1):
             if any(match_expect(h, x) for x in expect):
-                rank = i
+                rank_raw = i
                 break
+        rank = rank_raw
+        # --rerank: 把 top-10 候选(name+summary+preview)交给外部 reranker 重排后再算名次
+        if args.rerank and ordered:
+            pool = ordered[:10]
+            docs = [f"{h.get('name','')}: {h.get('summary') or h.get('content_preview') or ''}"[:300]
+                    for h in pool]
+            order = rerank_via_api(q, docs, args.rerank_model, rerank_key, args.rerank_url)
+            if order is not None:
+                reranked = [pool[i2] for i2 in order if i2 < len(pool)]
+                rank = 0
+                for i, h in enumerate(reranked, start=1):
+                    if any(match_expect(h, x) for x in expect):
+                        rank = i
+                        break
         rr = 1.0 / rank if rank else 0.0
         rr_sum += rr
         for k in hit_at:
@@ -103,8 +140,9 @@ def main():
                 hit_at[k] += 1
         top3 = [(h.get("name", "?")[:14], h.get("score", h.get("similarity"))) for h in ordered[:3]]
         mark = "✅" if rank and rank <= 3 else ("⚠️" if rank else "❌")
-        print(f"{mark} rank={rank or '-':>2} 「{q[:34]}」 期待:{'/'.join(expect)[:20]} top3:{top3}")
-        results.append({"query": q, "rank": rank, "rr": rr, "top3": top3})
+        rr_note = f"(重排前 {rank_raw or '-'})" if args.rerank and rank != rank_raw else ""
+        print(f"{mark} rank={rank or '-':>2}{rr_note} 「{q[:34]}」 期待:{'/'.join(expect)[:20]} top3:{top3}")
+        results.append({"query": q, "rank": rank, "rank_raw": rank_raw, "rr": rr, "top3": top3})
 
     leaks = []
     for e in negatives:
@@ -127,6 +165,7 @@ def main():
     summary = {
         "ts": datetime.now().isoformat(timespec="seconds"),
         "vector": args.vector,
+        "rerank": args.rerank and args.rerank_model or "",
         "positives": len(positives),
         "negatives": len(negatives),
         "mrr": round(rr_sum / n, 4),
