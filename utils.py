@@ -103,6 +103,10 @@ def load_config(config_path: str = None) -> dict:
     env_embed_base = os.environ.get("OMBRE_EMBED_BASE_URL", "")
     if env_embed_base:
         config.setdefault("embedding", {})["base_url"] = env_embed_base
+    # embedding 模型名独立可配 — 让"换 embedding 供应商"真正等于改 env + 跑一次 backfill
+    env_embed_model = os.environ.get("OMBRE_EMBED_MODEL", "")
+    if env_embed_model:
+        config.setdefault("embedding", {})["model"] = env_embed_model
 
     env_transport = os.environ.get("OMBRE_TRANSPORT", "")
     if env_transport:

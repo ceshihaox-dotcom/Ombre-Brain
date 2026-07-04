@@ -2941,7 +2941,12 @@ async def api_search(request):
         limit = int(request.query_params.get("limit", "20"))
     except ValueError:
         limit = 20
-    include_vector = request.query_params.get("include_vector", "false").lower() == "true"
+    # include_vector: 'false'(默认) / 'true'(总是跑) / 'fallback'(关键词优先、语义兜底 —
+    # 关键词已有"钩子字段强命中"(title/tag/summary 命中且 score≥85)就跳过向量, 省掉
+    # 每轮 1-4 秒的 query embedding 调用; 关键词弱/空才让语义通道兜底)
+    _iv_raw = request.query_params.get("include_vector", "false").lower()
+    include_vector = _iv_raw == "true"
+    vector_fallback = _iv_raw == "fallback"
     # 默认排除噪声(resolved+importance=1, 用户软删除态);
     # 调试/查找意图时可 include_noise=true opt-in 拉回
     include_noise = request.query_params.get("include_noise", "false").lower() == "true"
@@ -2996,8 +3001,15 @@ async def api_search(request):
 
         # === 向量通道(可选) — 排除已在 keyword_hits 里的桶,避免重复 ===
         # search_similar 返回 list[tuple[bucket_id, similarity]],不是 dict
+        # fallback 模式: 关键词已有钩子字段强命中 → 语义兜底没必要, 跳过省时延
+        _kw_strong = any(
+            (h.get("score") or 0) >= 85
+            and any(f in (h.get("matched_in") or []) for f in ("title", "tag", "summary"))
+            for h in keyword_hits
+        )
+        run_vector = include_vector or (vector_fallback and not _kw_strong)
         vector_hits = []
-        if include_vector and embedding_engine is not None:
+        if run_vector and embedding_engine is not None:
             try:
                 kw_ids = {h["id"] for h in keyword_hits}
                 vec_results = await embedding_engine.search_similar(query, top_k=10)
@@ -3031,6 +3043,9 @@ async def api_search(request):
             "query": query,
             "keyword_hits": keyword_hits,
             "vector_hits": vector_hits,
+            # 观测字段: fallback 调参用 — vector_ran=false 且 mode=fallback 说明关键词强命中兜住了
+            "vector_mode": _iv_raw,
+            "vector_ran": bool(run_vector and embedding_engine is not None),
         })
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)

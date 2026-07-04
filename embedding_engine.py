@@ -60,6 +60,9 @@ class EmbeddingEngine:
         # --- Initialize SQLite ---
         self._init_db()
 
+    # 建库早于 model 列的历史行没有 model 值 — 按当年唯一在用的模型归属
+    _LEGACY_MODEL = "gemini-embedding-001"
+
     def _init_db(self):
         """Create embeddings table if not exists."""
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
@@ -71,8 +74,19 @@ class EmbeddingEngine:
                 updated_at TEXT NOT NULL
             )
         """)
+        # 模型感知(2026-07-04): 不同模型的向量空间不可混算(同维度也不行)。
+        # 每行记生成时的模型名; 读取侧只认当前模型的向量 → 换模型后旧向量
+        # 自动视为"缺失", backfill 重灌即可, 不会静默混算出垃圾相似度。
+        try:
+            conn.execute("ALTER TABLE embeddings ADD COLUMN model TEXT DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # 列已存在
         conn.commit()
         conn.close()
+
+    def _model_matches(self, stored_model: str) -> bool:
+        """空值(老库)按 _LEGACY_MODEL 归属; 只有与当前模型一致的向量才可用。"""
+        return (stored_model or self._LEGACY_MODEL) == self.model
 
     async def generate_and_store(self, bucket_id: str, content: str) -> bool:
         """
@@ -110,12 +124,12 @@ class EmbeddingEngine:
             return []
 
     def _store_embedding(self, bucket_id: str, embedding: list[float]):
-        """Store embedding in SQLite."""
+        """Store embedding in SQLite (带生成模型名)."""
         from utils import now_iso
         conn = sqlite3.connect(self.db_path)
         conn.execute(
-            "INSERT OR REPLACE INTO embeddings (bucket_id, embedding, updated_at) VALUES (?, ?, ?)",
-            (bucket_id, json.dumps(embedding), now_iso()),
+            "INSERT OR REPLACE INTO embeddings (bucket_id, embedding, updated_at, model) VALUES (?, ?, ?, ?)",
+            (bucket_id, json.dumps(embedding), now_iso(), self.model),
         )
         conn.commit()
         conn.close()
@@ -128,13 +142,14 @@ class EmbeddingEngine:
         conn.close()
 
     async def get_embedding(self, bucket_id: str) -> list[float] | None:
-        """Retrieve stored embedding for a bucket. Returns None if not found."""
+        """Retrieve stored embedding for a bucket.
+        Returns None if not found — 或者存的是别的模型的向量(等同缺失, 触发 backfill 重灌)。"""
         conn = sqlite3.connect(self.db_path)
         row = conn.execute(
-            "SELECT embedding FROM embeddings WHERE bucket_id = ?", (bucket_id,)
+            "SELECT embedding, model FROM embeddings WHERE bucket_id = ?", (bucket_id,)
         ).fetchone()
         conn.close()
-        if row:
+        if row and self._model_matches(row[1]):
             try:
                 return json.loads(row[0])
             except json.JSONDecodeError:
@@ -158,9 +173,9 @@ class EmbeddingEngine:
             logger.warning(f"Query embedding failed: {e}")
             return []
 
-        # Load all embeddings from SQLite
+        # Load all embeddings from SQLite (只取当前模型的向量 — 跨模型不可混算)
         conn = sqlite3.connect(self.db_path)
-        rows = conn.execute("SELECT bucket_id, embedding FROM embeddings").fetchall()
+        rows = conn.execute("SELECT bucket_id, embedding, model FROM embeddings").fetchall()
         conn.close()
 
         if not rows:
@@ -168,7 +183,9 @@ class EmbeddingEngine:
 
         # Calculate cosine similarity
         results = []
-        for bucket_id, emb_json in rows:
+        for bucket_id, emb_json, stored_model in rows:
+            if not self._model_matches(stored_model):
+                continue
             try:
                 stored_embedding = json.loads(emb_json)
                 sim = self._cosine_similarity(query_embedding, stored_embedding)
