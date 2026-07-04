@@ -88,6 +88,18 @@ class EmbeddingEngine:
         """空值(老库)按 _LEGACY_MODEL 归属; 只有与当前模型一致的向量才可用。"""
         return (stored_model or self._LEGACY_MODEL) == self.model
 
+    def _query_text(self, query: str) -> str:
+        """查询侧文本预处理 — Qwen3-Embedding 系官方用法: 查询要带 instruction
+        前缀、文档侧保持原文(非对称检索)。不带前缀 = 降级模式, 检索质量明显打折
+        (实测: 换说法查询从可召回掉到完全召不回)。其他模型原样返回不受影响。"""
+        if "qwen3-embedding" in (self.model or "").lower():
+            instruct = os.environ.get(
+                "OMBRE_EMBED_QUERY_INSTRUCT",
+                "Given a chat message from the user, retrieve relevant personal memories about the user and the assistant",
+            )
+            return f"Instruct: {instruct}\nQuery: {query}"
+        return query
+
     async def generate_and_store(self, bucket_id: str, content: str) -> bool:
         """
         Generate embedding for content and store in SQLite.
@@ -166,7 +178,7 @@ class EmbeddingEngine:
             return []
 
         try:
-            query_embedding = await self._generate_embedding(query)
+            query_embedding = await self._generate_embedding(self._query_text(query))
             if not query_embedding:
                 return []
         except Exception as e:
