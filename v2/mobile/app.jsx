@@ -3692,13 +3692,112 @@ function ImportScreen() {
 // 原始桶零接触, 重建时她的编辑按成员重叠继承。设计稿=记忆库优化/07。
 // ─────────────────────────────────────────
 
+// 族色: id 哈希 → 冷紫→玫瑰域色相(235-350), 亮暗两套在 CSS 里由 --fam-h 合成
+function famHue(id) {
+  let h = 0;
+  for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) >>> 0;
+  return 235 + (h % 116);
+}
+const famDate = (t) => {
+  const s = String(t || '');
+  return s.length >= 10 ? s.slice(5, 10).replace('-', '·') : '——';
+};
+
+// 时间之弦: 成员按 event_time 在 4%~96% 区间落点; 全同日则均匀铺开
+function FamStrand({ members }) {
+  const ts = members.map(m => new Date(m.event_time || 0).getTime()).filter(t => t > 0);
+  if (ts.length < 2) return null;
+  const min = Math.min(...ts), max = Math.max(...ts);
+  const pos = (t) => max === min ? 50 : 4 + ((t - min) / (max - min)) * 92;
+  return (
+    <React.Fragment>
+      <div className="fam-strand">
+        <div className="rail"/>
+        {members.map((m, i) => {
+          const t = new Date(m.event_time || 0).getTime();
+          const left = t > 0 ? pos(t) : 4 + (i / Math.max(1, members.length - 1)) * 92;
+          return <div key={m.id} className="dot" style={{ left: left + '%' }}/>;
+        })}
+      </div>
+      <div className="fam-span">
+        <span>{famDate(new Date(min).toISOString())}</span>
+        <span>{famDate(new Date(max).toISOString())}</span>
+      </div>
+    </React.Fragment>
+  );
+}
+
+function FamCard({ f, onPatch }) {
+  const [open, setOpen] = useState(false);
+  const [full, setFull] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(f.name);
+
+  const commit = () => {
+    const v = draft.trim();
+    if (v && v !== f.name) onPatch(f.id, { name: v });
+    setEditing(false);
+  };
+
+  return (
+    <div className="fam-card" style={{ '--fam-h': famHue(f.id) }}>
+      <div className="fam-name-row">
+        {editing ? (
+          <input
+            className="fam-name-input"
+            autoFocus
+            value={draft}
+            onChange={e => setDraft(e.target.value)}
+            onKeyDown={e => { if (e.key === 'Enter') commit(); if (e.key === 'Escape') setEditing(false); }}
+            onBlur={commit}
+          />
+        ) : (
+          <div className="fam-name" onClick={() => { setDraft(f.name); setEditing(true); }}>
+            {f.pinned && <span className="pin">✦</span>}{f.name}
+          </div>
+        )}
+        <span className="fam-count">{f.size} 条</span>
+      </div>
+
+      <FamStrand members={f.members || []}/>
+
+      {f.summary && (
+        <p className={'fam-summary' + (full ? ' open' : '')} onClick={() => setFull(v => !v)}>
+          {f.summary}
+        </p>
+      )}
+
+      {open && (
+        <div className="fam-members">
+          {(f.members || []).map(m => (
+            <div key={m.id} className="fam-member" onClick={() => navigate('/mem/' + encodeURIComponent(m.id))}>
+              <span className="d">{famDate(m.event_time)}</span>
+              <span className="n">{m.name}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="fam-foot">
+        <button className="fam-act" onClick={() => setOpen(v => !v)}>{open ? '收起' : '成员'}</button>
+        <span className="fam-dotsep">·</span>
+        <button className="fam-act" onClick={() => onPatch(f.id, { pinned: !f.pinned })}>{f.pinned ? '取消钉住' : '钉住'}</button>
+        <span className="fam-dotsep">·</span>
+        <button
+          className="fam-act warn"
+          onClick={() => {
+            if (window.confirm('解散「' + f.name + '」?\n只是收起这个族, 记忆本体不动; 重建后保持解散。')) onPatch(f.id, { dissolved: true });
+          }}
+        >解散</button>
+      </div>
+    </div>
+  );
+}
+
 function FamiliesScreen() {
   const [data, setData] = useState(null);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState({});
-  const [editingId, setEditingId] = useState(null);
-  const [draft, setDraft] = useState('');
 
   const load = () => api('/api/families')
     .then(d => { setData(d); setError(null); })
@@ -3727,94 +3826,31 @@ function FamiliesScreen() {
     } catch (e) { alert('保存失败: ' + e.message); }
   };
 
-  const card = {
-    background: 'var(--card, rgba(255,255,255,.72))', borderRadius: 14,
-    padding: '14px 16px', marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,.05)',
-  };
-  const fams = (data && data.families) || [];
+  const fams = ((data && data.families) || [])
+    .slice()
+    .sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.size - a.size);
 
   return (
-    <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg)', padding: '18px 16px 110px' }}>
-      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
-        <h2 style={{ margin: 0, fontSize: 22 }}>记忆家族</h2>
-        <button
-          onClick={rebuild}
-          disabled={busy}
-          style={{ border: '1px solid var(--ink-4, #bbb)', background: 'transparent',
-                   borderRadius: 10, padding: '5px 12px', fontSize: 13, color: 'var(--ink, #333)',
-                   opacity: busy ? 0.5 : 1 }}
-        >{busy ? '重建中…' : '↻ 重建'}</button>
+    <div className="fam-body">
+      <div className="fam-hd">
+        <h2>家族<em>{fams.length > 0 ? fams.length + ' 条弧线' : ''}</em></h2>
+        <button className={'fam-rebuild' + (busy ? ' busy' : '')} onClick={rebuild} disabled={busy}>
+          {busy ? '聚类中…' : '↻ 重建'}
+        </button>
       </div>
-      <p style={{ margin: '0 0 16px', fontSize: 12, color: 'var(--ink-4, #999)' }}>
+      <p className="fam-sub">
         {data && data.updated_at
-          ? `向量聚出的主题弧线 · ${fams.length} 族 · 更新 ${String(data.updated_at).slice(5, 16).replace('T', ' ')}`
-          : '向量聚出的主题弧线 —— 还没建过, 点右上「重建」长出第一批'}
+          ? '记忆自己长出的主题弧线 · 更新于 ' + String(data.updated_at).slice(5, 16).replace('T', ' ')
+          : '记忆自己长出的主题弧线'}
       </p>
       {error && <div className="mood-err">{error}</div>}
       {data && fams.length === 0 && !error && (
-        <div style={{ textAlign: 'center', color: 'var(--ink-4, #999)', padding: '48px 0', fontSize: 14 }}>
-          (空) 点「↻ 重建」开始聚类
+        <div className="fam-empty">
+          <div className="glyph">❋</div>
+          <p>还没有家族。<br/>点右上「重建」, 让相似的记忆彼此相认。</p>
         </div>
       )}
-      {fams.map(f => (
-        <div key={f.id} style={card}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            {editingId === f.id ? (
-              <input
-                autoFocus
-                value={draft}
-                onChange={e => setDraft(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && draft.trim()) { patch(f.id, { name: draft.trim() }); setEditingId(null); }
-                  if (e.key === 'Escape') setEditingId(null);
-                }}
-                onBlur={() => setEditingId(null)}
-                style={{ flex: 1, fontSize: 16, fontWeight: 600, border: 'none', borderBottom: '1px solid var(--ink-4,#bbb)',
-                         background: 'transparent', color: 'var(--ink,#222)', outline: 'none', padding: '2px 0' }}
-              />
-            ) : (
-              <div
-                style={{ flex: 1, fontSize: 16, fontWeight: 600, color: 'var(--ink, #222)' }}
-                onClick={() => { setEditingId(f.id); setDraft(f.name); }}
-                title="点击改名"
-              >
-                {f.pinned ? '📌 ' : ''}{f.name}
-                <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--ink-4,#999)', marginLeft: 6 }}>{f.size} 条</span>
-              </div>
-            )}
-          </div>
-          {f.summary && (
-            <p style={{ margin: '8px 0 0', fontSize: 13, lineHeight: 1.65, color: 'var(--ink-2, #555)' }}>{f.summary}</p>
-          )}
-          <div style={{ marginTop: 10, display: 'flex', gap: 14, fontSize: 12, color: 'var(--ink-4, #888)' }}>
-            <span onClick={() => setOpen(o => ({ ...o, [f.id]: !o[f.id] }))} style={{ cursor: 'pointer' }}>
-              {open[f.id] ? '▾ 收起成员' : '▸ 展开成员'}
-            </span>
-            <span onClick={() => patch(f.id, { pinned: !f.pinned })} style={{ cursor: 'pointer' }}>
-              {f.pinned ? '取消钉住' : '钉住'}
-            </span>
-            <span
-              onClick={() => { if (window.confirm('解散「' + f.name + '」?\n只隐藏这个族, 记忆本体不动, 重建后仍保持解散。')) patch(f.id, { dissolved: true }); }}
-              style={{ cursor: 'pointer' }}
-            >解散</span>
-          </div>
-          {open[f.id] && (
-            <div style={{ marginTop: 8, borderTop: '1px dashed var(--ink-5, #ddd)', paddingTop: 8 }}>
-              {(f.members || []).map(m => (
-                <div key={m.id} style={{ display: 'flex', gap: 8, padding: '3px 0', fontSize: 13 }}
-                     onClick={() => navigate('/mem/' + encodeURIComponent(m.id))}>
-                  <span style={{ color: 'var(--ink-4,#999)', fontVariantNumeric: 'tabular-nums' }}>
-                    {String(m.event_time || '').slice(5, 10) || '——'}
-                  </span>
-                  <span style={{ color: 'var(--ink, #333)', textDecorationLine: 'underline', textDecorationColor: 'var(--ink-5,#ddd)' }}>
-                    {m.name}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      ))}
+      {fams.map(f => <FamCard key={f.id} f={f} onPatch={patch}/>)}
       <TabBar active="fam"/>
     </div>
   );
