@@ -165,6 +165,7 @@ function TabBar({ active }) {
   const tabs = [
     { id: 'home',    href: '/',         ic: '◐', label: '记忆' },
     { id: 'review',  href: '/review',   ic: '✓', label: '审阅' },
+    { id: 'fam',     href: '/fam',      ic: '❋', label: '家族' },
     { id: 'cal',     href: '/cal',      ic: '▦', label: '日历' },
     { id: 'setting', href: '/setting',  ic: '⊙', label: '设置' },
   ];
@@ -3685,6 +3686,140 @@ function ImportScreen() {
 // 占位屏(给 /new 等还没实装的路由用)
 // ─────────────────────────────────────────
 
+// ─────────────────────────────────────────
+// 屏 · 家族(记忆家族/归纳层, 2026-07-06 P1)
+// 派生索引层: 向量聚类长出的主题弧线。改名/钉住/解散/一键重建;
+// 原始桶零接触, 重建时她的编辑按成员重叠继承。设计稿=记忆库优化/07。
+// ─────────────────────────────────────────
+
+function FamiliesScreen() {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState({});
+  const [editingId, setEditingId] = useState(null);
+  const [draft, setDraft] = useState('');
+
+  const load = () => api('/api/families')
+    .then(d => { setData(d); setError(null); })
+    .catch(e => setError(e.message));
+  useEffect(() => { load(); }, []);
+
+  const rebuild = async () => {
+    if (busy) return;
+    if (!window.confirm('全量重建家族?\n聚类 + 起名约 1-2 分钟。你的改名/钉住/解散会按成员重叠自动继承。')) return;
+    setBusy(true);
+    try {
+      await api('/api/families/rebuild', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}',
+      });
+      await load();
+    } catch (e) { alert('重建失败: ' + e.message); }
+    finally { setBusy(false); }
+  };
+
+  const patch = async (fid, fields) => {
+    try {
+      await api('/api/family/' + encodeURIComponent(fid), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(fields),
+      });
+      await load();
+    } catch (e) { alert('保存失败: ' + e.message); }
+  };
+
+  const card = {
+    background: 'var(--card, rgba(255,255,255,.72))', borderRadius: 14,
+    padding: '14px 16px', marginBottom: 12, boxShadow: '0 1px 4px rgba(0,0,0,.05)',
+  };
+  const fams = (data && data.families) || [];
+
+  return (
+    <div style={{ height: '100%', overflowY: 'auto', background: 'var(--bg)', padding: '18px 16px 110px' }}>
+      <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 4 }}>
+        <h2 style={{ margin: 0, fontSize: 22 }}>记忆家族</h2>
+        <button
+          onClick={rebuild}
+          disabled={busy}
+          style={{ border: '1px solid var(--ink-4, #bbb)', background: 'transparent',
+                   borderRadius: 10, padding: '5px 12px', fontSize: 13, color: 'var(--ink, #333)',
+                   opacity: busy ? 0.5 : 1 }}
+        >{busy ? '重建中…' : '↻ 重建'}</button>
+      </div>
+      <p style={{ margin: '0 0 16px', fontSize: 12, color: 'var(--ink-4, #999)' }}>
+        {data && data.updated_at
+          ? `向量聚出的主题弧线 · ${fams.length} 族 · 更新 ${String(data.updated_at).slice(5, 16).replace('T', ' ')}`
+          : '向量聚出的主题弧线 —— 还没建过, 点右上「重建」长出第一批'}
+      </p>
+      {error && <div className="mood-err">{error}</div>}
+      {data && fams.length === 0 && !error && (
+        <div style={{ textAlign: 'center', color: 'var(--ink-4, #999)', padding: '48px 0', fontSize: 14 }}>
+          (空) 点「↻ 重建」开始聚类
+        </div>
+      )}
+      {fams.map(f => (
+        <div key={f.id} style={card}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {editingId === f.id ? (
+              <input
+                autoFocus
+                value={draft}
+                onChange={e => setDraft(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && draft.trim()) { patch(f.id, { name: draft.trim() }); setEditingId(null); }
+                  if (e.key === 'Escape') setEditingId(null);
+                }}
+                onBlur={() => setEditingId(null)}
+                style={{ flex: 1, fontSize: 16, fontWeight: 600, border: 'none', borderBottom: '1px solid var(--ink-4,#bbb)',
+                         background: 'transparent', color: 'var(--ink,#222)', outline: 'none', padding: '2px 0' }}
+              />
+            ) : (
+              <div
+                style={{ flex: 1, fontSize: 16, fontWeight: 600, color: 'var(--ink, #222)' }}
+                onClick={() => { setEditingId(f.id); setDraft(f.name); }}
+                title="点击改名"
+              >
+                {f.pinned ? '📌 ' : ''}{f.name}
+                <span style={{ fontWeight: 400, fontSize: 12, color: 'var(--ink-4,#999)', marginLeft: 6 }}>{f.size} 条</span>
+              </div>
+            )}
+          </div>
+          {f.summary && (
+            <p style={{ margin: '8px 0 0', fontSize: 13, lineHeight: 1.65, color: 'var(--ink-2, #555)' }}>{f.summary}</p>
+          )}
+          <div style={{ marginTop: 10, display: 'flex', gap: 14, fontSize: 12, color: 'var(--ink-4, #888)' }}>
+            <span onClick={() => setOpen(o => ({ ...o, [f.id]: !o[f.id] }))} style={{ cursor: 'pointer' }}>
+              {open[f.id] ? '▾ 收起成员' : '▸ 展开成员'}
+            </span>
+            <span onClick={() => patch(f.id, { pinned: !f.pinned })} style={{ cursor: 'pointer' }}>
+              {f.pinned ? '取消钉住' : '钉住'}
+            </span>
+            <span
+              onClick={() => { if (window.confirm('解散「' + f.name + '」?\n只隐藏这个族, 记忆本体不动, 重建后仍保持解散。')) patch(f.id, { dissolved: true }); }}
+              style={{ cursor: 'pointer' }}
+            >解散</span>
+          </div>
+          {open[f.id] && (
+            <div style={{ marginTop: 8, borderTop: '1px dashed var(--ink-5, #ddd)', paddingTop: 8 }}>
+              {(f.members || []).map(m => (
+                <div key={m.id} style={{ display: 'flex', gap: 8, padding: '3px 0', fontSize: 13 }}
+                     onClick={() => navigate('/mem/' + encodeURIComponent(m.id))}>
+                  <span style={{ color: 'var(--ink-4,#999)', fontVariantNumeric: 'tabular-nums' }}>
+                    {String(m.event_time || '').slice(5, 10) || '——'}
+                  </span>
+                  <span style={{ color: 'var(--ink, #333)', textDecorationLine: 'underline', textDecorationColor: 'var(--ink-5,#ddd)' }}>
+                    {m.name}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ))}
+      <TabBar active="fam"/>
+    </div>
+  );
+}
+
 function PlaceholderScreen({ tab, ic, title, sub }) {
   return (
     <div style={{ height: '100%', position: 'relative', background: 'var(--bg)' }}>
@@ -3720,7 +3855,7 @@ function App() {
   // 深链(/mem/:id, /day/:k 等)保留. PWA 冷启动会带上次 hash, 不重置就停那儿
   useEffect(() => {
     const head = (window.location.hash || '').replace(/^#\/?/, '').split('/')[0];
-    if (['review', 'cal', 'setting'].includes(head)) {
+    if (['review', 'cal', 'setting', 'fam'].includes(head)) {
       window.location.hash = '#/';
     }
   }, []);
@@ -3740,6 +3875,8 @@ function App() {
       return <MemFullScreen id={rest[0] || ''}/>;
     case 'review':
       return <ReviewScreen/>;
+    case 'fam':
+      return <FamiliesScreen/>;
     case 'cal':
       return <CalScreen/>;
     case 'setting':

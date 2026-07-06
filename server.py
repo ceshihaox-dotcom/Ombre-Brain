@@ -63,6 +63,8 @@ dehydrator = Dehydrator(config)                      # Dehydrator / 脱水器
 decay_engine = DecayEngine(config, bucket_mgr)       # Decay engine / 衰减引擎
 embedding_engine = EmbeddingEngine(config)            # Embedding engine / 向量化引擎
 import_engine = ImportEngine(config, bucket_mgr, dehydrator, embedding_engine)  # Import engine / 导入引擎
+from families import FamilyManager
+family_mgr = FamilyManager(bucket_mgr.base_dir, embedding_engine, bucket_mgr, dehydrator)  # 记忆家族/归纳层
 
 # --- /api/buckets in-memory cache / 内存级缓存 ---
 # 每个视图(cells/network/console/mobile)启动都自己拉一遍 /api/buckets,
@@ -1542,6 +1544,59 @@ async def api_search_log(request):
         return JSONResponse({"count": len(items), "items": items})
     except Exception as e:
         return JSONResponse({"error": str(e)}, status_code=500)
+
+
+# ============================================================
+# 记忆家族/归纳层 (2026-07-06 P1) — 纯派生索引: 原始桶零接触, 整体可重算。
+# 设计稿=记忆库优化/07-家族层设计稿; 前端=v2/mobile「家族」tab。
+# ============================================================
+
+@mcp.custom_route("/api/families", methods=["GET"])
+async def api_families(request):
+    """家族列表(含她的编辑态)。?include_dissolved=true 连解散的也回。"""
+    from starlette.responses import JSONResponse
+    state = family_mgr.load()
+    fams = state.get("families", [])
+    if request.query_params.get("include_dissolved", "false").lower() != "true":
+        fams = [f for f in fams if not f.get("dissolved")]
+    return JSONResponse({
+        "updated_at": state.get("updated_at", ""),
+        "params": state.get("params", {}),
+        "rebuilding": family_mgr.rebuilding,
+        "families": fams,
+    })
+
+
+@mcp.custom_route("/api/families/rebuild", methods=["POST"])
+async def api_families_rebuild(request):
+    """全量重算: 平均连接聚类 + LLM(dehydrator 同款客户端)起名写弧线摘要。
+    她的改名/钉住/解散按成员重叠(Jaccard≥0.5)继承。可选 body {threshold}。"""
+    from starlette.responses import JSONResponse
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    try:
+        threshold = float((body or {}).get("threshold") or 0.75)
+    except (TypeError, ValueError):
+        threshold = 0.75
+    result = await family_mgr.rebuild(threshold=threshold)
+    return JSONResponse(result, status_code=200 if result.get("ok") else 500)
+
+
+@mcp.custom_route("/api/family/{fid}", methods=["POST"])
+async def api_family_update(request):
+    """她的编辑入口: body 可含 name / pinned / dissolved。"""
+    from starlette.responses import JSONResponse
+    fid = request.path_params["fid"]
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+    fam = family_mgr.update_family(fid, body or {})
+    if fam is None:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    return JSONResponse({"ok": True, "family": fam})
 
 
 # =============================================================
