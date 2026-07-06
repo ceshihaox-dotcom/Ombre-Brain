@@ -15,10 +15,13 @@
 #
 # 评测集格式 (tools/eval_set.json):
 #   [{"query": "...", "expect": ["桶名子串" 或 "id:<bucket_id>"], "note": "..."},
-#    {"query": "...", "negative": true, "note": "不该有高分命中的噪声消息"}]
+#    {"query": "...", "negative": true, "note": "不该有高分命中的噪声消息"},
+#    {"query": "...", "forbid": ["桶名子串", ...], "note": "定向负控"}]
 # 指标:
 #   正例: rank(第一条 expect 命中的名次, 关键词通道在前向量在后) → hit@1/3/10, MRR
 #   负例: top-3 里 score ≥ NEG_LEAK_SCORE(默认70) 视为泄漏
+#   定向负控(forbid): 消息本身正常、可以有命中, 但 top-3 高分位出现指定桶 = 泄漏
+#   (治"亲密桶泄漏进情感倾诉"这类 — 命中可以, 命中它们不行)
 # ============================================================
 
 import argparse
@@ -99,9 +102,11 @@ def main():
         eval_set = [e for e in json.load(f)
                     if isinstance(e, dict) and e.get("query") and not e["query"].startswith("_")]
 
-    positives = [e for e in eval_set if not e.get("negative")]
+    positives = [e for e in eval_set if not e.get("negative") and not e.get("forbid")]
     negatives = [e for e in eval_set if e.get("negative")]
-    print(f"评测集: {len(positives)} 正例 + {len(negatives)} 负控 | vector={'on' if args.vector else 'off'}")
+    forbids = [e for e in eval_set if e.get("forbid") and not e.get("negative")]
+    print(f"评测集: {len(positives)} 正例 + {len(negatives)} 负控 + {len(forbids)} 定向负控"
+          f" | vector={'on' if args.vector else 'off'}")
     print("=" * 72)
 
     results, rr_sum = [], 0.0
@@ -161,6 +166,25 @@ def main():
         if bad:
             leaks.append({"query": q, "leaks": bad})
 
+    # 定向负控: 有命中可以, 但 forbid 名单里的桶不该出现在 top-3 高分位
+    forbid_leaks = []
+    for e in forbids:
+        q, banned = e["query"], e["forbid"]
+        try:
+            data = fetch_search(base, args.token, q, args.vector)
+        except Exception as ex:
+            print(f"✗ 请求失败「{q[:30]}」: {ex}")
+            continue
+        ordered = (data.get("keyword_hits") or [])[:3]
+        bad = [(h.get("name", "?")[:14], h.get("score", 0)) for h in ordered
+               if (h.get("score") or 0) >= NEG_LEAK_SCORE
+               and any(x in (h.get("name") or "") for x in banned)]
+        mark = "✅" if not bad else "💥"
+        print(f"{mark} 禁抓「{q[:34]}」 {'干净' if not bad else f'泄漏: {bad}'}")
+        results.append({"query": q, "forbid": banned, "leaks": bad})
+        if bad:
+            forbid_leaks.append({"query": q, "leaks": bad})
+
     n = max(1, len(positives))
     summary = {
         "ts": datetime.now().isoformat(timespec="seconds"),
@@ -173,10 +197,13 @@ def main():
         "hit@3": f"{hit_at[3]}/{len(positives)}",
         "hit@10": f"{hit_at[10]}/{len(positives)}",
         "neg_leaks": len(leaks),
+        "forbids": len(forbids),
+        "forbid_leaks": len(forbid_leaks),
     }
     print("=" * 72)
     print(f"MRR={summary['mrr']}  hit@1={summary['hit@1']}  hit@3={summary['hit@3']}"
-          f"  hit@10={summary['hit@10']}  负控泄漏={len(leaks)}/{len(negatives)}")
+          f"  hit@10={summary['hit@10']}  负控泄漏={len(leaks)}/{len(negatives)}"
+          f"  定向泄漏={len(forbid_leaks)}/{len(forbids)}")
 
     if args.save:
         out = os.path.join(os.path.dirname(__file__),
