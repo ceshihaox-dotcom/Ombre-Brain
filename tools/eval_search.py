@@ -125,9 +125,11 @@ def main():
                 rank_raw = i
                 break
         rank = rank_raw
-        # --rerank: 把 top-10 候选(name+summary+preview)交给外部 reranker 重排后再算名次
+        # --rerank: 把 top-20 候选(name+summary+preview)交给外部 reranker 重排后再算名次
+        # (2026-07-09 池子 10→20: enrichment 后全库关键词表面变大, 边缘目标被挤出小池 —
+        #  与生产注入管线的精排池扩容同步)
         if args.rerank and ordered:
-            pool = ordered[:10]
+            pool = ordered[:20]
             docs = [f"{h.get('name','')}: {h.get('summary') or h.get('content_preview') or ''}"[:300]
                     for h in pool]
             order = rerank_via_api(q, docs, args.rerank_model, rerank_key, args.rerank_url)
