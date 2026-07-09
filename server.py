@@ -1013,6 +1013,45 @@ async def trace(
 
 
 # =============================================================
+# Tool: source — 查看一条记忆的对话原文 (metadata.raw_source)
+# 原文由记忆写入侧逐字保存(或用户手动补), 想核对"当时原话"时按需拉,
+# 不进自动注入/浮现 — 上下文不因此膨胀。
+# =============================================================
+@mcp.tool()
+async def source(bucket_id: str = "", name: str = "") -> str:
+    """查看一条记忆的对话原文(当时对话的逐字记录)。想核对「当时原话怎么说的/具体细节」时用: 传 bucket_id, 或传记忆名 name(精确匹配优先, 唯一的模糊命中也认)。原文较长, 需要核对时才调, 别随手翻。"""
+    bucket = None
+    if bucket_id and bucket_id.strip():
+        bucket = await bucket_mgr.get(bucket_id.strip())
+        if not bucket:
+            return f"未找到记忆桶: {bucket_id}"
+    elif name and name.strip():
+        q = name.strip()
+        buckets = await bucket_mgr.list_all(include_archive=True)
+        exact = [b for b in buckets if b.get("metadata", {}).get("name", "") == q]
+        if len(exact) == 1:
+            bucket = exact[0]
+        else:
+            fuzzy = [b for b in buckets if q in b.get("metadata", {}).get("name", "")]
+            if len(fuzzy) == 1:
+                bucket = fuzzy[0]
+            elif len(fuzzy) > 1:
+                names = "、".join(b["metadata"].get("name", "?") for b in fuzzy[:8])
+                return f"「{q}」命中 {len(fuzzy)} 条, 说清楚一点或用 bucket_id: {names}"
+            else:
+                return f"没有名字含「{q}」的记忆。"
+    else:
+        return "请传 bucket_id 或记忆名 name。"
+
+    meta = bucket.get("metadata", {})
+    raw = str(meta.get("raw_source", "") or "").strip()
+    bname = meta.get("name", bucket.get("id", "?"))
+    if not raw:
+        return f"「{bname}」没有存原文 — 这条记忆写入时没带对话记录(老记忆可能还没补齐)。"
+    return f"「{bname}」的对话原文:\n\n{raw}"
+
+
+# =============================================================
 # Tool 5: pulse — Heartbeat, system status + memory listing
 # 工具 5：pulse — 脉搏，系统状态 + 记忆列表
 # =============================================================
