@@ -3057,9 +3057,11 @@ async def api_search(request):
         # === 向量通道(可选) — 排除已在 keyword_hits 里的桶,避免重复 ===
         # search_similar 返回 list[tuple[bucket_id, similarity]],不是 dict
         # fallback 模式: 关键词已有钩子字段强命中 → 语义兜底没必要, 跳过省时延
+        # 2026-07-09 收紧: 旧条件(任意钩子字段≥85)被 fuzzy 长句分数通胀骗过 —
+        # 生产实锤"括约肌→小菊花梗"语义鸿沟查询被无关的85分tag命中堵死向量。
+        # 现在只有 title 字段本身 ≥90(近乎真标题命中)才有资格省掉向量兜底。
         _kw_strong = any(
-            (h.get("score") or 0) >= 85
-            and any(f in (h.get("matched_in") or []) for f in ("title", "tag", "summary"))
+            (h.get("field_scores") or {}).get("title", 0) >= 90
             for h in keyword_hits
         )
         run_vector = include_vector or (vector_fallback and not _kw_strong)
