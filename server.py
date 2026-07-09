@@ -1551,10 +1551,31 @@ async def api_search_log(request):
 # 设计稿=记忆库优化/07-家族层设计稿; 前端=v2/mobile「家族」tab。
 # ============================================================
 
+# 自动重建循环的惰性启动(FastMCP 无 startup 钩子, 从热路由里拉起一次)。
+# 阀门: FAMILIES_AUTO_REBUILD=off 关闭。
+_family_auto_started = False
+
+def _ensure_family_auto_rebuild():
+    global _family_auto_started
+    if _family_auto_started:
+        return
+    if os.environ.get("FAMILIES_AUTO_REBUILD", "on").strip().lower() == "off":
+        _family_auto_started = True
+        return
+    try:
+        import asyncio
+        asyncio.get_running_loop().create_task(family_mgr.auto_rebuild_loop())
+        _family_auto_started = True
+        logger.info("[families] auto-rebuild loop started (lazy, 写入事件去抖同步)")
+    except RuntimeError:
+        pass  # 没有运行中的 loop(理论上不会到这), 下次再试
+
+
 @mcp.custom_route("/api/families", methods=["GET"])
 async def api_families(request):
     """家族列表(含她的编辑态)。?include_dissolved=true 连解散的也回。"""
     from starlette.responses import JSONResponse
+    _ensure_family_auto_rebuild()
     state = family_mgr.load()
     fams = state.get("families", [])
     if request.query_params.get("include_dissolved", "false").lower() != "true":
@@ -3014,6 +3035,7 @@ async def api_search(request):
     exclude_pinned = request.query_params.get("exclude_pinned", "false").lower() == "true"
     # simulate=true: 即时模拟(浮现观测页用) —— 不记命中统计、不进最近搜索, 纯 dry-run 看"会检索到什么"
     simulate = request.query_params.get("simulate", "false").lower() == "true"
+    _ensure_family_auto_rebuild()  # 惰性拉起家族自动重建循环(注入每轮都经过这里)
 
     def _is_noise(meta):
         return bool(meta.get("resolved", False) and meta.get("importance", 5) == 1)

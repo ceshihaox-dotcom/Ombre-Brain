@@ -230,8 +230,11 @@ class FamilyManager:
                         inherited = of
                         break
                 if inherited and inherited.get("name_is_manual"):
-                    name, summary = inherited["name"], inherited.get("summary", "")
-                    named = {"name": name, "summary": summary}
+                    named = {"name": inherited["name"], "summary": inherited.get("summary", "")}
+                elif inherited and inherited.get("id") == fid and inherited.get("name"):
+                    # 成员集完全没变(id=成员哈希) → 复用上次的名字/摘要, 省 DeepSeek 调用
+                    # (自动重建挂到写入事件后会频繁跑, 只有真变动的族才重新起名)
+                    named = {"name": inherited["name"], "summary": inherited.get("summary", "")}
                 else:
                     named = await self._name_family(members)
                 new_fams.append({
@@ -264,3 +267,35 @@ class FamilyManager:
             return {"ok": False, "error": str(e)}
         finally:
             self.rebuilding = False
+
+    # ---------- 自动重建 (与写入事件同步, 2026-07-09 她拍板) ----------
+    # 她的记忆写入跟着"新一天第一条消息"走(4点JST切窗→收口→分日块入OB), 不是定时的。
+    # 所以不用挂钟表: 每 poll_s 看一眼"有没有比上次建族更新的桶、且最近 debounce_s 没新写入"
+    # → 有就重建。效果: 收口写完尘埃落定十分钟后家族自动刷新; hold 白天写的也能入族。
+    # 阀门: env FAMILIES_AUTO_REBUILD=off 关掉。成员没变的族复用命名(见 rebuild), 频繁跑近零成本。
+    async def auto_rebuild_loop(self, poll_s: int = 300, debounce_s: int = 600):
+        import asyncio
+        logger.info(f"[families] auto-rebuild loop up (poll {poll_s}s, debounce {debounce_s}s)")
+        while True:
+            try:
+                await asyncio.sleep(poll_s)
+                if self.rebuilding:
+                    continue
+                state = self.load()
+                built_at = state.get("updated_at") or ""
+                buckets = await self.bucket_mgr.list_all(include_archive=False)
+                newest = ""
+                for b in buckets:
+                    meta = b.get("metadata") or {}
+                    c = str(meta.get("created") or "")
+                    if c > newest:
+                        newest = c
+                if not newest or newest <= built_at:
+                    continue  # 没有比上次建族更新的桶
+                age_s = (datetime.now() - datetime.fromisoformat(newest[:19])).total_seconds()
+                if age_s < debounce_s:
+                    continue  # 还在写入余波里, 等尘埃落定
+                logger.info(f"[families] new buckets since {built_at or '(never)'} → auto rebuild")
+                await self.rebuild()
+            except Exception:
+                logger.exception("[families] auto-rebuild tick failed (loop continues)")
