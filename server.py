@@ -50,7 +50,10 @@ from dehydrator import Dehydrator
 from decay_engine import DecayEngine
 from embedding_engine import EmbeddingEngine
 from import_memory import ImportEngine
-from utils import load_config, setup_logging, strip_wikilinks, count_tokens_approx, is_internalized, is_protected, is_highlighted
+from utils import load_config, setup_logging, strip_wikilinks, count_tokens_approx, is_internalized, is_protected, is_highlighted, atomic_write_text
+
+# 后台补账任务的强引用(防 GC 早收), 完成即自清
+_BG_TASKS: set = set()
 
 # --- Load config & init logging / 加载配置 & 初始化日志 ---
 config = load_config()
@@ -608,9 +611,13 @@ async def breath(
 
     results = []
     token_used = 0
-    for bucket in matches:
-        if token_used >= max_tokens:
-            break
+
+    # --- 浮现结果分波并发脱水(对齐上游 2.5.0 性能): 每波 4 条并发, 波间检查 token 预算 ---
+    # 旧串行语义"预算用完就不再调 LLM"保留在波粒度: 最多为最后一波多付 ≤3 次脱水调用
+    # (且进脱水缓存, 下次命中复用), 不会像全量 gather 那样为被裁剪的结果整批白付。
+    _DEHYDRATE_WAVE = 4
+
+    async def _dehydrate_one(bucket):
         try:
             clean_meta = {k: v for k, v in bucket["metadata"].items() if k != "tags"}
             # --- Memory reconstruction: shift displayed valence by current mood ---
@@ -619,20 +626,46 @@ async def breath(
                 original_v = float(clean_meta.get("valence") or 0.5)
                 shift = (q_valence - 0.5) * 0.2  # ±0.1 max shift
                 clean_meta["valence"] = max(0.0, min(1.0, original_v + shift))
-            summary = await dehydrator.dehydrate(strip_wikilinks(bucket["content"]), clean_meta)
+            return await dehydrator.dehydrate(strip_wikilinks(bucket["content"]), clean_meta)
+        except Exception as e:
+            logger.warning(f"Failed to dehydrate search result / 检索结果脱水失败: {e}")
+            return None
+
+    touched_ids = []
+    budget_hit = False
+    for _wave_start in range(0, len(matches), _DEHYDRATE_WAVE):
+        if budget_hit:
+            break
+        wave = matches[_wave_start:_wave_start + _DEHYDRATE_WAVE]
+        summaries = await asyncio.gather(*(_dehydrate_one(b) for b in wave))
+        for bucket, summary in zip(wave, summaries):
+            if summary is None:
+                continue
             summary_tokens = count_tokens_approx(summary)
             if token_used + summary_tokens > max_tokens:
+                budget_hit = True
                 break
-            await bucket_mgr.touch(bucket["id"])
+            touched_ids.append(bucket["id"])
             if bucket.get("vector_match"):
                 summary = f"[语义关联] [bucket_id:{bucket['id']}] {summary}"
             else:
                 summary = f"[bucket_id:{bucket['id']}] {summary}"
             results.append(summary)
             token_used += summary_tokens
-        except Exception as e:
-            logger.warning(f"Failed to dehydrate search result / 检索结果脱水失败: {e}")
-            continue
+
+    # --- touch 移出响应路径(对齐上游 2.5.0): 后台补账, 不阻塞 breath 返回 ---
+    # 语义保留: last_active / activation_count / 时间涟漪照旧(上游砍了涟漪, 这里不砍 —
+    # 涟漪读全库已走 list_all 缓存, 后台成本可接受)。
+    if touched_ids:
+        async def _touch_batch(ids=tuple(touched_ids)):
+            for bid in ids:
+                try:
+                    await bucket_mgr.touch(bid)
+                except Exception as e:
+                    logger.warning(f"background touch failed / 后台补账 touch 失败: {bid}: {e}")
+        _task = asyncio.create_task(_touch_batch())
+        _BG_TASKS.add(_task)
+        _task.add_done_callback(_BG_TASKS.discard)
 
     # --- Random surfacing: when search returns < 3, 40% chance to float old memories ---
     # --- 随机浮现：检索结果不足 3 条时，40% 概率从低权重旧桶里漂上来 ---
@@ -1276,11 +1309,7 @@ def _read_runtime_config():
 
 def _write_runtime_config(rc: dict):
     p = _runtime_config_path()
-    os.makedirs(os.path.dirname(p), exist_ok=True)
-    tmp = p + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        _json_cfg.dump(rc, f, ensure_ascii=False, indent=2)
-    os.replace(tmp, p)
+    atomic_write_text(p, _json_cfg.dumps(rc, ensure_ascii=False, indent=2))
 
 def _mask_key(k: str) -> str:
     if not k or len(k) < 12:
@@ -2754,7 +2783,8 @@ async def api_diagnose_bucket(request):
         try:
             import frontmatter
             post = frontmatter.load(h["path"])
-            meta = dict(post.metadata)
+            # 直读路径也做时间字段归一(对齐上游 2.4.4): YAML datetime 对象直接进 JSONResponse 会 500
+            meta = bucket_mgr._normalize_meta_datetimes(dict(post.metadata))
             content = post.content or ""
             entry["loaded"] = True
             entry["metadata"] = {
@@ -3751,8 +3781,10 @@ async def api_config_update(request):
             if "merge_threshold" in body:
                 save_config["merge_threshold"] = int(body["merge_threshold"])
 
-            with open(config_path, "w", encoding="utf-8") as f:
-                yaml.dump(save_config, f, default_flow_style=False, allow_unicode=True)
+            atomic_write_text(
+                config_path,
+                yaml.dump(save_config, default_flow_style=False, allow_unicode=True),
+            )
             updated.append("persisted_to_yaml")
         except Exception as e:
             return JSONResponse({"error": f"persist failed: {e}", "updated": updated}, status_code=500)

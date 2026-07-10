@@ -32,6 +32,8 @@ import logging
 import re
 import shutil
 import atexit
+import time
+import uuid
 from collections import Counter
 from datetime import datetime
 from pathlib import Path
@@ -42,6 +44,9 @@ import jieba
 from rapidfuzz import fuzz
 
 from utils import generate_bucket_id, sanitize_name, safe_path, now_iso, is_highlighted, is_protected, is_internalized
+from utils import atomic_write_text as _atomic_write_text
+from utils import sideline_stale_dest as _sideline_stale_dest
+from utils import parse_iso_datetime, days_since_iso, coerce_bool
 
 logger = logging.getLogger("ombre_brain.bucket")
 
@@ -69,7 +74,7 @@ class BucketManager:
 
         # --- Wikilink config / 双链配置 ---
         wikilink_cfg = config.get("wikilink", {})
-        self.wikilink_enabled = wikilink_cfg.get("enabled", True)
+        self.wikilink_enabled = coerce_bool(wikilink_cfg.get("enabled"), default=True)
         self.wikilink_use_tags = wikilink_cfg.get("use_tags", False)
         self.wikilink_use_domain = wikilink_cfg.get("use_domain", True)
         self.wikilink_use_auto_keywords = wikilink_cfg.get("use_auto_keywords", True)
@@ -130,6 +135,16 @@ class BucketManager:
         self._load_hit_stats()
         atexit.register(self._flush_hit_stats, True)  # 进程正常退出兜底落盘
 
+        # 活跃桶集内存缓存(对齐上游 2.5.0 性能): list_all(include_archive=False) 命中
+        # 直接返回, 不再每次全库 os.walk + frontmatter 重解析(touch 涟漪/随机浮现/
+        # 导入页每次都全扫, 几百桶时是数十秒级热点)。
+        # 失效策略: ①任何改变桶集合/元数据的写操作调 _invalidate_active_cache;
+        # ②touch/涟漪不清整表, 就地更新缓存条目; ③TTL 兜底(上游没有这层)——
+        # 桶是 Obsidian 可手编的 markdown, 外部直接改盘无法触发①, 最多 stale TTL 秒。
+        self._active_cache: "list[dict] | None" = None
+        self._active_cache_at: float = 0.0
+        self._ACTIVE_CACHE_TTL_S = 60.0
+
         # 最近搜索追溯 (ring buffer, 容量 20): 给前端"我这次发消息浮现了哪些"用。
         # 结构: deque([{ts, query, top: [{id, name, score, matched_in, title_hit}, ...]}, ...])
         # 跟 dryrun_log 内容相似但是结构化 + 走 endpoint 而不是 Render 日志, 体感顺很多。
@@ -147,17 +162,17 @@ class BucketManager:
         # keyword_first_sort: True 时 search() 结果按 (title_hit_flag desc, score desc) 二级排序。
         # 比 title_hit_bonus 更激进: 任何 title 命中都排到所有非 title 命中前面。
         # 默认 False; 推荐先用 title_hit_bonus 调到满意, 这个留作"实在压不上去"的核选项。
-        self.keyword_first_sort = bool(scoring.get("keyword_first_sort", False))
+        self.keyword_first_sort = coerce_bool(scoring.get("keyword_first_sort"), default=False)
         # dryrun_log: True 时每次 search() 调用打印 top-N 详细(query / 桶 id / 分数 / 命中字段 / 有无 bonus 对照)。
         # 用于调优 title_hit_bonus 的取值, 也给用户看"哪条记忆经常被命中"做写作反馈。
         # 走 logger.info, Render 日志能直接看到。默认 False 不污染日志。
-        self.dryrun_log = bool(scoring.get("dryrun_log", False))
+        self.dryrun_log = coerce_bool(scoring.get("dryrun_log"), default=False)
         # precise_match_mode: 切换打分算法 fuzzy → 严格关键词 token 命中。
         # query 按标点/空格切 token (len ≥ 2), 每个 token 在桶各字段做严格 substring 命中,
         # 命中分 = sum(命中 token × 字段权重), emotion/time/importance/warmth 全砍。
         # 解决: 长 query 在 partial_ratio 下错乱 + 高 valence 桶被 warmth_boost 推得无关键词也排前。
         # 默认 False → 维持原 fuzzy 行为, 开源/上游兼容。
-        self.precise_match_mode = bool(scoring.get("precise_match_mode", False))
+        self.precise_match_mode = coerce_bool(scoring.get("precise_match_mode"), default=False)
 
     # Runtime-tunable scoring keys (whitelist; values type-coerced per key).
     # 跟 decay_engine.DEFAULTS 同思路 — 限定可被 /api/scoring-config 改的 key, 防误写。
@@ -187,11 +202,11 @@ class BucketManager:
             except (TypeError, ValueError):
                 pass
         if "keyword_first_sort" in overrides:
-            self.keyword_first_sort = bool(overrides["keyword_first_sort"])
+            self.keyword_first_sort = coerce_bool(overrides["keyword_first_sort"], default=False)
         if "dryrun_log" in overrides:
-            self.dryrun_log = bool(overrides["dryrun_log"])
+            self.dryrun_log = coerce_bool(overrides["dryrun_log"], default=False)
         if "precise_match_mode" in overrides:
-            self.precise_match_mode = bool(overrides["precise_match_mode"])
+            self.precise_match_mode = coerce_bool(overrides["precise_match_mode"], default=False)
         if "warmth_boost" in overrides:
             try:
                 self.w_warmth = max(0.0, float(overrides["warmth_boost"]))
@@ -420,10 +435,7 @@ class BucketManager:
                 "buckets": self._hit_stats,
                 "updated_iso": datetime.utcnow().isoformat(),
             }
-            tmp = self._hit_stats_path + ".tmp"
-            with open(tmp, "w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False)
-            os.replace(tmp, self._hit_stats_path)
+            _atomic_write_text(self._hit_stats_path, json.dumps(payload, ensure_ascii=False))
             self._hit_dirty = 0
             self._hit_last_flush = datetime.utcnow()
         except Exception as e:
@@ -742,11 +754,12 @@ class BucketManager:
         file_path = safe_path(target_dir, filename)
 
         try:
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(frontmatter.dumps(post))
+            _atomic_write_text(file_path, frontmatter.dumps(post))
         except OSError as e:
             logger.error(f"Failed to write bucket file / 写入桶文件失败: {file_path}: {e}")
             raise
+
+        self._invalidate_active_cache()
 
         flag_tags = []
         if protected:
@@ -791,6 +804,7 @@ class BucketManager:
         filename = os.path.basename(file_path)
         new_path = safe_path(target_dir, filename)
         if os.path.normpath(file_path) != os.path.normpath(new_path):
+            _sideline_stale_dest(new_path)
             os.rename(file_path, new_path)
             logger.info(f"Moved bucket / 移动记忆桶: {filename} → {target_dir}/")
         return new_path
@@ -991,11 +1005,13 @@ class BucketManager:
         post["last_active"] = now_iso()
 
         try:
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(frontmatter.dumps(post))
+            _atomic_write_text(file_path, frontmatter.dumps(post))
         except OSError as e:
             logger.error(f"Failed to write bucket update / 写入桶更新失败: {file_path}: {e}")
             return False
+        # 主写盘成功立即失效缓存 — 后面的 protected/unarchive 分支还有二次写+移动,
+        # 若移动抛错(如 Windows 文件被占), 不能留着与磁盘矛盾的缓存条目。
+        self._invalidate_active_cache()
 
         # --- Auto-move: protected → permanent/ ---
         # --- 自动移动：保护(防衰减) → permanent/ ---
@@ -1006,8 +1022,7 @@ class BucketManager:
         domain = post.get("domain") or ["未分类"]
         if kwargs.get("protected") and post.get("type") != "permanent":
             post["type"] = "permanent"
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(frontmatter.dumps(post))
+            _atomic_write_text(file_path, frontmatter.dumps(post))
             self._move_bucket(file_path, self.permanent_dir, domain)
         elif ("resolved" in kwargs and not kwargs["resolved"]) and post.get("type") == "archived":
             # 取消归档(取消噪声 / 取消 resolved): 把桶从 archive/ 真搬回 dynamic/,
@@ -1015,10 +1030,10 @@ class BucketManager:
             # 桶仍滞留 archive/ → 被 breath 的 list_all(include_archive=False) 排除,
             # "回退"只回了数字没回可见状态(前端看着回来了, 内部其实没浮现)。
             post["type"] = "dynamic"
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(frontmatter.dumps(post))
+            _atomic_write_text(file_path, frontmatter.dumps(post))
             self._move_bucket(file_path, self.dynamic_dir, domain)
 
+        self._invalidate_active_cache()
         logger.info(f"Updated bucket / 更新记忆桶: {bucket_id}")
         return True
 
@@ -1062,13 +1077,14 @@ class BucketManager:
                 post["original_type"] = original_type
             post["type"] = "trashed"
             post["trashed_at"] = now_iso()
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(frontmatter.dumps(post))
+            _atomic_write_text(file_path, frontmatter.dumps(post))
+            _sideline_stale_dest(str(dest))
             shutil.move(file_path, str(dest))
         except Exception as e:
             logger.error(f"Failed to soft-delete bucket / 软删除桶失败: {bucket_id}: {e}")
             return False
 
+        self._invalidate_active_cache()
         logger.info(f"Soft-deleted bucket / 移到回收站: {bucket_id} → trash/{primary_domain}/")
         return True
 
@@ -1111,12 +1127,13 @@ class BucketManager:
                         del post[k]
                 except Exception:
                     pass
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(frontmatter.dumps(post))
+            _atomic_write_text(file_path, frontmatter.dumps(post))
+            _sideline_stale_dest(str(dest))
             shutil.move(file_path, str(dest))
         except Exception as e:
             logger.error(f"Failed to restore bucket / 恢复桶失败: {bucket_id}: {e}")
             return False
+        self._invalidate_active_cache()
         logger.info(f"Restored bucket / 从回收站恢复: {bucket_id} → {original_type}/{primary_domain}/")
         return True
 
@@ -1132,6 +1149,7 @@ class BucketManager:
         except OSError as e:
             logger.error(f"Failed to purge bucket file / 物理删除桶失败: {file_path}: {e}")
             return False
+        self._invalidate_active_cache()
         logger.info(f"Purged bucket / 物理删除记忆桶: {bucket_id}")
         return True
 
@@ -1193,12 +1211,16 @@ class BucketManager:
             post["last_active"] = now_iso()
             post["activation_count"] = (post.get("activation_count") or 0) + 1
 
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(frontmatter.dumps(post))
+            _atomic_write_text(file_path, frontmatter.dumps(post))
+            # 就地更新活跃集缓存, 不清整表(touch 每次 breath 都发生)
+            self._update_active_cache_entry(bucket_id, {
+                "last_active": post["last_active"],
+                "activation_count": post["activation_count"],
+            })
 
             # --- Time ripple: boost nearby memories within ±48h ---
             # --- 时间涟漪：±48小时内的记忆轻微唤醒 ---
-            current_time = datetime.fromisoformat(str(post.get("created", post.get("last_active", ""))))
+            current_time = parse_iso_datetime(post.get("created", post.get("last_active", "")))
             await self._time_ripple(bucket_id, current_time)
         except Exception as e:
             logger.warning(f"Failed to touch bucket / 触碰桶失败: {bucket_id}: {e}")
@@ -1228,7 +1250,7 @@ class BucketManager:
 
             created_str = meta.get("created", meta.get("last_active", ""))
             try:
-                created = datetime.fromisoformat(str(created_str))
+                created = parse_iso_datetime(created_str)
                 delta_hours = abs((reference_time - created).total_seconds()) / 3600
             except (ValueError, TypeError):
                 continue
@@ -1243,8 +1265,10 @@ class BucketManager:
                     current_count = post.get("activation_count") or 1
                     # Store as float for fractional increments; calculate_score handles it
                     post["activation_count"] = round(current_count + 0.3, 1)
-                    with open(file_path, "w", encoding="utf-8") as f:
-                        f.write(frontmatter.dumps(post))
+                    _atomic_write_text(file_path, frontmatter.dumps(post))
+                    self._update_active_cache_entry(bucket["id"], {
+                        "activation_count": post["activation_count"],
+                    })
                     rippled += 1
                 except Exception:
                     continue
@@ -1649,12 +1673,9 @@ class BucketManager:
         Calculate time proximity score (0~1, more recent = higher).
         计算时间亲近度。
         """
+        # 对齐上游 2.5.3: Z 后缀时间戳曾在这里抛 TypeError → 新鲜度分对所有桶固定按 30 天算。
         last_active_str = meta.get("last_active", meta.get("created", ""))
-        try:
-            last_active = datetime.fromisoformat(str(last_active_str))
-            days = max(0.0, (datetime.now() - last_active).total_seconds() / 86400)
-        except (ValueError, TypeError):
-            days = 30
+        days = days_since_iso(last_active_str, fallback_days=30)
         # 检索新近衰减(仅 fuzzy 模式): 对齐上游 -0.02 (~35 天半衰期)。
         # fork 曾用 -0.1 (~7 天半衰期), 过于偏向最近, 把老记忆在搜索里埋得太快。
         return math.exp(-0.02 * days)
@@ -1663,11 +1684,38 @@ class BucketManager:
     # List all buckets
     # 列出所有桶
     # ---------------------------------------------------------
+    def _invalidate_active_cache(self) -> None:
+        """任何改变活跃桶集合/元数据的写操作后调用。(对齐上游 2.5.0 性能)"""
+        self._active_cache = None
+
+    def _update_active_cache_entry(self, bucket_id: str, updates: dict) -> None:
+        """touch/时间涟漪就地更新缓存条目, 不清整表 — 否则每次 breath touch 都会
+        把缓存打掉, 缓存形同虚设。(对齐上游 2.5.0)"""
+        if self._active_cache is None:
+            return
+        for b in self._active_cache:
+            if b.get("id") == bucket_id:
+                meta = b.get("metadata")
+                if isinstance(meta, dict):
+                    meta.update(updates)
+                return
+
     async def list_all(self, include_archive: bool = False) -> list[dict]:
         """
         Recursively walk directories (including domain subdirs), list all buckets.
         递归遍历目录（含域子目录），列出所有记忆桶。
+
+        活跃集(include_archive=False)走内存缓存: 命中直接返回浅拷贝(调用方
+        sort/filter 不影响缓存, 但 dict 共享 — touch 就地更新对外可见, 有意)。
         """
+        if not include_archive:
+            if (self._active_cache is not None
+                    and (time.monotonic() - self._active_cache_at) < self._ACTIVE_CACHE_TTL_S):
+                # 逐桶拷贝(dict 一层 + metadata 一层): search() 会往结果上盖
+                # score/matched_in 等每查询字段, 共享 dict 会把这些污染进缓存。
+                # content 字符串不可变, 共享无害。
+                return [{**b, "metadata": dict(b.get("metadata") or {})} for b in self._active_cache]
+
         buckets = []
 
         dirs = [self.permanent_dir, self.dynamic_dir, self.feel_dir]
@@ -1685,6 +1733,10 @@ class BucketManager:
                     bucket = self._load_bucket(file_path)
                     if bucket:
                         buckets.append(bucket)
+
+        if not include_archive:
+            self._active_cache = list(buckets)
+            self._active_cache_at = time.monotonic()
 
         return buckets
 
@@ -1757,11 +1809,11 @@ class BucketManager:
 
             # Update type marker then move file / 更新类型标记后移动文件
             post["type"] = "archived"
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(frontmatter.dumps(post))
+            _atomic_write_text(file_path, frontmatter.dumps(post))
 
             # Use shutil.move for cross-filesystem safety
             # 使用 shutil.move 保证跨文件系统安全
+            _sideline_stale_dest(str(dest))
             shutil.move(file_path, str(dest))
         except Exception as e:
             logger.error(
@@ -1769,6 +1821,7 @@ class BucketManager:
             )
             return False
 
+        self._invalidate_active_cache()
         logger.info(f"Archived bucket / 归档记忆桶: {bucket_id} → archive/{primary_domain}/")
         return True
 
@@ -1797,14 +1850,15 @@ class BucketManager:
 
             # 清掉 archived 标记,改回 dynamic
             post["type"] = "dynamic"
-            with open(file_path, "w", encoding="utf-8") as f:
-                f.write(frontmatter.dumps(post))
+            _atomic_write_text(file_path, frontmatter.dumps(post))
 
+            _sideline_stale_dest(str(dest))
             shutil.move(file_path, str(dest))
         except Exception as e:
             logger.error(f"Failed to unarchive bucket / 取消归档失败: {bucket_id}: {e}")
             return False
 
+        self._invalidate_active_cache()
         logger.info(f"Unarchived bucket / 取消归档: {bucket_id} → dynamic/{primary_domain}/")
         return True
 
@@ -1865,6 +1919,19 @@ class BucketManager:
     # Internal: load bucket data from .md file
     # 内部：从 .md 文件加载桶数据
     # ---------------------------------------------------------
+    # 时间类元数据字段: 读取层统一归一成 ISO 字符串(对齐上游 2.4.4)。
+    # YAML 会把不带引号的时间戳(上游迁移桶/手编桶)解析成 datetime/date 对象,
+    # 直接进 JSONResponse 会 500(dream/首页列表/导入页), 混着字符串排序会 TypeError。
+    _DT_META_KEYS = ("created", "last_active", "event_time", "trashed_at", "archived_at")
+
+    @classmethod
+    def _normalize_meta_datetimes(cls, meta: dict) -> dict:
+        for k in cls._DT_META_KEYS:
+            v = meta.get(k)
+            if v is not None and not isinstance(v, str) and hasattr(v, "isoformat"):
+                meta[k] = v.isoformat()
+        return meta
+
     def _load_bucket(self, file_path: str) -> Optional[dict]:
         """
         Parse a Markdown file and return structured bucket data.
@@ -1874,7 +1941,7 @@ class BucketManager:
             post = frontmatter.load(file_path)
             return {
                 "id": post.get("id", Path(file_path).stem),
-                "metadata": dict(post.metadata),
+                "metadata": self._normalize_meta_datetimes(dict(post.metadata)),
                 "content": post.content,
                 "path": file_path,
             }

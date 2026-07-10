@@ -17,11 +17,18 @@ import math
 import sqlite3
 import logging
 import asyncio
+from collections import OrderedDict
 from pathlib import Path
 
 from openai import AsyncOpenAI
 
+from utils import coerce_bool, positive_float
+
 logger = logging.getLogger("ombre_brain.embedding")
+
+# 进程内 LRU 查询缓存上限(对齐上游 2.4.13): 同一段文本对同一模型的向量恒定,
+# 短时间内的重复请求(search+向量兜底同一 query / hold 链路同一新内容)只打一次 API。
+_EMBED_CACHE_MAXSIZE = 128
 
 
 class EmbeddingEngine:
@@ -41,18 +48,28 @@ class EmbeddingEngine:
         self.api_key = embed_cfg.get("api_key") or dehy_cfg.get("api_key", "")
         self.base_url = embed_cfg.get("base_url") or dehy_cfg.get("base_url") or "https://generativelanguage.googleapis.com/v1beta/openai/"
         self.model = embed_cfg.get("model", "gemini-embedding-001")
-        self.enabled = bool(self.api_key) and embed_cfg.get("enabled", True)
+        # coerce_bool: YAML 里写成带引号的 "false" 也不误开(对齐上游 2.5.3)
+        self.enabled = bool(self.api_key) and coerce_bool(embed_cfg.get("enabled"), default=True)
+        # embedding 请求超时可配(对齐上游 2.4.5):
+        # env OMBRE_EMBED_TIMEOUT_SECONDS > config embedding.timeout_seconds > 30s
+        self.timeout_seconds = positive_float(
+            os.environ.get("OMBRE_EMBED_TIMEOUT_SECONDS") or embed_cfg.get("timeout_seconds"),
+            30.0,
+        )
 
         # --- SQLite path: buckets_dir/embeddings.db ---
         db_path = os.path.join(config["buckets_dir"], "embeddings.db")
         self.db_path = db_path
+
+        # --- 进程内 LRU: (model, text) → vector (对齐上游 2.4.13) ---
+        self._embed_cache: "OrderedDict[str, list[float]]" = OrderedDict()
 
         # --- Initialize client ---
         if self.enabled:
             self.client = AsyncOpenAI(
                 api_key=self.api_key,
                 base_url=self.base_url,
-                timeout=30.0,
+                timeout=self.timeout_seconds,
             )
         else:
             self.client = None
@@ -123,13 +140,24 @@ class EmbeddingEngine:
         """Call API to generate embedding vector."""
         # Truncate to avoid token limits
         truncated = text[:2000]
+        # LRU 命中: 同一模型同一文本的向量恒定, 不再重打 API(对齐上游 2.4.13)
+        cache_key = f"{self.model}:{truncated}"
+        cached = self._embed_cache.get(cache_key)
+        if cached is not None:
+            self._embed_cache.move_to_end(cache_key)
+            return list(cached)
         try:
             response = await self.client.embeddings.create(
                 model=self.model,
                 input=truncated,
             )
             if response.data and len(response.data) > 0:
-                return response.data[0].embedding
+                embedding = response.data[0].embedding
+                self._embed_cache[cache_key] = list(embedding)
+                self._embed_cache.move_to_end(cache_key)
+                if len(self._embed_cache) > _EMBED_CACHE_MAXSIZE:
+                    self._embed_cache.popitem(last=False)
+                return embedding
             return []
         except Exception as e:
             logger.warning(f"Embedding API call failed: {e}")

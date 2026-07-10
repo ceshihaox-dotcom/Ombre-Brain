@@ -21,6 +21,8 @@ from datetime import datetime
 
 import numpy as np
 
+from utils import parse_iso_datetime
+
 logger = logging.getLogger("ombre_brain.families")
 
 DEFAULT_THRESHOLD = 0.75
@@ -29,7 +31,10 @@ MAX_FAMILY = 15
 
 
 def _now_iso() -> str:
-    return datetime.now().isoformat(timespec="seconds")
+    # UTC+Z 口径(对齐 utils.now_iso): built_at/updated_at 要和桶的 created(UTC+Z)
+    # 可比较, 本地 naive 在 JST 下会把"有没有新桶"的判断压住最多 9 小时。
+    # 前端 new Date("...Z") 自动转本地显示, 不受影响。
+    return datetime.utcnow().isoformat(timespec="seconds") + "Z"
 
 
 def _fam_id(member_ids: list) -> str:
@@ -290,9 +295,22 @@ class FamilyManager:
                     c = str(meta.get("created") or "")
                     if c > newest:
                         newest = c
-                if not newest or newest <= built_at:
+                if not newest:
+                    continue
+                # UTC 口径解析比较(对齐 2.5.3 修复): 之前 UTC 的 created 和本地 naive 的
+                # built_at 直接串比较, JST 下"有没有新桶"被压住最多 9 小时。
+                # 旧格式 built_at(无 Z/offset, 本地时间)不可比 → 视为需要重建,
+                # 重建后 updated_at 落成 UTC+Z, 一次收敛。
+                newest_dt = parse_iso_datetime(newest)
+                built_dt = None
+                if built_at and (built_at.rstrip().endswith(("Z", "z")) or "+" in built_at):
+                    try:
+                        built_dt = parse_iso_datetime(built_at)
+                    except (ValueError, TypeError):
+                        built_dt = None
+                if built_dt is not None and newest_dt <= built_dt:
                     continue  # 没有比上次建族更新的桶
-                age_s = (datetime.now() - datetime.fromisoformat(newest[:19])).total_seconds()
+                age_s = (datetime.utcnow() - newest_dt).total_seconds()
                 if age_s < debounce_s:
                     continue  # 还在写入余波里, 等尘埃落定
                 logger.info(f"[families] new buckets since {built_at or '(never)'} → auto rebuild")
