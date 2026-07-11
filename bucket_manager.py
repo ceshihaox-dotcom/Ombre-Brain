@@ -1555,6 +1555,7 @@ class BucketManager:
                 "kind": "search",
                 "caller": caller or "",
                 "result_count": len(client_scored),
+                "tokens": self._split_query_tokens(query)[:30],  # 2026-07-11 debug: 服务器实际用的分词(薅案取证)
                 "top": trace_top,
             })
 
