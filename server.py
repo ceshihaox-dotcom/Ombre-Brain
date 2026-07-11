@@ -263,12 +263,17 @@ async def _merge_or_create(
     arousal: float,
     name: str = "",
     event_time: str = None,
+    raw_merge: bool = False,
 ) -> tuple[str, bool]:
     """
     Check if a similar bucket exists for merging; merge if so, create if not.
     Returns (bucket_id_or_name, is_merged).
     检查是否有相似桶可合并，有则合并，无则新建。
     返回 (桶ID或名称, 是否合并)。
+
+    raw_merge=True(对齐上游 2.5.0 grow items): 合并时不走 LLM 压缩改写,
+    直接把新正文逐字追加到老桶正文后 — 给"上层 AI 已拆好最终正文"的
+    预拆分入库用, 保证一字不失真。默认 False = 原 LLM 智能合并行为不变。
     """
     # auto_merge=False → 跳过相似桶合并, 永远新建(默认 True = 上游行为不变)。
     # 合并不稳: 打分被调高(precise/boosts)后会误合并不相干记忆 → 个人实例可关掉改手动去重。
@@ -287,7 +292,15 @@ async def _merge_or_create(
         # --- 不合并到钉选/保护桶 ---
         if not (bucket["metadata"].get("pinned") or bucket["metadata"].get("protected")):
             try:
-                merged = await dehydrator.merge(bucket["content"], content)
+                if raw_merge:
+                    new_text = content.strip()
+                    if new_text and new_text in bucket["content"]:
+                        # 幂等护栏: 完全相同的正文已在桶里(客户端超时重试/AI 重发)
+                        # → 视为已合并, 不重复追加(LLM merge 路径天然会去重, 这里补上)
+                        return bucket["metadata"].get("name", bucket["id"]), True
+                    merged = bucket["content"].rstrip() + "\n\n" + new_text
+                else:
+                    merged = await dehydrator.merge(bucket["content"], content)
                 old_v = bucket["metadata"].get("valence") or 0.5
                 old_a = bucket["metadata"].get("arousal") or 0.3
                 merged_valence = round((old_v + valence) / 2, 2) if 0 <= valence <= 1 else old_v
@@ -332,6 +345,100 @@ async def _merge_or_create(
     return bucket_id, False
 
 
+async def _analyze_with_fallback(content: str) -> dict:
+    """打标 + 失败兜底(grow 三条路径共用, 审计收敛): 打标 LLM 挂掉用默认中性元数据,
+    内容照存不丢。默认值单源 = dehydrator._default_analysis(), 不再散落硬编码。"""
+    try:
+        return await dehydrator.analyze(content)
+    except Exception as e:
+        logger.warning(f"Auto-tagging failed, using defaults / 自动打标失败: {e}")
+        return dehydrator._default_analysis()
+
+
+def _emo_value(analysis: dict, key: str, default: float) -> float:
+    """取情感坐标: 0.0 是合法值(极负/极静), 不能用 `or` 折叠回默认。"""
+    v = analysis.get(key)
+    return float(v) if isinstance(v, (int, float)) else default
+
+
+def _is_noise_meta(meta: dict) -> bool:
+    """噪声桶 = 手动软删标记(resolved + importance==1): 检索/浮现/目录都不该出现。"""
+    return bool(meta.get("resolved", False) and meta.get("importance", 5) == 1)
+
+
+async def _surface_catalog(domain_filter: list = None, max_tokens: int = 10000) -> str:
+    """catalog 目录模式(对齐上游 2.5.0): 活跃桶的紧凑目录, 每桶一行 名称|域|重要度。
+
+    - 只读元数据(list_all 走活跃集缓存), 0 次 LLM/embedding 调用
+    - 按类型分区(固化/动态/feel), 区内按重要度降序, 区头带数量
+    - 排除已内化桶与噪声桶(它们的语义就是"不再浮现/不检索", 目录也不该列)
+    - domain 过滤大小写不敏感, 且同时匹配类型名: domain="feel" 能列出 feel 区
+      (feel 桶 domain 为空, 只能靠 type 识别)
+    - 尊重 max_tokens: 超限截断并注明剩余数量(几千桶的库不能一口气撑爆上下文)
+    """
+    try:
+        buckets = await bucket_mgr.list_all(include_archive=False)
+    except Exception as e:
+        return f"获取记忆目录失败: {e}"
+
+    if not buckets:
+        return "记忆库为空。"
+
+    flt = [d.strip().lower() for d in domain_filter if d.strip()] if domain_filter else None
+    sections = [("permanent", "固化"), ("dynamic", "动态"), ("feel", "feel")]
+    grouped = {key: [] for key, _ in sections}
+    for b in buckets:
+        meta = b.get("metadata", {})
+        if is_internalized(meta) or _is_noise_meta(meta):
+            continue
+        domains = [str(d) for d in (meta.get("domain") or []) if d]
+        btype = meta.get("type")
+        if flt:
+            domains_l = [d.lower() for d in domains]
+            type_l = str(btype or "").lower()
+            if not (any(d in flt for d in domains_l) or type_l in flt):
+                continue
+        try:
+            imp = int(meta.get("importance") or 0)
+        except (TypeError, ValueError):
+            imp = 0
+        name = meta.get("name") or b["id"]
+        pin_mark = "📌" if (is_protected(meta) or is_highlighted(meta)) else ""
+        line = f"{pin_mark}{name} | {','.join(domains) or '未分类'} | {imp}"
+        key = btype if btype in grouped else "dynamic"
+        grouped[key].append((imp, line))
+
+    total = sum(len(v) for v in grouped.values())
+    if total == 0:
+        return "没有匹配 domain 过滤的记忆桶。"
+
+    parts = [
+        f"=== 记忆目录（{total} 桶）===",
+        "先看目录定位，再 breath(query=...) 精准拉取正文。",
+    ]
+    token_used = count_tokens_approx("\n".join(parts))
+    listed = 0
+    truncated = False
+    for key, label in sections:
+        rows = grouped[key]
+        if not rows or truncated:
+            continue
+        rows.sort(key=lambda t: t[0], reverse=True)
+        parts.append(f"--- {label}（{len(rows)}）---")
+        token_used += count_tokens_approx(parts[-1])
+        for _, line in rows:
+            line_tokens = count_tokens_approx(line)
+            if token_used + line_tokens > max_tokens:
+                truncated = True
+                break
+            parts.append(line)
+            token_used += line_tokens
+            listed += 1
+    if truncated:
+        parts.append(f"（已截断：还有 {total - listed} 桶未列出——传 domain 过滤缩小范围，或调大 max_tokens）")
+    return "\n".join(parts)
+
+
 # =============================================================
 # Tool 1: breath — Breathe
 # 工具 1：breath — 呼吸
@@ -349,11 +456,18 @@ async def breath(
     valence: float = -1,
     arousal: float = -1,
     max_results: int = 20,
+    catalog: bool = False,
 ) -> str:
-    """检索/浮现记忆。不传query或传空=自动浮现,有query=关键词检索。max_tokens控制返回总token上限(默认10000)。domain逗号分隔,valence/arousal 0~1(-1忽略)。max_results控制返回数量上限(默认20,最大50)。"""
+    """检索/浮现记忆。不传query或传空=自动浮现,有query=关键词检索。max_tokens控制返回总token上限(默认10000)。domain逗号分隔,valence/arousal 0~1(-1忽略)。max_results控制返回数量上限(默认20,最大50)。catalog=True=目录模式:只返回每桶一行元数据(名称|域|重要度),0次LLM/向量调用最省token,适合先看目录再 breath(query=...) 精准拉取,可配 domain 过滤。"""
     await decay_engine.ensure_started()
     max_results = min(max_results, 50)
     max_tokens = min(max_tokens, 20000)
+
+    # --- Catalog 目录模式(对齐上游 2.5.0): 每桶一行元数据, 0 LLM/0 向量 ---
+    # 必须排在所有会调 LLM/embedding 的分支之前; list_all 走活跃集缓存, 成本≈0。
+    if catalog:
+        domain_filter = [d.strip() for d in domain.split(",") if d.strip()] if domain.strip() else None
+        return await _surface_catalog(domain_filter, max_tokens=max_tokens)
 
     # --- Feel retrieval: domain="feel" is a special channel ---
     # --- Feel 检索：domain="feel" 是独立入口 ---
@@ -825,9 +939,60 @@ async def hold(
 # 工具 3：grow — 生长，一天的碎片长成记忆
 # =============================================================
 @mcp.tool()
-async def grow(content: str, event_time: str = "") -> str:
-    """日记归档,自动拆分为多桶。短内容(<30字)走快速路径。event_time=这篇日记记录的事件发生时间(YYYY-MM-DD 或 ISO),不传默认就是现在。整篇日记拆出的所有桶会共享这个 event_time(因为本来就是"那天发生的事")。"""
+async def grow(content: str = "", event_time: str = "", items: list | None = None) -> str:
+    """日记归档,自动拆分为多桶。短内容(<30字)走快速路径。event_time=这篇日记记录的事件发生时间(YYYY-MM-DD 或 ISO),不传默认就是现在。整篇日记拆出的所有桶会共享这个 event_time(因为本来就是"那天发生的事")。进阶(可选):若你已把长文拆成 N 条最终正文,传 items=[条1,条2,...](字符串列表)即可逐字入库——跳过系统的二次拆分与改写,每条正文一字不动,只自动补元数据(领域/情感/标签/命名);合并到老桶也用原文追加、不再压缩。你有完整对话上下文,拆分质量比只看二手长文的内部模型更高,能避免反复压缩带来的失真。条目也可用 dict 形式 {"content": 正文, "importance": 1-10} 逐条指定重要度(不指定默认 5)。传了 items 就忽略 content。"""
     await decay_engine.ensure_started()
+
+    # --- 预拆分模式(对齐上游 2.5.0): 上层 AI 已拆好的最终正文, 逐字入库 ---
+    # 不调 digest(跳过廉价 LLM 的二次拆分+改写, 正文一字不动); 每条只 analyze
+    # 打元数据; 合并走 raw_merge(原文追加不压缩)。与 raw_source 防幻觉哲学同向。
+    if isinstance(items, list) and len(items) > 0:
+        # 规整: 字符串条目直接收; dict 形式取 content, 可选带 importance(1-10 整数)。
+        clean = []  # [(正文, importance|None), ...]
+        for it in items:
+            imp = None
+            if isinstance(it, str):
+                s = it.strip()
+            elif isinstance(it, dict):
+                s = str(it.get("content", "")).strip()
+                raw_imp = it.get("importance")
+                if isinstance(raw_imp, int) and 1 <= raw_imp <= 10:
+                    imp = raw_imp
+            else:
+                s = ""
+            if s:
+                clean.append((s, imp))
+        if not clean:
+            return "items 为空或都不合法，未创建任何桶。"
+
+        results = []
+        created = 0
+        merged_n = 0
+        for content_str, item_imp in clean:
+            try:
+                analysis = await _analyze_with_fallback(content_str)
+                result_name, is_merged = await _merge_or_create(
+                    content=content_str,
+                    tags=analysis.get("tags") or [],
+                    # analyze 不产 importance; 调用方可用 dict 形式逐条指定, 否则默认 5
+                    importance=item_imp if item_imp else 5,
+                    domain=analysis.get("domain") or ["未分类"],
+                    valence=_emo_value(analysis, "valence", 0.5),
+                    arousal=_emo_value(analysis, "arousal", 0.3),
+                    name=analysis.get("suggested_name", ""),
+                    event_time=event_time or None,
+                    raw_merge=True,  # 逐字追加, 合并不走 LLM 压缩
+                )
+                if is_merged:
+                    results.append(f"📎{result_name}")
+                    merged_n += 1
+                else:
+                    results.append(f"📝{result_name}")
+                    created += 1
+            except Exception as e:
+                logger.warning(f"grow items 条目处理失败 / verbatim item failed: {e}")
+                results.append("⚠️")
+        return f"{len(clean)}条(预拆分·逐字)|新{created}合{merged_n}\n" + "\n".join(results)
 
     if not content or not content.strip():
         return "内容为空，无法整理。"
@@ -839,26 +1004,21 @@ async def grow(content: str, event_time: str = "") -> str:
     # Instead, run analyze + create directly.
     if len(content.strip()) < 30:
         logger.info(f"grow short-content fast path: {len(content.strip())} chars")
-        try:
-            analysis = await dehydrator.analyze(content)
-        except Exception as e:
-            logger.warning(f"Fast-path analyze failed / 快速路径打标失败: {e}")
-            analysis = {
-                "domain": ["未分类"], "valence": 0.5, "arousal": 0.3,
-                "tags": [], "suggested_name": "",
-            }
+        analysis = await _analyze_with_fallback(content)
+        _v = _emo_value(analysis, "valence", 0.5)
+        _a = _emo_value(analysis, "arousal", 0.3)
         result_name, is_merged = await _merge_or_create(
             content=content.strip(),
             tags=analysis.get("tags") or [],
             importance=analysis.get("importance", 5) if isinstance(analysis.get("importance"), int) else 5,
             domain=analysis.get("domain") or ["未分类"],
-            valence=analysis.get("valence") or 0.5,
-            arousal=analysis.get("arousal") or 0.3,
+            valence=_v,
+            arousal=_a,
             name=analysis.get("suggested_name", ""),
             event_time=event_time or None,
         )
         action = "合并" if is_merged else "新建"
-        return f"{action} → {result_name} | {','.join(str(d) for d in (analysis.get('domain') or []) if d is not None)} V{float(analysis.get('valence') or 0.5):.1f}/A{float(analysis.get('arousal') or 0.3):.1f}"
+        return f"{action} → {result_name} | {','.join(str(d) for d in (analysis.get('domain') or []) if d is not None)} V{_v:.1f}/A{_a:.1f}"
 
     # --- Step 1: let API split and organize / 让 API 拆分整理 ---
     try:
@@ -872,18 +1032,14 @@ async def grow(content: str, event_time: str = "") -> str:
     # 改为: 整段当一条记忆存下来, 至少不丢; 用户回看时还能再 redehydrate/拆。
     if not items:
         logger.warning("grow digest 为空, 整段存为单条记忆 (兜底防丢)")
-        try:
-            analysis = await dehydrator.analyze(content)
-        except Exception:
-            analysis = {"domain": ["未分类"], "valence": 0.5, "arousal": 0.3,
-                        "tags": [], "suggested_name": ""}
+        analysis = await _analyze_with_fallback(content)
         result_name, _is_merged = await _merge_or_create(
             content=content.strip(),
             tags=analysis.get("tags") or [],
             importance=analysis.get("importance", 5) if isinstance(analysis.get("importance"), int) else 5,
             domain=analysis.get("domain") or ["未分类"],
-            valence=analysis.get("valence") or 0.5,
-            arousal=analysis.get("arousal") or 0.3,
+            valence=_emo_value(analysis, "valence", 0.5),
+            arousal=_emo_value(analysis, "arousal", 0.3),
             name=analysis.get("suggested_name", ""),
             event_time=event_time or None,
         )

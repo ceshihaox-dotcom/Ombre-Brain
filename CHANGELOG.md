@@ -2,6 +2,30 @@
 
 本 fork 以快照方式发布（无版本号），条目按日期记录。上游对齐条目会标注对应的上游版本。
 
+## 2026-07-11 · 上游对齐批次 2b（工具面新能力）
+
+### 新增 / Added
+
+- **grow(items=[...]) 预拆分逐字入库**（上游 2.5.0）：上层 AI 已把长文拆成 N 条最终正文时，传 `items` 字符串列表即可逐字入库——跳过内部模型的二次拆分与改写（正文一字不动），每条只自动打元数据（领域/情感/标签/命名）；命中相似桶时合并走**原文追加**（`raw_merge`），不再 LLM 压缩。消除"廉价模型重述原话"的失真。打标 API 不可用时用默认元数据照存，正文不丢。`event_time` 与整批共享。不传 `items` 时行为与旧版完全一致。
+- **breath(catalog=True) 目录模式**（上游 2.5.0）：每桶一行（名称|域|重要度），按类型分区、重要度降序，零 LLM/零向量调用。适合开新对话先花极少 token 总览"都记得哪些事"，再 `breath(query=...)` 精准拉取。支持 domain 过滤；已内化桶不列（与"不再浮现/不检索"语义一致）。走活跃集内存缓存，成本近乎为零。
+
+### 维护 / Chores
+
+- `tools/weekly_checkup.py`（含本机路径的个人运维脚本）移出仓库跟踪，加入 .gitignore；磁盘文件与本地排程不受影响。
+- CLAUDE_PROMPT.md 能力表补充两个新参数的使用说明。
+
+### 审计后加固 / Hardened after review
+
+- `items` 注解改 `list | None`：显式传 `items: null` 的 MCP 客户端不再被 pydantic 校验拒掉整个调用。
+- `raw_merge` 幂等护栏：完全相同的正文已在桶里（客户端超时重试/AI 重发）时不重复追加。
+- grow 三条路径（items/短内容快速路径/拆分兜底）的打标兜底收敛为共用 helper，并修复 `or 0.5` 把合法的 0.0 情感坐标（极负/极静）折叠成中性默认的问题。
+- catalog：噪声桶（resolved+importance=1 的软删标记）不再列出；domain 过滤大小写不敏感并同时匹配类型名（`domain="feel"` 可列 feel 区）；尊重 `max_tokens`，超限截断并注明剩余数量。
+- items 的 dict 形式支持逐条指定 `importance`（1-10，不指定默认 5；内部打标模型不产重要度）。
+
+### 测试 / Tests
+
+- 新增 `tests/test_upstream_align_2b.py`（15 例，全离线 stub）：items 逐字落盘与 event_time 共享、dict/空条目容错、打标失败降级保存、raw_merge 原文追加且绝不调 LLM、raw_merge 重试幂等、0.0 情感坐标保真、逐条 importance、catalog 单行格式/排序/域过滤(含大小写与 feel)/内化与噪声排除/max_tokens 截断、catalog 零 LLM 零向量断言。
+
 ## 2026-07-11 · 上游对齐批次 2a（小件收尾）
 
 ### 修复 / Fixed
