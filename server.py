@@ -3278,13 +3278,19 @@ async def api_search(request):
 
     try:
         # === 关键词通道 ===
-        matches = await bucket_mgr.search(query, limit=limit, record_stats=not simulate, caller=caller, idf=idf)
+        # 2026-07-11 第四层修复: 先过滤后切片。旧序=search 内部 scored[:limit] 先切,
+        # 再在这里滤 noise/feel/pinned → 高分位挤满被排除桶时有效窗口塌缩
+        # (实锤: limit=30 时 top-30 里 21 个 pinned/feel/noise, 真命中排原始序 31-40 没进刀口)。
+        # 取 3 倍 headroom(上限150)再滤再裁 — 对所有调用方都是纯改善, 排序/口径不变。
+        fetch_limit = min(max(limit * 3, limit + 20), 150)
+        matches = await bucket_mgr.search(query, limit=fetch_limit, record_stats=not simulate, caller=caller, idf=idf)
         if not include_noise:
             matches = [b for b in matches if not _is_noise(b.get("metadata", {}))]
         if not include_feel:
             matches = [b for b in matches if not _is_feel(b.get("metadata", {}))]
         if exclude_pinned:
             matches = [b for b in matches if not _is_pinned(b.get("metadata", {}))]
+        matches = matches[:limit]
         keyword_hits = []
         for b in matches:
             meta = b.get("metadata", {})
