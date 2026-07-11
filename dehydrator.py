@@ -455,16 +455,26 @@ class Dehydrator:
                 created_at TEXT NOT NULL DEFAULT (datetime('now'))
             )
         """)
+        # 老库兜底: 早期建的表可能没有 model 列(与 embedding_engine._init_db 同惯用法)
+        try:
+            conn.execute("ALTER TABLE dehydration_cache ADD COLUMN model TEXT NOT NULL DEFAULT ''")
+        except sqlite3.OperationalError:
+            pass  # 列已存在
         conn.commit()
         conn.close()
 
     def _get_cached_summary(self, content: str) -> str | None:
-        """Look up cached dehydration result by content hash."""
+        """Look up cached dehydration result by content hash + model.
+
+        模型进键(对齐上游 2.5.2): 只按 content_hash 命中的话, 切换脱水模型后
+        长桶首次浮现会一直复用旧模型的摘要。写侧本就存了 model 列,
+        同模型的存量缓存继续有效; 旧库无 model 值的行视为未命中, 自然重写。
+        """
         content_hash = hashlib.sha256(content.encode()).hexdigest()
         conn = sqlite3.connect(self.cache_db_path)
         row = conn.execute(
-            "SELECT summary FROM dehydration_cache WHERE content_hash = ?",
-            (content_hash,)
+            "SELECT summary FROM dehydration_cache WHERE content_hash = ? AND model = ?",
+            (content_hash, self.model)
         ).fetchone()
         conn.close()
         return row[0] if row else None

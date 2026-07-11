@@ -254,6 +254,22 @@ class TestActiveCache:
         asyncio.run(run())
 
 
+# ---------- 脱水缓存模型键 (2.5.2 · 批次2a) ----------
+
+class TestDehydrationCacheModelKey:
+    def test_switched_model_misses_cache(self):
+        from dehydrator import Dehydrator
+
+        tmp = tempfile.mkdtemp(prefix="ob_dehy_")
+        d = Dehydrator({"buckets_dir": tmp, "dehydration": {"api_key": "fake", "model": "deepseek-chat"}})
+        d._set_cached_summary("内容A", "摘要A")
+        assert d._get_cached_summary("内容A") == "摘要A"
+        d.model = "claude-haiku-4-5"
+        assert d._get_cached_summary("内容A") is None, "换模型必须 miss, 不能吃旧模型摘要"
+        d._set_cached_summary("内容A", "新模型摘要")
+        assert d._get_cached_summary("内容A") == "新模型摘要"
+
+
 # ---------- embedding LRU (2.4.13) ----------
 
 class TestEmbeddingLru:

@@ -2,6 +2,22 @@
 
 本 fork 以快照方式发布（无版本号），条目按日期记录。上游对齐条目会标注对应的上游版本。
 
+## 2026-07-11 · 上游对齐批次 2a（小件收尾）
+
+### 修复 / Fixed
+
+- **脱水缓存按模型命中**（上游 2.5.2）：`dehydration_cache.db` 写入时一直存有模型名，但读取只按内容 hash 命中——切换脱水模型后长桶首次浮现会继续复用旧模型的摘要。读取改为 内容 hash + 模型 双条件；同模型存量缓存继续有效，老库缺 model 列时自动补列。
+
+### 已核对、无需改动 / Verified not applicable
+
+- **工具描述中性化**（上游 5ebd52c + 2.5.2）：本 fork 的 7 个 MCP 工具描述已是中性功能向文案，读类工具（source/pulse）已自带克制条款。上游"收紧写入意图"的部分是有意分叉不跟进（见 CHANGES.md「与上游的有意分叉」），用户侧另有 Dashboard「prompt 一键对齐原作者版本」逃生门。
+- **"Claude" 硬编码 / AI_NAME**（上游 2.3.21）：本 fork 无 letters 功能（上游该改动的主战场）；前端无用户可见的 "Claude" 硬编码；README 中的 Claude 均为第三方固有名或面向 Claude 接入场景的叙事，保留。
+- **claude.ai 网页版接入限制声明**：README 已有完整披露（自定义连接器不支持 header、`mcp-remote`/Claude Code 替代路径、`OMBRE_MCP_URL_KEY` URL 密钥通道），无需补写。
+
+### 文档 / Docs
+
+- CHANGES.md 新增「与上游的有意分叉」小节：合并语义（LLM 智能合并 vs 上游追加原文）、写入主动性（主动记忆 vs 上游克制风格）、鉴权模型（header token + URL key vs 上游密码 + OAuth）三条透明披露。
+
 ## 2026-07-10 · 上游对齐批次一（v2.3.19 → v2.5.3 修复类）
 
 从上游两条版本线（v2.4.x / v2.5.x）移植的修复与健壮性改动。功能类（OAuth、multi-owner、目录模式等）不在本批，另行评估。
