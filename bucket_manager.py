@@ -335,10 +335,45 @@ class BucketManager:
                 out.append(s[i:i + n])
         return out
 
-    def _calc_precise_match(self, query: str, bucket: dict) -> dict:
+    # ---------- IDF 稀有度加权 (2026-07-11, 阀门: /api/search?idf=true, 默认关) ----------
+    # 病根实锤(检索日志): 长消息切出「的话/她想/不行」这类烂大街 token, 在全库 1/3 的桶正文里
+    # 逐一命中(单查询 346 桶大批 100 分), 把真命中(tag「掏钱」40 分)整体冲出 top-N。
+    # 金子 token 和垃圾 token 同价 = 无稀有度概念。这里按 document frequency 给 token 定价:
+    #   df/N > 20% → 0 (动态停用词, 出现在 1/5 桶里的词没有区分度)
+    #   df/N >  5% → 0.3 (常见词打三折)
+    #   其余        → 1.0 (稀有词全价)
+    _IDF_JUNK_RATIO = 0.20
+    _IDF_COMMON_RATIO = 0.05
+    _IDF_COMMON_WEIGHT = 0.3
+
+    def _idf_token_weights(self, tokens: list, candidates: list) -> dict:
+        n = max(1, len(candidates))
+        hays = []
+        for b in candidates:
+            meta = b.get("metadata", {}) or {}
+            hays.append(" ".join([
+                str(meta.get("name") or ""),
+                " ".join(meta.get("tags") or []),
+                str(meta.get("summary") or ""),
+                str(b.get("content") or ""),
+            ]))
+        weights = {}
+        for t in tokens:
+            df = sum(1 for h in hays if t in h)
+            ratio = df / n
+            if ratio > self._IDF_JUNK_RATIO:
+                weights[t] = 0.0
+            elif ratio > self._IDF_COMMON_RATIO:
+                weights[t] = self._IDF_COMMON_WEIGHT
+            else:
+                weights[t] = 1.0
+        return weights
+
+    def _calc_precise_match(self, query: str, bucket: dict, token_weights: dict = None) -> dict:
         """关键词 token 命中模式 — 严格 substring, 不走 fuzz partial_ratio。
         每个 query token 在桶各字段做 `token in field_text`, 命中累加该字段权重。
         Score = sum(命中 token × 字段权重); 无命中 = 0 = 不入选。
+        token_weights(可选, IDF 阀门开时传入): 每 token 稀有度权重, 垃圾 token 记 0 分不算命中。
 
         字段权重沿用 fuzzy 路径同样的值: name×3 / domain×2.5 / tags×2 / summary×1.5 / content×content_weight
         Returns 跟 _calc_topic_match 同 shape: {score, matched_in, field_scores}
@@ -369,9 +404,15 @@ class BucketManager:
 
         for fname, ftext, fweight in fields:
             hits = [t for t in tokens if t and t in ftext]
+            if token_weights is not None:
+                # IDF 模式: 零权 token 不算命中(垃圾词不占字段、不发分)
+                hits = [t for t in hits if token_weights.get(t, 1.0) > 0]
             if hits:
                 matched_in.append(fname)
-                total_score += fweight * len(hits)
+                if token_weights is not None:
+                    total_score += fweight * sum(token_weights.get(t, 1.0) for t in hits)
+                else:
+                    total_score += fweight * len(hits)
                 tokens_hit[fname] = hits
                 field_scores[fname] = 100
             else:
@@ -1299,6 +1340,7 @@ class BucketManager:
         query_arousal: float = None,
         record_stats: bool = True,
         caller: str = "",
+        idf: bool = False,
     ) -> list[dict]:
         """
         Multi-dimensional indexed search for memory buckets.
@@ -1333,6 +1375,12 @@ class BucketManager:
 
         # --- Layer 2: weighted multi-dim ranking ---
         # --- 第二层：多维加权精排 ---
+        # IDF 稀有度权重(阀门开且 precise 模式): 每 token 全库定价一次, 垃圾词零分
+        _idf_weights = None
+        if idf and self.precise_match_mode:
+            _idf_tokens = self._split_query_tokens(query)
+            if _idf_tokens:
+                _idf_weights = self._idf_token_weights(_idf_tokens, candidates)
         scored = []
         for bucket in candidates:
             meta = bucket.get("metadata", {})
@@ -1345,7 +1393,7 @@ class BucketManager:
                 # precise_match_mode: 走严格 token 命中, 砍 emotion/time/importance/warmth
                 # 解决"长 query + partial_ratio 失准" + "高 valence 桶被 warmth 推得无关键词也排前"
                 if self.precise_match_mode:
-                    pm = self._calc_precise_match(query, bucket)
+                    pm = self._calc_precise_match(query, bucket, token_weights=_idf_weights)
                     if pm["score"] > 0:
                         # 钉选/永久参考桶: 仅 title 强命中才进搜索/自动注入结果。
                         # 它们已在开窗"核心准则/永久参考区"(breath 无参浮现 / /breath-hook)读取,

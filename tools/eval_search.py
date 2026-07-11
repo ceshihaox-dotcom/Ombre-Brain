@@ -56,7 +56,7 @@ def rerank_via_api(query, docs, model, api_key, base_url):
     except Exception:
         return None
 
-def fetch_search(base, token, query, include_vector):
+def fetch_search(base, token, query, include_vector, idf=False):
     params = urllib.parse.urlencode({
         "q": query,
         "limit": 10,
@@ -64,6 +64,7 @@ def fetch_search(base, token, query, include_vector):
         "exclude_pinned": "true",   # 对齐 auto-inject 的真实调用形态
         "simulate": "true",         # dry-run: 不记统计不进日志
         "caller": "eval",
+        **({"idf": "true"} if idf else {}),  # token稀有度加权A/B(2026-07-11阀门)
     })
     req = urllib.request.Request(
         f"{base}/api/search?{params}",
@@ -83,6 +84,7 @@ def main():
     ap.add_argument("--token", default=os.environ.get("OMBRE_ADMIN_TOKEN", ""))
     ap.add_argument("--set", default=os.path.join(os.path.dirname(__file__), "eval_set.json"))
     ap.add_argument("--vector", action="store_true", help="同时开向量通道")
+    ap.add_argument("--idf", action="store_true", help="token稀有度加权A/B(需OB侧2026-07-11阀门)")
     ap.add_argument("--rerank", action="store_true",
                     help="评测侧 reranker A/B 模拟(不动生产链路): 需 env SILICONFLOW_API_KEY")
     ap.add_argument("--rerank-model", default=os.environ.get("OMBRE_RERANK_MODEL", "Qwen/Qwen3-Reranker-8B"))
@@ -114,7 +116,7 @@ def main():
     for e in positives:
         q, expect = e["query"], e.get("expect") or []
         try:
-            data = fetch_search(base, args.token, q, args.vector)
+            data = fetch_search(base, args.token, q, args.vector, args.idf)
         except Exception as ex:
             print(f"✗ 请求失败「{q[:30]}」: {ex}")
             continue
@@ -155,7 +157,7 @@ def main():
     for e in negatives:
         q = e["query"]
         try:
-            data = fetch_search(base, args.token, q, args.vector)
+            data = fetch_search(base, args.token, q, args.vector, args.idf)
         except Exception as ex:
             print(f"✗ 请求失败「{q[:30]}」: {ex}")
             continue
@@ -173,7 +175,7 @@ def main():
     for e in forbids:
         q, banned = e["query"], e["forbid"]
         try:
-            data = fetch_search(base, args.token, q, args.vector)
+            data = fetch_search(base, args.token, q, args.vector, args.idf)
         except Exception as ex:
             print(f"✗ 请求失败「{q[:30]}」: {ex}")
             continue

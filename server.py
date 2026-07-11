@@ -3273,10 +3273,12 @@ async def api_search(request):
 
     # caller: 调用来源标注(auto-inject / eval / dashboard...), 进检索日志区分流量
     caller = (request.query_params.get("caller", "") or "")[:32]
+    # idf=true: token 稀有度加权(2026-07-11 阀门, 治长消息垃圾token通胀; 默认关=行为不变)
+    idf = request.query_params.get("idf", os.getenv("OMBRE_SEARCH_IDF", "false")).lower() == "true"
 
     try:
         # === 关键词通道 ===
-        matches = await bucket_mgr.search(query, limit=limit, record_stats=not simulate, caller=caller)
+        matches = await bucket_mgr.search(query, limit=limit, record_stats=not simulate, caller=caller, idf=idf)
         if not include_noise:
             matches = [b for b in matches if not _is_noise(b.get("metadata", {}))]
         if not include_feel:
