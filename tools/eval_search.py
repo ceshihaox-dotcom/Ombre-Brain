@@ -59,7 +59,7 @@ def rerank_via_api(query, docs, model, api_key, base_url):
 def fetch_search(base, token, query, include_vector, idf=False):
     params = urllib.parse.urlencode({
         "q": query,
-        "limit": 10,
+        "limit": 30 if idf else 10,  # idf 模式对齐生产计划口径: 取深 30 交给精排裁(薅案病因之三=窄口径)
         "include_vector": "true" if include_vector else "false",
         "exclude_pinned": "true",   # 对齐 auto-inject 的真实调用形态
         "simulate": "true",         # dry-run: 不记统计不进日志

@@ -1495,7 +1495,12 @@ class BucketManager:
         # 默认按 score 单维排序; keyword_first_sort=True 时把 title 命中的桶整体顶到前面。
         # title bonus 不够压住的极端 case 用这条兜底(比如 bonus=20 但弱命中桶 score=90)。
         # 排序 key 直接从 matched_in 读, 不污染 bucket dict 额外字段。
-        if self.keyword_first_sort:
+        if idf:
+            # IDF 模式(长消息场景): 纯分数排序。title-first 置顶是给"按桶名精准搜"设计的,
+            # 长 query 下垃圾词擦中标题(「的话」中「想说的话不过夜」33分)会整体霸占 top 切片,
+            # 把真命中(tag 49分)挤出 limit 窗口 — 2026-07-11 薅案三层病因之二。
+            scored.sort(key=lambda x: x["score"], reverse=True)
+        elif self.keyword_first_sort:
             scored.sort(
                 key=lambda x: ("title" in x.get("matched_in", []), x["score"]),
                 reverse=True,
