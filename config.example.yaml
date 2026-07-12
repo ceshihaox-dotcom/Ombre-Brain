@@ -27,6 +27,19 @@ log_level: "INFO"
 # 存新记忆时，如果与已有桶的相似度超过此值（0-100），则合并而非新建
 merge_threshold: 75
 
+# --- UI-only tags / 仅前端可见的 tag ---
+# Buckets carrying any of these tags stay visible in the dashboard/console/
+# bucket APIs, but are excluded from every model-facing read path
+# (search, surfacing, catalog, feel channel, dream, pulse).
+# Empty list = feature off (default, upstream behavior unchanged).
+# Env override: OMBRE_UI_ONLY_TAGS=tag1,tag2
+# Runtime override: POST /api/config/strategy {"ui_only_tags": [...]}
+# 带任一此类 tag 的桶只在 dashboard/前端可见, 从所有模型侧读取路径排除
+# (检索/浮现/目录/feel通道/dream/pulse)。空列表 = 关闭(默认, 上游行为不变)。
+# ui_only_tags:
+#   - private-journal
+ui_only_tags: []
+
 # --- Dehydration API / 脱水压缩 API 配置 ---
 # Uses a cheap LLM for intelligent compression; auto-degrades to local
 # keyword extraction if API is unavailable

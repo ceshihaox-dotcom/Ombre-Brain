@@ -135,7 +135,8 @@ async def breath_hook(request):
                       if not b["metadata"].get("resolved", False)
                       and b["metadata"].get("type") not in ("permanent", "feel")
                       and not is_highlighted(b["metadata"])
-                      and not is_internalized(b["metadata"])]
+                      and not is_internalized(b["metadata"])
+                      and not is_ui_only(b["metadata"])]
         scored = sorted(unresolved, key=lambda b: decay_engine.calculate_score(b["metadata"]), reverse=True)
 
         parts = []
@@ -225,6 +226,7 @@ async def dream_hook(request):
             if b["metadata"].get("type") not in ("permanent", "feel")
             and not is_highlighted(b["metadata"])
             and not is_internalized(b["metadata"])
+            and not is_ui_only(b["metadata"])
         ]
         candidates.sort(key=lambda b: b["metadata"].get("created", ""), reverse=True)
         recent = candidates[:10]
@@ -366,6 +368,18 @@ def _is_noise_meta(meta: dict) -> bool:
     return bool(meta.get("resolved", False) and meta.get("importance", 5) == 1)
 
 
+def is_ui_only(meta: dict) -> bool:
+    """ui_only 桶 = 带 config.ui_only_tags 任一 tag: 只在 dashboard/前端可见,
+    模型侧读取路径(检索/浮现/目录/feel通道/dream/pulse)一律排除。
+    配置来源: runtime_config.json strategy.ui_only_tags > env OMBRE_UI_ONLY_TAGS > config.yaml。
+    默认空列表 = 此过滤完全不生效(上游行为不变)。"""
+    ui_tags = config.get("ui_only_tags") or []
+    if not ui_tags:
+        return False
+    tags = meta.get("tags") or []
+    return any(t in ui_tags for t in tags)
+
+
 async def _surface_catalog(domain_filter: list = None, max_tokens: int = 10000) -> str:
     """catalog 目录模式(对齐上游 2.5.0): 活跃桶的紧凑目录, 每桶一行 名称|域|重要度。
 
@@ -389,7 +403,7 @@ async def _surface_catalog(domain_filter: list = None, max_tokens: int = 10000) 
     grouped = {key: [] for key, _ in sections}
     for b in buckets:
         meta = b.get("metadata", {})
-        if is_internalized(meta) or _is_noise_meta(meta):
+        if is_internalized(meta) or _is_noise_meta(meta) or is_ui_only(meta):
             continue
         domains = [str(d) for d in (meta.get("domain") or []) if d]
         btype = meta.get("type")
@@ -476,7 +490,9 @@ async def breath(
     if domain.strip().lower() == "feel":
         try:
             all_buckets = await bucket_mgr.list_all(include_archive=False)
-            feels = [b for b in all_buckets if b.get("metadata", {}).get("type") == "feel"]
+            feels = [b for b in all_buckets
+                     if b.get("metadata", {}).get("type") == "feel"
+                     and not is_ui_only(b.get("metadata", {}))]
             feels.sort(key=lambda b: b.get("metadata", {}).get("created", ""), reverse=True)
             if not feels:
                 return "没有留下过 feel。"
@@ -547,6 +563,7 @@ async def breath(
             and b["metadata"].get("type") not in ("permanent", "feel")
             and not is_highlighted(b["metadata"])
             and not is_internalized(b["metadata"])
+            and not is_ui_only(b["metadata"])
         ]
 
         logger.info(
@@ -697,7 +714,8 @@ async def breath(
     matches = [b for b in matches
                if not (is_internalized(b["metadata"])
                        or _is_noise(b["metadata"])
-                       or b["metadata"].get("type") == "feel")]
+                       or b["metadata"].get("type") == "feel"
+                       or is_ui_only(b["metadata"]))]
 
     # --- Vector similarity channel: find semantically related buckets ---
     # --- 向量相似度通道：找到语义相关的桶 ---
@@ -715,7 +733,8 @@ async def breath(
                                    or is_highlighted(bucket["metadata"])
                                    or is_protected(bucket["metadata"])
                                    or _is_noise(bucket["metadata"])
-                                   or bucket["metadata"].get("type") == "feel"):
+                                   or bucket["metadata"].get("type") == "feel"
+                                   or is_ui_only(bucket["metadata"])):
                     bucket["score"] = round(sim_score * 100, 2)
                     bucket["vector_match"] = True
                     matches.append(bucket)
@@ -793,6 +812,7 @@ async def breath(
                 and decay_engine.calculate_score(b["metadata"]) < 2.0
                 and not is_internalized(b["metadata"])
                 and b["metadata"].get("type") != "feel"
+                and not is_ui_only(b["metadata"])
             ]
             if low_weight:
                 drifted = random.sample(low_weight, min(random.randint(1, 3), len(low_weight)))
@@ -845,9 +865,12 @@ async def hold(
         # Feel valence/arousal = model's own perspective
         feel_valence = valence if 0 <= valence <= 1 else 0.5
         feel_arousal = arousal if 0 <= arousal <= 1 else 0.3
+        # 显式传入的 tags 保留(grow 的 feel items 同款语义) — 之前硬编码 [] 把
+        # 调用方特意标注的分类 tag(如日记/游记)静默丢掉, 前端按 tag 过滤的视图就瞎了。
+        # 自动打标在 feel 模式下依旧不跑, "最少元数据"哲学不变。
         bucket_id = await bucket_mgr.create(
             content=content,
-            tags=[],
+            tags=extra_tags,
             importance=5,
             domain=[],
             valence=feel_valence,
@@ -1273,6 +1296,8 @@ async def pulse(include_archive: bool = False) -> str:
     lines = []
     for b in buckets:
         meta = b.get("metadata", {})
+        if is_ui_only(meta):
+            continue
         if meta.get("pinned") or meta.get("protected"):
             icon = "📌"
         elif meta.get("type") == "permanent":
@@ -1334,6 +1359,7 @@ async def dream() -> str:
         and not b["metadata"].get("pinned", False)
         and not b["metadata"].get("protected", False)
         and not (b["metadata"].get("resolved", False) and b["metadata"].get("importance", 5) == 1)
+        and not is_ui_only(b["metadata"])
     ]
 
     # --- Sort by creation time desc, take top 10 ---
@@ -2050,12 +2076,13 @@ async def api_config_set_active(request):
 
 @mcp.custom_route("/api/config/strategy", methods=["GET"])
 async def api_config_strategy_get(request):
-    """读取当前生效的策略参数(merge_threshold / max_recall / auto_merge)。"""
+    """读取当前生效的策略参数(merge_threshold / max_recall / auto_merge / ui_only_tags)。"""
     from starlette.responses import JSONResponse
     return JSONResponse({
         "merge_threshold": int(config.get("merge_threshold", 75)),
         "max_recall": int(config.get("matching", {}).get("max_results", 5)),
         "auto_merge": bool(config.get("auto_merge", True)),
+        "ui_only_tags": list(config.get("ui_only_tags") or []),
     })
 
 
@@ -2091,6 +2118,15 @@ async def api_config_strategy_set(request):
             except Exception: pass
         except (ValueError, TypeError):
             return JSONResponse({"error": "max_recall 必须是 1-50 整数"}, status_code=400)
+    if "ui_only_tags" in body:
+        v = body["ui_only_tags"]
+        if isinstance(v, str):
+            v = v.split(",")
+        if not isinstance(v, list):
+            return JSONResponse({"error": "ui_only_tags 必须是数组或逗号分隔字符串"}, status_code=400)
+        v = [str(t).strip() for t in v if str(t).strip()][:20]
+        strategy["ui_only_tags"] = v
+        config["ui_only_tags"] = v
     _write_runtime_config(rc)
     return JSONResponse({
         "ok": True,
@@ -3271,6 +3307,10 @@ async def api_search(request):
     def _is_pinned(meta):
         return is_highlighted(meta) or is_protected(meta)
 
+    # ui_only 桶(config.ui_only_tags)默认排除 — 它们的语义就是"只给前端看";
+    # dashboard/console 查找意图可 include_ui_only=true opt-in 拉回
+    include_ui_only = request.query_params.get("include_ui_only", "false").lower() == "true"
+
     # caller: 调用来源标注(auto-inject / eval / dashboard...), 进检索日志区分流量
     caller = (request.query_params.get("caller", "") or "")[:32]
     # idf=true: token 稀有度加权(2026-07-11 阀门, 治长消息垃圾token通胀; 默认关=行为不变)
@@ -3288,6 +3328,8 @@ async def api_search(request):
             matches = [b for b in matches if not _is_noise(b.get("metadata", {}))]
         if not include_feel:
             matches = [b for b in matches if not _is_feel(b.get("metadata", {}))]
+        if not include_ui_only:
+            matches = [b for b in matches if not is_ui_only(b.get("metadata", {}))]
         if exclude_pinned:
             matches = [b for b in matches if not _is_pinned(b.get("metadata", {}))]
         matches = matches[:limit]
@@ -3335,6 +3377,8 @@ async def api_search(request):
                     if not include_noise and _is_noise(vmeta):
                         continue
                     if not include_feel and _is_feel(vmeta):
+                        continue
+                    if not include_ui_only and is_ui_only(vmeta):
                         continue
                     if exclude_pinned and _is_pinned(vmeta):
                         continue

@@ -199,6 +199,9 @@ def load_config(config_path: str = None) -> dict:
         "buckets_dir": os.path.join(os.path.dirname(os.path.abspath(__file__)), "buckets"),
         "merge_threshold": 75,
         "auto_merge": True,   # False = 关闭相似桶自动合并(永远新建); 默认 True = 上游行为不变
+        # 带任一此类 tag 的桶只在 dashboard/前端可见, 从所有模型侧读取路径排除
+        # (检索/浮现/目录/feel通道/dream/pulse)。默认空 = 行为不变。
+        "ui_only_tags": [],
         "dehydration": {
             "model": "deepseek-chat",
             "base_url": "https://api.deepseek.com/v1",
@@ -285,6 +288,11 @@ def load_config(config_path: str = None) -> dict:
     if env_auto_merge.strip():
         config["auto_merge"] = env_auto_merge.strip().lower() in ("1", "true", "yes", "on")
 
+    # ui_only_tags — OMBRE_UI_ONLY_TAGS=tag1,tag2 (逗号分隔)
+    env_ui_only = os.environ.get("OMBRE_UI_ONLY_TAGS", "")
+    if env_ui_only.strip():
+        config["ui_only_tags"] = [t.strip() for t in env_ui_only.split(",") if t.strip()]
+
     # --- runtime_config.json 覆盖 (前端 config 页可改,持久盘) ---
     # 优先级:runtime_config.json > env vars > config.yaml > 默认
     # 文件位置:{buckets_dir}/runtime_config.json
@@ -313,6 +321,11 @@ def load_config(config_path: str = None) -> dict:
                 config["auto_merge"] = coerce_bool(strategy["auto_merge"], default=True)
             if strategy.get("max_recall") is not None:
                 config.setdefault("matching", {})["max_results"] = int(strategy["max_recall"])
+            if strategy.get("ui_only_tags") is not None:
+                _uot = strategy["ui_only_tags"]
+                if isinstance(_uot, str):
+                    _uot = _uot.split(",")
+                config["ui_only_tags"] = [str(t).strip() for t in _uot if str(t).strip()]
     except Exception:
         pass  # runtime config 出问题不影响启动,沉默退化到 env/yaml
 
