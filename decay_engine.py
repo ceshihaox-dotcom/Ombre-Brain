@@ -22,6 +22,8 @@
 import math
 import asyncio
 import logging
+import uuid
+from datetime import datetime, timezone
 from utils import is_internalized, is_protected, is_highlighted, days_since_iso
 
 logger = logging.getLogger("ombre_brain.decay")
@@ -46,6 +48,7 @@ class DecayEngine:
         "highlight_boost_pct": 30.0,   # highlight=true 时 score *= (1 + pct/100)
         "surface_threshold": 5.0,      # score 高于此值 → 标记为"活跃" (UI 提示用)
         "archive_threshold": 0.3,      # score 低于此值 → 自动归档
+        "max_archives_per_cycle": 10,  # 单周期最多自动归档数; 0=暂停自动归档
         "decay_lambda": 0.05,          # 时间衰减速率 (大→快)
         "arousal_boost": 0.8,          # arousal 对 emotion_weight 的加成系数
         "emotion_base": 1.0,           # 情感权重基线
@@ -71,6 +74,11 @@ class DecayEngine:
         if "threshold" in decay_cfg:
             self.archive_threshold = float(decay_cfg["threshold"])
             self.threshold = self.archive_threshold
+        if "max_archives_per_cycle" in decay_cfg:
+            try:
+                self.max_archives_per_cycle = max(0, min(100, int(decay_cfg["max_archives_per_cycle"])))
+            except (TypeError, ValueError):
+                pass
         emotion_cfg = decay_cfg.get("emotion_weights", {})
         if "base" in emotion_cfg:
             self.emotion_base = float(emotion_cfg["base"])
@@ -223,40 +231,44 @@ class DecayEngine:
     # 扫描所有动态桶 → 算分 → 低于阈值的归档
     # ---------------------------------------------------------
     async def run_decay_cycle(self) -> dict:
-        """
-        Execute one decay cycle: iterate dynamic buckets, archive those
-        scoring below threshold.
-        执行一轮衰减：遍历动态桶，归档得分低于阈值的桶。
+        """Score all eligible buckets, then archive the lowest-scoring bounded set."""
+        cycle_id = (
+            datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+            + "-" + uuid.uuid4().hex[:8]
+        )
+        threshold = float(self.threshold)
+        try:
+            archive_limit = max(0, min(100, int(self.max_archives_per_cycle)))
+        except (TypeError, ValueError):
+            archive_limit = int(self.DEFAULTS["max_archives_per_cycle"])
 
-        Returns stats: {"checked": N, "archived": N, "lowest_score": X}
-        """
         try:
             buckets = await self.bucket_mgr.list_all(include_archive=False)
         except Exception as e:
             logger.error(f"Failed to list buckets for decay / 衰减周期列桶失败: {e}")
-            return {"checked": 0, "archived": 0, "lowest_score": 0, "error": str(e)}
+            return {
+                "cycle_id": cycle_id,
+                "checked": 0,
+                "eligible": 0,
+                "archived": 0,
+                "failed": 0,
+                "deferred": 0,
+                "archive_limit": archive_limit,
+                "lowest_score": 0,
+                "error": str(e),
+            }
 
         checked = 0
-        archived = 0
         lowest_score = float("inf")
+        candidates = []
 
         for bucket in buckets:
             meta = bucket.get("metadata", {})
-
-            # Skip permanent / feel / protected buckets
-            # 跳过固化桶、feel 桶(心动时刻防遗忘)、保护桶(防衰减)。
-            # highlight 单独不防衰减,仍参与衰减/归档,只是浮现时被推到核心准则区。
+            # permanent / feel / protected 永不进入自动归档。highlight 单独不防衰减。
             if meta.get("type") in ("permanent", "feel") or is_protected(meta):
                 continue
 
             checked += 1
-
-            # 注:原本这里有 auto-resolve 机制(imp≤4 + 30 天没动 → 自动 resolved=True)
-            # 在 2026-04-26 切片 3 关掉。原因:resolved 在新语义下=用户确认兑现的待办,
-            # 让系统替用户宣布"这事完成了"会污染待办视图,且用户对此机制不知情。
-            # 自然衰减归档(下方 score < threshold 路径)仍在工作,清理低活跃记忆的目标
-            # 由那条路径承担,只是路径变成"被遗忘"而不是"被宣布完成"。
-
             try:
                 score = self.calculate_score(meta)
             except Exception as e:
@@ -267,28 +279,47 @@ class DecayEngine:
                 continue
 
             lowest_score = min(lowest_score, score)
+            if score < threshold:
+                candidates.append((score, str(bucket.get("id", "")), bucket, meta))
 
-            # --- Below threshold → archive (simulate forgetting) ---
-            # --- 低于阈值 → 归档（模拟遗忘）---
-            if score < self.threshold:
-                try:
-                    success = await self.bucket_mgr.archive(bucket["id"])
-                    if success:
-                        archived += 1
-                        logger.info(
-                            f"Decay archived / 衰减归档: "
-                            f"{meta.get('name', bucket['id'])} "
-                            f"(score={score:.4f}, threshold={self.threshold})"
-                        )
-                except Exception as e:
-                    logger.warning(
-                        f"Archive failed for {bucket.get('id', '?')} / "
-                        f"归档失败: {e}"
+        # 全部算完再按 score/id 排序: 周期上限总是保护分数更高的候选, 不依赖文件遍历顺序。
+        candidates.sort(key=lambda item: (item[0], item[1]))
+        selected = candidates[:archive_limit]
+        archived = 0
+        failed = 0
+
+        for score, _, bucket, meta in selected:
+            try:
+                success = await self.bucket_mgr.archive(
+                    bucket["id"],
+                    reason="decay",
+                    score=score,
+                    threshold=threshold,
+                    cycle_id=cycle_id,
+                )
+                if success:
+                    archived += 1
+                    logger.info(
+                        f"Decay archived / 衰减归档: "
+                        f"{meta.get('name', bucket['id'])} "
+                        f"(score={score:.4f}, threshold={threshold}, cycle={cycle_id})"
                     )
+                else:
+                    failed += 1
+            except Exception as e:
+                failed += 1
+                logger.warning(
+                    f"Archive failed for {bucket.get('id', '?')} / 归档失败: {e}"
+                )
 
         result = {
+            "cycle_id": cycle_id,
             "checked": checked,
+            "eligible": len(candidates),
             "archived": archived,
+            "failed": failed,
+            "deferred": max(0, len(candidates) - len(selected)),
+            "archive_limit": archive_limit,
             "lowest_score": lowest_score if checked > 0 else 0,
         }
         logger.info(f"Decay cycle complete / 衰减周期完成: {result}")

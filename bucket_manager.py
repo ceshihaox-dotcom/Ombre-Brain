@@ -1565,13 +1565,25 @@ class BucketManager:
             })
 
             # 持久检索日志 (JSONL 追加) — 评测集原料; query 留 200 字(deque 只留 80 不够标注用)
-            self._append_search_log({
+            log_entry = {
                 "ts": now_iso,
                 "caller": caller or "",
                 "query": (query or "")[:200],
                 "result_count": len(client_scored),
                 "top": trace_top[:5],
-            })
+            }
+            # Temporal Shadow v0 (2026-07-16, t-j5dg9l866s): 只留痕不干预 —
+            # 解析出的结构化时间意图挂进日志字段, 攒样本供过滤/加权开阀决策。
+            # 解析失败/模块缺席都吞掉, 绝不影响搜索。kill-switch: OMBRE_TEMPORAL_SHADOW=off
+            try:
+                from temporal_shadow import parse_temporal, shadow_enabled
+                if shadow_enabled():
+                    _th = parse_temporal(query or "")
+                    if _th:
+                        log_entry["temporal_shadow"] = _th
+            except Exception:
+                pass
+            self._append_search_log(log_entry)
 
             # 持久化: 打 dirty 标记并尝试落盘 (防抖, 多数调用直接 return)
             self._hit_dirty += 1
@@ -1842,79 +1854,190 @@ class BucketManager:
     # Called by decay engine to simulate "forgetting"
     # 由衰减引擎调用，模拟"遗忘"
     # ---------------------------------------------------------
-    async def archive(self, bucket_id: str) -> bool:
-        """
-        Move a bucket into the archive directory (preserving domain subdirs).
-        将指定桶移入归档目录（保留域子目录结构）。
-        """
+    async def archive(
+        self,
+        bucket_id: str,
+        *,
+        reason: str = "manual",
+        score=None,
+        threshold=None,
+        cycle_id: str = None,
+    ) -> bool:
+        """Move a bucket into archive/ and persist a bounded audit trail."""
         file_path = self._find_bucket_file(bucket_id)
         if not file_path:
             return False
+        if os.path.normpath(file_path).startswith(os.path.normpath(self.archive_dir)):
+            logger.warning(f"archive: 桶 {bucket_id} 已在 archive 目录,跳过")
+            return False
 
+        original_text = None
         try:
-            # Read once, get domain info and update type / 一次性读取
             post = frontmatter.load(file_path)
+            original_text = frontmatter.dumps(post)
             domain = post.get("domain") or ["未分类"]
             primary_domain = sanitize_name(domain[0]) if domain else "未分类"
             archive_subdir = os.path.join(self.archive_dir, primary_domain)
             os.makedirs(archive_subdir, exist_ok=True)
-
             dest = safe_path(archive_subdir, os.path.basename(file_path))
 
-            # Update type marker then move file / 更新类型标记后移动文件
-            post["type"] = "archived"
-            _atomic_write_text(file_path, frontmatter.dumps(post))
+            current_type = str(post.get("type") or "dynamic")
+            original_type = (
+                str(post.get("archive_original_type") or "dynamic")
+                if current_type == "archived"
+                else current_type
+            )
+            if original_type not in ("dynamic", "permanent", "feel"):
+                original_type = "dynamic"
 
-            # Use shutil.move for cross-filesystem safety
-            # 使用 shutil.move 保证跨文件系统安全
+            archived_at = now_iso()
+            archive_reason = str(reason or "manual").strip()[:80] or "manual"
+            event = {
+                "archived_at": archived_at,
+                "reason": archive_reason,
+                "original_type": original_type,
+            }
+            for key, value in (("score", score), ("threshold", threshold)):
+                try:
+                    parsed = float(value)
+                    if math.isfinite(parsed):
+                        event[key] = round(parsed, 8)
+                except (TypeError, ValueError):
+                    pass
+            if cycle_id:
+                event["cycle_id"] = str(cycle_id)[:80]
+
+            history = post.get("archive_history")
+            if not isinstance(history, list):
+                history = []
+            history = [item for item in history if isinstance(item, dict)][-19:]
+            history.append(event)
+
+            post["type"] = "archived"
+            post["archived_at"] = archived_at
+            post["archive_reason"] = archive_reason
+            post["archive_original_type"] = original_type
+            post["archive_history"] = history
+            for field in ("archive_score", "archive_threshold", "archive_cycle_id"):
+                if field in post:
+                    del post[field]
+            if "score" in event:
+                post["archive_score"] = event["score"]
+            if "threshold" in event:
+                post["archive_threshold"] = event["threshold"]
+            if "cycle_id" in event:
+                post["archive_cycle_id"] = event["cycle_id"]
+
+            _atomic_write_text(file_path, frontmatter.dumps(post))
             _sideline_stale_dest(str(dest))
             shutil.move(file_path, str(dest))
         except Exception as e:
-            logger.error(
-                f"Failed to archive bucket / 归档桶失败: {bucket_id}: {e}"
-            )
+            if original_text is not None and os.path.exists(file_path):
+                try:
+                    _atomic_write_text(file_path, original_text)
+                except Exception as restore_error:
+                    logger.error(f"archive rollback write failed / 归档半状态恢复失败: {restore_error}")
+            logger.error(f"Failed to archive bucket / 归档桶失败: {bucket_id}: {e}")
             return False
 
         self._invalidate_active_cache()
-        logger.info(f"Archived bucket / 归档记忆桶: {bucket_id} → archive/{primary_domain}/")
+        logger.info(
+            f"Archived bucket / 归档记忆桶: {bucket_id} → archive/{primary_domain}/ "
+            f"reason={archive_reason}"
+        )
         return True
 
     # ---------------------------------------------------------
-    # Unarchive: move a bucket from archive/ back to dynamic/
-    # 取消归档：把桶从 archive/ 移回 dynamic/
-    # 用户在 dashboard 误归档/想恢复活跃时调用
+    # Unarchive / rollback
     # ---------------------------------------------------------
-    async def unarchive(self, bucket_id: str) -> bool:
-        """Move an archived bucket back into dynamic/, clear 'archived' type marker."""
+    async def unarchive(self, bucket_id: str, *, reason: str = "manual") -> bool:
+        """Restore an archived bucket to its recorded original type directory."""
         file_path = self._find_bucket_file(bucket_id)
         if not file_path:
             return False
-        # 仅处理目前在 archive 目录的桶,permanent 不动(那是钉选/保护类)
         if not os.path.normpath(file_path).startswith(os.path.normpath(self.archive_dir)):
             logger.warning(f"unarchive: 桶 {bucket_id} 不在 archive 目录,跳过")
             return False
 
+        original_text = None
         try:
             post = frontmatter.load(file_path)
+            original_text = frontmatter.dumps(post)
             domain = post.get("domain") or ["未分类"]
-            primary_domain = sanitize_name(domain[0]) if domain else "未分类"
-            dynamic_subdir = os.path.join(self.dynamic_dir, primary_domain)
-            os.makedirs(dynamic_subdir, exist_ok=True)
-            dest = safe_path(dynamic_subdir, os.path.basename(file_path))
+            original_type = str(post.get("archive_original_type") or "dynamic")
+            if original_type not in ("dynamic", "permanent", "feel"):
+                original_type = "dynamic"
 
-            # 清掉 archived 标记,改回 dynamic
-            post["type"] = "dynamic"
+            if original_type == "permanent":
+                type_dir = self.permanent_dir
+                primary_domain = sanitize_name(domain[0]) if domain else "未分类"
+            elif original_type == "feel":
+                type_dir = self.feel_dir
+                primary_domain = "沉淀物"
+            else:
+                type_dir = self.dynamic_dir
+                primary_domain = sanitize_name(domain[0]) if domain else "未分类"
+
+            target_subdir = os.path.join(type_dir, primary_domain)
+            os.makedirs(target_subdir, exist_ok=True)
+            dest = safe_path(target_subdir, os.path.basename(file_path))
+
+            post["type"] = original_type
+            post["unarchived_at"] = now_iso()
+            post["unarchive_reason"] = str(reason or "manual").strip()[:80] or "manual"
             _atomic_write_text(file_path, frontmatter.dumps(post))
 
             _sideline_stale_dest(str(dest))
             shutil.move(file_path, str(dest))
         except Exception as e:
+            if original_text is not None and os.path.exists(file_path):
+                try:
+                    _atomic_write_text(file_path, original_text)
+                except Exception as restore_error:
+                    logger.error(f"unarchive rollback write failed / 恢复半状态修复失败: {restore_error}")
             logger.error(f"Failed to unarchive bucket / 取消归档失败: {bucket_id}: {e}")
             return False
 
         self._invalidate_active_cache()
-        logger.info(f"Unarchived bucket / 取消归档: {bucket_id} → dynamic/{primary_domain}/")
+        logger.info(
+            f"Unarchived bucket / 取消归档: {bucket_id} → "
+            f"{original_type}/{primary_domain}/ reason={post['unarchive_reason']}"
+        )
         return True
+
+    async def rollback_archive_cycle(self, cycle_id: str, max_items: int = 100) -> dict:
+        """Unarchive every still-archived bucket produced by one decay cycle."""
+        normalized_cycle = str(cycle_id or "").strip()[:80]
+        if not normalized_cycle:
+            return {"cycle_id": "", "matched": 0, "restored": 0, "failed": []}
+
+        try:
+            limit = max(1, min(500, int(max_items)))
+        except (TypeError, ValueError):
+            limit = 100
+        buckets = await self.list_all(include_archive=True)
+        matches = [
+            bucket for bucket in buckets
+            if bucket.get("metadata", {}).get("type") == "archived"
+            and str(bucket.get("metadata", {}).get("archive_cycle_id") or "") == normalized_cycle
+        ]
+        matches.sort(key=lambda bucket: str(bucket.get("metadata", {}).get("archived_at") or ""))
+
+        restored = 0
+        failed = []
+        for bucket in matches[:limit]:
+            if await self.unarchive(bucket["id"], reason=f"rollback:{normalized_cycle}"):
+                restored += 1
+            else:
+                failed.append(bucket["id"])
+
+        return {
+            "cycle_id": normalized_cycle,
+            "matched": len(matches),
+            "restored": restored,
+            "failed": failed,
+            "truncated": len(matches) > limit,
+        }
 
     # ---------------------------------------------------------
     # Internal: find bucket file across all three directories
@@ -1976,7 +2099,9 @@ class BucketManager:
     # 时间类元数据字段: 读取层统一归一成 ISO 字符串(对齐上游 2.4.4)。
     # YAML 会把不带引号的时间戳(上游迁移桶/手编桶)解析成 datetime/date 对象,
     # 直接进 JSONResponse 会 500(dream/首页列表/导入页), 混着字符串排序会 TypeError。
-    _DT_META_KEYS = ("created", "last_active", "event_time", "trashed_at", "archived_at")
+    _DT_META_KEYS = (
+        "created", "last_active", "event_time", "trashed_at", "archived_at", "unarchived_at"
+    )
 
     @classmethod
     def _normalize_meta_datetimes(cls, meta: dict) -> dict:

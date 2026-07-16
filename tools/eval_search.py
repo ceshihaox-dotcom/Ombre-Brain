@@ -131,7 +131,15 @@ def main():
         # (2026-07-09 池子 10→20: enrichment 后全库关键词表面变大, 边缘目标被挤出小池 —
         #  与生产注入管线的精排池扩容同步)
         if args.rerank and ordered:
+            # 池构建对齐生产 ombre-inject: top-15 + 榜下钩子字段实证命中保底补到 20
+            # (薅案末口: 真命中 rank15/49分 有 tag 实证, 简化池 ordered[:20] 在深口径下会漏)
             pool = ordered[:20]
+            pool_ids = {id(h) for h in pool}
+            for h in ordered[20:60]:
+                if len(pool) >= 30: break
+                m_in = h.get("matched_in") or []
+                if any(f in m_in for f in ("title", "tag", "summary")) and id(h) not in pool_ids:
+                    pool.append(h); pool_ids.add(id(h))
             docs = [f"{h.get('name','')}: {h.get('summary') or h.get('content_preview') or ''}"[:300]
                     for h in pool]
             order = rerank_via_api(q, docs, args.rerank_model, rerank_key, args.rerank_url)

@@ -86,6 +86,38 @@ def fuse_with_weights(kw_hits, vec_hits, w_kw, w_vec):
     return fused
 
 
+def fuse_normalized(kw_hits, vec_hits, w_kw, w_vec):
+    """GenAgents式 per-query min-max 归一化融合(罗智实测 Recall@1 3.5×的那味药):
+    每个通道的分数先在本查询内归一到[0,1], 再加权 — 治 kw(0-100粗粒) vs vec(挤在0.5-0.65)分布错配。"""
+    def norm_map(pairs):  # [(id, raw)] -> {id: [0,1]}
+        vals = [v for _, v in pairs]
+        if not vals:
+            return {}
+        lo, hi = min(vals), max(vals)
+        if hi <= lo:
+            return {k: 1.0 for k, _ in pairs}
+        return {k: (v - lo) / (hi - lo) for k, v in pairs}
+    kn = norm_map([(h["id"], h.get("score") or 0) for h in (kw_hits or [])])
+    vn = norm_map([(h["id"], h.get("similarity") or 0) for h in (vec_hits or [])])
+    by_id = {}
+    for h in (kw_hits or []):
+        by_id.setdefault(h["id"], {**h, "_ch": "kw"})
+    for h in (vec_hits or []):
+        if h["id"] in by_id:
+            by_id[h["id"]]["_ch"] = "kw+vec"
+        else:
+            by_id.setdefault(h["id"], {**h, "_ch": "vec"})
+    vector_ran = len(vec_hits or []) > 0
+    fused = []
+    for hid, h in by_id.items():
+        s = (kn.get(hid, 0.0) * w_kw + vn.get(hid, 0.0) * w_vec) / (w_kw + w_vec)
+        if vector_ran and h["_ch"] == "kw" and not field_evidence(h):
+            s *= 0.85
+        fused.append({**h, "score": round(s * 100, 1)})
+    fused.sort(key=lambda x: -(x.get("score") or 0))
+    return fused
+
+
 def weights_static(query):
     if RECALL_RE.search(query):
         return 1.0, 1.4
@@ -148,41 +180,51 @@ def main():
     positives = [e for e in eval_set if not e.get("negative") and not e.get("forbid")]
     negatives = [e for e in eval_set if e.get("negative") or e.get("forbid")]
 
-    stats = {"static": {"rr": 0.0, "hit3": 0}, "dyn": {"rr": 0.0, "hit3": 0}}
-    print(f"正例 {len(positives)} 条 (融合→精排后名次; idf+limit30+生产池口径):")
+    variants = ("static", "norm")
+    stats = {v: {"rr": 0.0, "hit3": 0, "frr": 0.0, "fhit3": 0} for v in variants}
+    print(f"正例 {len(positives)} 条 (融合序rank→精排后rank; idf+limit30+生产池口径):")
     for e in positives:
         q, expect = e["query"], e.get("expect") or []
         d = search(base, token, q)
         kw, vec = d.get("keyword_hits") or [], d.get("vector_hits") or []
+        wk, wv = weights_static(q)
         row = {}
-        for name, (wk, wv) in (("static", weights_static(q)), ("dyn", weights_dynamic(vec))):
-            fused = fuse_with_weights(kw, vec, wk, wv)
+        for name in variants:
+            fused = fuse_with_weights(kw, vec, wk, wv) if name == "static" else fuse_normalized(kw, vec, wk, wv)
+            frank = next((i for i, h in enumerate(fused, 1) if any(match(h, x) for x in expect)), 0)
+            stats[name]["frr"] += (1.0 / frank) if frank else 0.0
+            if frank and frank <= 3:
+                stats[name]["fhit3"] += 1
             pool = build_pool(fused)
             ranked = rerank(q, pool, sf_key, sf_model, sf_base) or pool
             rank = next((i for i, h in enumerate(ranked, 1) if any(match(h, x) for x in expect)), 0)
             stats[name]["rr"] += (1.0 / rank) if rank else 0.0
             if rank and rank <= 3:
                 stats[name]["hit3"] += 1
-            row[name] = rank or "-"
-        print(f"  static={row['static']:>2} dyn={row['dyn']:>2} 「{q[:30]}」")
+            row[name] = f"{frank or '-'}→{rank or '-'}"
+        print(f"  static={row['static']:>7} norm={row['norm']:>7} 「{q[:28]}」")
 
-    leaks = {"static": 0, "dyn": 0}
+    leaks = {v: 0 for v in variants}
     for e in negatives:
         q, banned = e["query"], e.get("forbid")
         d = search(base, token, q)
         kw, vec = d.get("keyword_hits") or [], d.get("vector_hits") or []
-        for name, (wk, wv) in (("static", weights_static(q)), ("dyn", weights_dynamic(vec))):
-            fused = fuse_with_weights(kw, vec, wk, wv)
-            top3 = fused[:3]
-            bad = [h for h in top3 if (h.get("score") or 0) >= NEG_LEAK_SCORE
-                   and (not banned or any(x in (h.get("name") or "") for x in banned))]
-            if bad:
+        wk, wv = weights_static(q)
+        for name in variants:
+            fused = fuse_with_weights(kw, vec, wk, wv) if name == "static" else fuse_normalized(kw, vec, wk, wv)
+            # A/B口径: 禁抓桶进top-3即算泄漏(名次制, 分数分布跨变体不可比)
+            bad = [h for h in fused[:3] if (not banned or any(x in (h.get("name") or "") for x in banned))] if banned else \
+                  [h for h in fused[:3] if (h.get("score") or 0) > 0]
+            if banned and bad:
+                leaks[name] += 1
+            elif not banned and len(bad) >= 3:
                 leaks[name] += 1
 
     n = max(1, len(positives))
     print("=" * 60)
-    print(f"static(生产): MRR={stats['static']['rr']/n:.4f} hit@3={stats['static']['hit3']}/{n} 泄漏轮={leaks['static']}/{len(negatives)}")
-    print(f"dynamic-α  : MRR={stats['dyn']['rr']/n:.4f} hit@3={stats['dyn']['hit3']}/{n} 泄漏轮={leaks['dyn']}/{len(negatives)}")
+    for name, label in (("static", "static(生产)"), ("norm", "per-query归一化")):
+        s = stats[name]
+        print(f"{label}: 融合序MRR={s['frr']/n:.4f} fhit@3={s['fhit3']}/{n} | 终MRR={s['rr']/n:.4f} hit@3={s['hit3']}/{n} | 泄漏轮={leaks[name]}/{len(negatives)}")
     if args.save:
         out = os.path.join(os.path.dirname(__file__), f"eval_fusion_{time.strftime('%Y%m%d_%H%M%S')}.json")
         json.dump({"stats": stats, "leaks": leaks}, open(out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)

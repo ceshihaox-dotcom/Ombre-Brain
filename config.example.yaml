@@ -77,6 +77,7 @@ import:
 decay:
   lambda: 0.05                    # Decay rate / 衰减速率（越大遗忘越快）
   threshold: 0.3                  # Archive threshold / 归档阈值
+  max_archives_per_cycle: 10      # Safety cap per cycle; 0 pauses auto-archive / 单周期上限; 0=暂停
   check_interval_hours: 24        # Check interval (hours) / 衰减检查间隔（小时）
   emotion_weights:
     base: 1.0                     # Base weight / 基础权重

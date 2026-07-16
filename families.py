@@ -13,10 +13,12 @@
 # ============================================================
 
 import hashlib
+import asyncio
 import json
 import logging
 import os
 import sqlite3
+import uuid
 from datetime import datetime
 
 import numpy as np
@@ -28,6 +30,15 @@ logger = logging.getLogger("ombre_brain.families")
 DEFAULT_THRESHOLD = 0.75
 MIN_FAMILY = 3
 MAX_FAMILY = 15
+MIN_MANUAL_FAMILY = 2
+
+
+class FamilyValidationError(ValueError):
+    pass
+
+
+class FamilyBusyError(RuntimeError):
+    pass
 
 
 def _now_iso() -> str:
@@ -55,6 +66,7 @@ class FamilyManager:
         self.bucket_mgr = bucket_mgr
         self.dehydrator = dehydrator
         self.rebuilding = False
+        self._mutation_lock = asyncio.Lock()
 
     # ---------- 存取 ----------
     def load(self) -> dict:
@@ -67,28 +79,196 @@ class FamilyManager:
         return {"updated_at": "", "params": {}, "families": []}
 
     def _save(self, state: dict) -> None:
+        os.makedirs(os.path.dirname(self.path) or ".", exist_ok=True)
         tmp = self.path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             json.dump(state, f, ensure_ascii=False, indent=1)
         os.replace(tmp, self.path)
 
-    def update_family(self, fid: str, fields: dict) -> dict | None:
-        """她的编辑入口: name / pinned / dissolved。返回更新后的族, 找不到返回 None。"""
-        state = self.load()
-        for fam in state["families"]:
-            if fam["id"] != fid:
+    @staticmethod
+    def _find_family(state: dict, fid: str) -> dict | None:
+        return next((fam for fam in state.get("families", []) if fam.get("id") == fid), None)
+
+    @staticmethod
+    def _normalize_member_ids(member_ids) -> list[str]:
+        out = []
+        seen = set()
+        for raw in member_ids if isinstance(member_ids, list) else []:
+            bucket_id = str(raw or "").strip()[:64]
+            if not bucket_id or bucket_id in seen:
                 continue
+            seen.add(bucket_id)
+            out.append(bucket_id)
+        if not MIN_MANUAL_FAMILY <= len(out) <= MAX_FAMILY:
+            raise FamilyValidationError(
+                f"manual family requires {MIN_MANUAL_FAMILY}..{MAX_FAMILY} unique members"
+            )
+        return out
+
+    async def _member_rows(self, member_ids: list[str]) -> list[dict]:
+        rows = []
+        for bucket_id in member_ids:
+            bucket = await self.bucket_mgr.get(bucket_id)
+            if not bucket:
+                raise FamilyValidationError(f"bucket not found: {bucket_id}")
+            meta = bucket.get("metadata") or bucket
+            if meta.get("type") in ("archived", "feel") or meta.get("resolved"):
+                raise FamilyValidationError(f"bucket is not family-eligible: {bucket_id}")
+            if meta.get("pinned") or meta.get("protected") or meta.get("highlight"):
+                raise FamilyValidationError(f"protected/highlight bucket cannot join a family: {bucket_id}")
+            rows.append({
+                "id": bucket_id,
+                "name": meta.get("name") or bucket_id,
+                "event_time": meta.get("event_time") or meta.get("created") or "",
+                "summary": meta.get("summary") or "",
+            })
+        return rows
+
+    @staticmethod
+    def _public_member_rows(rows: list[dict]) -> list[dict]:
+        return [
+            {"id": row["id"], "name": row["name"], "event_time": row["event_time"]}
+            for row in sorted(rows, key=lambda item: item.get("event_time") or "")
+        ]
+
+    @staticmethod
+    def _membership_conflicts(state: dict, member_ids: list[str], exclude_fid: str = "") -> list[dict]:
+        wanted = set(member_ids)
+        conflicts = []
+        for family in state.get("families", []):
+            if family.get("id") == exclude_fid or family.get("dissolved"):
+                continue
+            overlap = sorted(wanted & set(family.get("member_ids") or []))
+            if overlap:
+                conflicts.append({"family_id": family.get("id"), "member_ids": overlap})
+        return conflicts
+
+    @staticmethod
+    def _remove_moved_members(state: dict, conflicts: list[dict]) -> None:
+        moved = {member for conflict in conflicts for member in conflict["member_ids"]}
+        for family in state.get("families", []):
+            if family.get("id") not in {conflict["family_id"] for conflict in conflicts}:
+                continue
+            kept = [member for member in family.get("member_ids", []) if member not in moved]
+            family["member_ids"] = kept
+            family["members"] = [
+                member for member in family.get("members", []) if member.get("id") in set(kept)
+            ]
+            family["size"] = len(kept)
+            family["membership_is_manual"] = True
+            family["edited_at"] = _now_iso()
+            if len(kept) < MIN_MANUAL_FAMILY:
+                family["dissolved"] = True
+                family["needs_review"] = True
+
+    async def update_family(self, fid: str, fields: dict) -> dict | None:
+        """Edit name/summary/pinned/dissolved without changing member ownership."""
+        if self.rebuilding:
+            raise FamilyBusyError("family rebuild in progress")
+        async with self._mutation_lock:
+            state = self.load()
+            fam = self._find_family(state, fid)
+            if fam is None:
+                return None
             if "name" in fields and str(fields["name"]).strip():
                 fam["name"] = str(fields["name"]).strip()[:24]
                 fam["name_is_manual"] = True
+            if "summary" in fields:
+                fam["summary"] = str(fields["summary"] or "").strip()[:400]
+                fam["summary_is_manual"] = True
             if "pinned" in fields:
                 fam["pinned"] = bool(fields["pinned"])
             if "dissolved" in fields:
                 fam["dissolved"] = bool(fields["dissolved"])
             fam["edited_at"] = _now_iso()
+            state["updated_at"] = _now_iso()
             self._save(state)
             return fam
-        return None
+
+    async def create_manual_family(
+        self, member_ids, *, name="", summary="", pinned=False, move=False
+    ) -> dict:
+        if self.rebuilding:
+            raise FamilyBusyError("family rebuild in progress")
+        member_ids = self._normalize_member_ids(member_ids)
+        async with self._mutation_lock:
+            state = self.load()
+            conflicts = self._membership_conflicts(state, member_ids)
+            if conflicts and not move:
+                raise FamilyValidationError(f"members already belong to families: {conflicts}")
+            rows = await self._member_rows(member_ids)
+            if conflicts:
+                self._remove_moved_members(state, conflicts)
+            named = await self._name_family(rows)
+            manual_name = str(name or "").strip()[:24]
+            manual_summary = str(summary or "").strip()[:400]
+            family = {
+                "id": "fam-manual-" + uuid.uuid4().hex[:10],
+                "name": manual_name or named["name"],
+                "summary": manual_summary or named["summary"],
+                "member_ids": member_ids,
+                "members": self._public_member_rows(rows),
+                "size": len(member_ids),
+                "membership_is_manual": True,
+                "name_is_manual": bool(manual_name),
+                "summary_is_manual": bool(manual_summary),
+                "pinned": bool(pinned),
+                "dissolved": False,
+                "built_at": _now_iso(),
+                "edited_at": _now_iso(),
+            }
+            state.setdefault("families", []).append(family)
+            state["updated_at"] = _now_iso()
+            self._save(state)
+            return family
+
+    async def set_members(self, fid: str, member_ids, *, move=False) -> dict | None:
+        if self.rebuilding:
+            raise FamilyBusyError("family rebuild in progress")
+        member_ids = self._normalize_member_ids(member_ids)
+        async with self._mutation_lock:
+            state = self.load()
+            family = self._find_family(state, fid)
+            if family is None:
+                return None
+            conflicts = self._membership_conflicts(state, member_ids, exclude_fid=fid)
+            if conflicts and not move:
+                raise FamilyValidationError(f"members already belong to families: {conflicts}")
+            rows = await self._member_rows(member_ids)
+            if conflicts:
+                self._remove_moved_members(state, conflicts)
+            family["member_ids"] = member_ids
+            family["members"] = self._public_member_rows(rows)
+            family["size"] = len(member_ids)
+            family["membership_is_manual"] = True
+            family["dissolved"] = False
+            family["needs_review"] = False
+            family["edited_at"] = _now_iso()
+            state["updated_at"] = _now_iso()
+            self._save(state)
+            return family
+
+    async def refresh_family(self, fid: str, *, rename=False) -> dict | None:
+        if self.rebuilding:
+            raise FamilyBusyError("family rebuild in progress")
+        async with self._mutation_lock:
+            state = self.load()
+            family = self._find_family(state, fid)
+            if family is None:
+                return None
+            rows = await self._member_rows(list(family.get("member_ids") or []))
+            named = await self._name_family(rows)
+            if rename or not family.get("name_is_manual"):
+                family["name"] = named["name"]
+                family["name_is_manual"] = False
+            family["summary"] = named["summary"]
+            family["summary_is_manual"] = False
+            family["members"] = self._public_member_rows(rows)
+            family["size"] = len(rows)
+            family["refreshed_at"] = _now_iso()
+            state["updated_at"] = _now_iso()
+            self._save(state)
+            return family
 
     # ---------- 重建 ----------
     def _load_vectors(self, ids: list) -> dict:
@@ -187,6 +367,13 @@ class FamilyManager:
         return fallback
 
     async def rebuild(self, threshold: float = DEFAULT_THRESHOLD) -> dict:
+        """Serialize rebuilds against manual edits so neither side can overwrite the other."""
+        if self.rebuilding or self._mutation_lock.locked():
+            return {"ok": False, "error": "family mutation already running"}
+        async with self._mutation_lock:
+            return await self._rebuild_locked(threshold)
+
+    async def _rebuild_locked(self, threshold: float = DEFAULT_THRESHOLD) -> dict:
         """全量重算。返回 {ok, families, orphans, took_s}。"""
         if self.rebuilding:
             return {"ok": False, "error": "rebuild already running"}
@@ -194,6 +381,19 @@ class FamilyManager:
         t0 = datetime.now()
         try:
             buckets = await self.bucket_mgr.list_all(include_archive=False)
+            old = self.load()
+            old_fams = old.get("families", [])
+            manual_fams = [
+                json.loads(json.dumps(family))
+                for family in old_fams
+                if family.get("membership_is_manual")
+            ]
+            reserved_ids = {
+                bucket_id
+                for family in manual_fams
+                if not family.get("dissolved")
+                for bucket_id in family.get("member_ids", [])
+            }
             eligible = []
             for b in buckets:
                 meta = b.get("metadata") or b  # list_all 形态兼容
@@ -205,6 +405,8 @@ class FamilyManager:
                 if meta.get("pinned") or meta.get("protected") or meta.get("highlight"):
                     continue
                 bid = b.get("id") or meta.get("id")
+                if bid in reserved_ids:
+                    continue
                 if bid:
                     eligible.append({
                         "id": bid,
@@ -214,14 +416,39 @@ class FamilyManager:
                     })
             vecs = self._load_vectors([e["id"] for e in eligible])
             have = [e for e in eligible if e["id"] in vecs]
-            if len(have) < MIN_FAMILY:
+            if len(have) < MIN_FAMILY and not manual_fams:
                 return {"ok": False, "error": f"向量不足: {len(have)}"}
-            M = np.stack([vecs[e["id"]] for e in have])
-            groups = self._cluster(M, threshold)
+            groups = []
+            if len(have) >= MIN_FAMILY:
+                M = np.stack([vecs[e["id"]] for e in have])
+                groups = self._cluster(M, threshold)
 
-            old = self.load()
-            old_fams = old.get("families", [])
+            current = {}
+            for bucket in buckets:
+                meta = bucket.get("metadata") or bucket
+                bucket_id = bucket.get("id") or meta.get("id")
+                if bucket_id:
+                    current[bucket_id] = meta
             new_fams = []
+            for family in manual_fams:
+                rows = []
+                missing = []
+                for bucket_id in family.get("member_ids", []):
+                    meta = current.get(bucket_id)
+                    if meta is None:
+                        missing.append(bucket_id)
+                        continue
+                    rows.append({
+                        "id": bucket_id,
+                        "name": meta.get("name") or bucket_id,
+                        "event_time": meta.get("event_time") or meta.get("created") or "",
+                    })
+                family["members"] = sorted(rows, key=lambda row: row.get("event_time") or "")
+                family["size"] = len(family.get("member_ids") or [])
+                family["missing_member_ids"] = missing
+                family["needs_review"] = bool(missing) or family["size"] < MIN_MANUAL_FAMILY
+                new_fams.append(family)
+
             for g in groups:
                 if len(g) < MIN_FAMILY:
                     continue
@@ -231,6 +458,8 @@ class FamilyManager:
                 # 继承她的编辑: 成员重叠 Jaccard≥0.5 的旧族
                 inherited = None
                 for of in old_fams:
+                    if of.get("membership_is_manual"):
+                        continue
                     if _jaccard(set(member_ids), set(of.get("member_ids", []))) >= 0.5:
                         inherited = of
                         break
@@ -250,16 +479,22 @@ class FamilyManager:
                     "members": [{"id": m["id"], "name": m["name"], "event_time": m["event_time"]}
                                 for m in sorted(members, key=lambda x: x.get("event_time") or "")],
                     "size": len(member_ids),
+                    "membership_is_manual": False,
                     "name_is_manual": bool(inherited and inherited.get("name_is_manual")),
                     "pinned": bool(inherited and inherited.get("pinned")),
                     "dissolved": bool(inherited and inherited.get("dissolved")),
                     "built_at": _now_iso(),
                 })
-            new_fams.sort(key=lambda f: -f["size"])
+            new_fams.sort(key=lambda f: (
+                not bool(f.get("pinned")),
+                not bool(f.get("membership_is_manual")),
+                -int(f.get("size") or 0),
+            ))
             state = {
                 "updated_at": _now_iso(),
                 "params": {"threshold": threshold, "min": MIN_FAMILY, "max": MAX_FAMILY,
-                           "model": self.engine.model, "eligible": len(have)},
+                           "model": self.engine.model, "eligible": len(have),
+                           "manual_families": len(manual_fams)},
                 "families": new_fams,
             }
             self._save(state)

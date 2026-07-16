@@ -50,7 +50,8 @@ from dehydrator import Dehydrator
 from decay_engine import DecayEngine
 from embedding_engine import EmbeddingEngine
 from import_memory import ImportEngine
-from utils import load_config, setup_logging, strip_wikilinks, count_tokens_approx, is_internalized, is_protected, is_highlighted, atomic_write_text
+from feedback_manager import FeedbackConflictError, FeedbackManager, FeedbackValidationError
+from utils import load_config, setup_logging, strip_wikilinks, count_tokens_approx, is_internalized, is_protected, is_highlighted, atomic_write_text, is_scaffold_query
 
 # 后台补账任务的强引用(防 GC 早收), 完成即自清
 _BG_TASKS: set = set()
@@ -66,8 +67,13 @@ dehydrator = Dehydrator(config)                      # Dehydrator / 脱水器
 decay_engine = DecayEngine(config, bucket_mgr)       # Decay engine / 衰减引擎
 embedding_engine = EmbeddingEngine(config)            # Embedding engine / 向量化引擎
 import_engine = ImportEngine(config, bucket_mgr, dehydrator, embedding_engine)  # Import engine / 导入引擎
-from families import FamilyManager
+from families import FamilyBusyError, FamilyManager, FamilyValidationError
 family_mgr = FamilyManager(bucket_mgr.base_dir, embedding_engine, bucket_mgr, dehydrator)  # 记忆家族/归纳层
+feedback_mgr = FeedbackManager(
+    bucket_mgr,
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools", "eval_set.json"),
+    os.path.join(bucket_mgr.base_dir, "feedback-resolutions.json"),
+)
 
 # --- /api/buckets in-memory cache / 内存级缓存 ---
 # 每个视图(cells/network/console/mobile)启动都自己拉一遍 /api/buckets,
@@ -1551,6 +1557,7 @@ async def api_decay_config_get(request):
         {"key": "highlight_boost_pct",   "label": "highlight 加成 %",   "min": 0,    "max": 50,   "step": 1,    "hint": "标重要的桶 score 上浮 X%"},
         {"key": "surface_threshold",     "label": "浮现阈值",            "min": 1,    "max": 80,   "step": 1,    "hint": "score 高于此值标记为活跃(UI 提示)"},
         {"key": "archive_threshold",     "label": "归档阈值",            "min": 0.01, "max": 2.0,  "step": 0.01, "hint": "score 低于此值自动归档"},
+        {"key": "max_archives_per_cycle", "label": "单周期归档上限",      "min": 0,    "max": 100,  "step": 1,    "hint": "每轮最多自动归档多少条; 0=暂停"},
         {"key": "decay_lambda",          "label": "衰减速率 λ",          "min": 0.01, "max": 0.30, "step": 0.01, "hint": "时间衰减斜率(大=衰得快)"},
         {"key": "arousal_boost",         "label": "arousal 加成",        "min": 0.0,  "max": 2.0,  "step": 0.1,  "hint": "高 arousal 提升 emotion_weight 系数"},
         {"key": "emotion_base",          "label": "情感基线",            "min": 0.5,  "max": 2.0,  "step": 0.1,  "hint": "情感权重最低值(arousal=0 时)"},
@@ -1857,17 +1864,88 @@ async def api_families_rebuild(request):
 
 @mcp.custom_route("/api/family/{fid}", methods=["POST"])
 async def api_family_update(request):
-    """她的编辑入口: body 可含 name / pinned / dissolved。"""
+    """她的编辑入口: body 可含 name / summary / pinned / dissolved。"""
     from starlette.responses import JSONResponse
     fid = request.path_params["fid"]
     try:
         body = await request.json()
     except Exception:
         return JSONResponse({"error": "invalid JSON"}, status_code=400)
-    fam = family_mgr.update_family(fid, body or {})
-    if fam is None:
-        return JSONResponse({"error": "not found"}, status_code=404)
-    return JSONResponse({"ok": True, "family": fam})
+    try:
+        fam = await family_mgr.update_family(fid, body or {})
+        if fam is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return JSONResponse({"ok": True, "family": fam})
+    except FamilyBusyError as error:
+        return JSONResponse({"error": str(error)}, status_code=409)
+
+
+@mcp.custom_route("/api/families/manual", methods=["POST"])
+async def api_family_manual_create(request):
+    """Create a manual family without touching source buckets."""
+    from starlette.responses import JSONResponse
+    try:
+        body = await request.json()
+        family = await family_mgr.create_manual_family(
+            body.get("member_ids") or [],
+            name=body.get("name") or "",
+            summary=body.get("summary") or "",
+            pinned=body.get("pinned", False),
+            move=body.get("move", False),
+        )
+        return JSONResponse({"ok": True, "family": family})
+    except FamilyValidationError as error:
+        return JSONResponse({"error": str(error)}, status_code=400)
+    except FamilyBusyError as error:
+        return JSONResponse({"error": str(error)}, status_code=409)
+    except Exception as error:
+        logger.exception("Manual family creation failed")
+        return JSONResponse({"error": str(error)}, status_code=500)
+
+
+@mcp.custom_route("/api/family/{fid}/members", methods=["POST"])
+async def api_family_members_update(request):
+    """Replace a family's member set; move=true transfers conflicts explicitly."""
+    from starlette.responses import JSONResponse
+    fid = request.path_params["fid"]
+    try:
+        body = await request.json()
+        family = await family_mgr.set_members(
+            fid, body.get("member_ids") or [], move=body.get("move", False)
+        )
+        if family is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return JSONResponse({"ok": True, "family": family})
+    except FamilyValidationError as error:
+        return JSONResponse({"error": str(error)}, status_code=400)
+    except FamilyBusyError as error:
+        return JSONResponse({"error": str(error)}, status_code=409)
+    except Exception as error:
+        logger.exception("Family membership update failed")
+        return JSONResponse({"error": str(error)}, status_code=500)
+
+
+@mcp.custom_route("/api/family/{fid}/refresh-summary", methods=["POST"])
+async def api_family_summary_refresh(request):
+    """Refresh member labels and arc summary; preserve a manual name unless rename=true."""
+    from starlette.responses import JSONResponse
+    fid = request.path_params["fid"]
+    try:
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        family = await family_mgr.refresh_family(fid, rename=bool(body.get("rename", False)))
+        if family is None:
+            return JSONResponse({"error": "not found"}, status_code=404)
+        return JSONResponse({"ok": True, "family": family})
+    except FamilyValidationError as error:
+        return JSONResponse({"error": str(error)}, status_code=400)
+    except FamilyBusyError as error:
+        return JSONResponse({"error": str(error)}, status_code=409)
+    except Exception as error:
+        logger.exception("Family summary refresh failed")
+        return JSONResponse({"error": str(error)}, status_code=500)
 
 
 # =============================================================
@@ -2800,7 +2878,7 @@ async def api_bucket_archive(request):
     bucket = await bucket_mgr.get(bucket_id)
     if not bucket:
         return JSONResponse({"error": "not found"}, status_code=404)
-    success = await bucket_mgr.archive(bucket_id)
+    success = await bucket_mgr.archive(bucket_id, reason="manual")
     if not success:
         return JSONResponse({"error": "archive failed"}, status_code=500)
     _invalidate_buckets_cache()
@@ -3035,11 +3113,91 @@ async def api_bucket_unarchive(request):
     bucket = await bucket_mgr.get(bucket_id)
     if not bucket:
         return JSONResponse({"error": "not found"}, status_code=404)
-    success = await bucket_mgr.unarchive(bucket_id)
+    success = await bucket_mgr.unarchive(bucket_id, reason="manual")
     if not success:
         return JSONResponse({"error": "unarchive failed (not in archive?)"}, status_code=400)
     _invalidate_buckets_cache()
     return JSONResponse({"ok": True, "id": bucket_id, "archived": False})
+
+
+@mcp.custom_route("/api/decay-archives", methods=["GET"])
+async def api_decay_archives(request):
+    """List current archives with decay audit fields; legacy rows remain visible as untracked."""
+    from starlette.responses import JSONResponse
+    try:
+        limit = max(1, min(500, int(request.query_params.get("limit", "200"))))
+    except (TypeError, ValueError):
+        limit = 200
+
+    buckets = await bucket_mgr.list_all(include_archive=True)
+    rows = []
+    for bucket in buckets:
+        meta = bucket.get("metadata", {})
+        if meta.get("type") != "archived":
+            continue
+        rows.append({
+            "id": bucket.get("id"),
+            "name": meta.get("name") or bucket.get("id"),
+            "archived_at": meta.get("archived_at"),
+            "reason": meta.get("archive_reason"),
+            "score": meta.get("archive_score"),
+            "threshold": meta.get("archive_threshold"),
+            "cycle_id": meta.get("archive_cycle_id"),
+            "original_type": meta.get("archive_original_type"),
+        })
+    rows.sort(key=lambda row: str(row.get("archived_at") or ""), reverse=True)
+    tracked = sum(1 for row in rows if row.get("archived_at") or row.get("cycle_id"))
+    return JSONResponse({
+        "total": len(rows),
+        "tracked": tracked,
+        "legacy_untracked": len(rows) - tracked,
+        "items": rows[:limit],
+    })
+
+
+@mcp.custom_route("/api/decay-archives/{cycle_id}/rollback", methods=["POST"])
+async def api_decay_archive_cycle_rollback(request):
+    """Rollback one audited decay cycle; legacy archives without cycle_id are untouched."""
+    from starlette.responses import JSONResponse
+    cycle_id = request.path_params["cycle_id"]
+    result = await bucket_mgr.rollback_archive_cycle(cycle_id)
+    if result["matched"] == 0:
+        return JSONResponse({"error": "cycle not found or already restored", **result}, status_code=404)
+    _invalidate_buckets_cache()
+    return JSONResponse({"ok": not result["failed"], **result})
+
+
+@mcp.custom_route("/api/feedback/resolutions", methods=["GET"])
+async def api_feedback_resolutions(request):
+    """Audit confirmed feedback transactions without exposing the private eval set."""
+    from starlette.responses import JSONResponse
+    items = feedback_mgr.list_resolutions()
+    return JSONResponse({"schema": FeedbackManager.SCHEMA, "total": len(items), "items": items})
+
+
+@mcp.custom_route("/api/feedback/resolve", methods=["POST"])
+async def api_feedback_resolve(request):
+    """Atomically add a confirmed eval case, optional aliases, and an idempotency ledger row."""
+    from starlette.responses import JSONResponse
+    try:
+        body = await request.json()
+        result = await feedback_mgr.resolve(
+            feedback_id=body.get("feedback_id"),
+            action=body.get("action"),
+            query=body.get("query"),
+            bucket_id=body.get("bucket_id"),
+            aliases=body.get("aliases") or [],
+            note=body.get("note") or "",
+        )
+        _invalidate_buckets_cache()
+        return JSONResponse(result)
+    except FeedbackValidationError as error:
+        return JSONResponse({"error": str(error)}, status_code=400)
+    except FeedbackConflictError as error:
+        return JSONResponse({"error": str(error)}, status_code=409)
+    except Exception as error:
+        logger.exception("Feedback resolution failed")
+        return JSONResponse({"error": str(error)}, status_code=500)
 
 
 @mcp.custom_route("/api/embeddings/diagnose", methods=["GET"])
@@ -3313,6 +3471,14 @@ async def api_search(request):
 
     # caller: 调用来源标注(auto-inject / eval / dashboard...), 进检索日志区分流量
     caller = (request.query_params.get("caller", "") or "")[:32]
+
+    # 脚手架 query 兜底过滤(2026-07-16, t-gcplkd3x2u): SELF_WAKE 模板文本整段当 query
+    # 会召回一堆跟惦记条目跑偏的记忆(实测 12/1000, caller 全 auto-inject)。命中 ≥2 个
+    # 模板标记即整条拦下返回空 —— 模板句式组合不可能出现在真实用户消息里。
+    # 主修在前端 query 构建侧; 此处为 OB 兜底。kill-switch: OMBRE_SCAFFOLD_FILTER=off
+    if os.getenv("OMBRE_SCAFFOLD_FILTER", "on").strip().lower() != "off" and is_scaffold_query(query):
+        logger.info(f"[search] scaffold query filtered (caller={caller or '-'}): {query[:80]!r}")
+        return JSONResponse({"query": query, "keyword_hits": [], "vector_hits": [], "scaffold_filtered": True})
     # idf=true: token 稀有度加权(2026-07-11 阀门, 治长消息垃圾token通胀; 默认关=行为不变)
     idf = request.query_params.get("idf", os.getenv("OMBRE_SEARCH_IDF", "false")).lower() == "true"
 

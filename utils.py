@@ -586,3 +586,27 @@ def now_iso() -> str:
     JST 用户前端看时间偏移 9 小时,改成显式标 UTC 让前端能正确转换。
     """
     return datetime.utcnow().isoformat(timespec="seconds") + "Z"
+
+
+# ---------- 系统脚手架 query 识别 (2026-07-16, notepad t-gcplkd3x2u) ----------
+# 病灶: 前端 SELF_WAKE 唤醒消息(时间戳+惦记本本模板)整段被当 query 送进检索,
+# 召回全跟着惦记条目文本跑偏。审计实测: 近1000条 search_log 里 12 条污染,
+# caller 全部 auto-inject。主修在前端 query 构建; 这里是 OB 侧兜底。
+# 判定规则: 命中 ≥2 个模板标记才算脚手架 —— 单个标记(如她聊天提到"惦记本本")
+# 不误伤; 真实用户消息几乎不可能同时含两个模板句式。
+_SCAFFOLD_MARKERS = [
+    re.compile(r"现在是\s*\d{4}-\d{2}-\d{2}"),
+    re.compile(r"[(（]日本时间[)）]"),
+    re.compile(r"最后一次说话是\s*[\d.]+\s*小时"),
+    re.compile(r"惦记本本上记着"),
+    re.compile(r"SELF_WAKE"),
+    re.compile(r"心情骰掷出"),
+]
+
+
+def is_scaffold_query(query: str) -> bool:
+    """query 是否为系统脚手架文本(SELF_WAKE 模板等), 不该进记忆检索。"""
+    if not query:
+        return False
+    hits = sum(1 for p in _SCAFFOLD_MARKERS if p.search(query))
+    return hits >= 2
