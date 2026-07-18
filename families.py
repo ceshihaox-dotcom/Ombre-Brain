@@ -33,6 +33,15 @@ MAX_FAMILY = 15
 MIN_MANUAL_FAMILY = 2
 
 
+def _family_exclude_tags() -> set:
+    """家族成员资格的 tag 排除集 (env OMBRE_FAMILY_EXCLUDE_TAGS, 逗号分隔, 默认空=不生效)。
+
+    独立浮现通道的碎片(同一主题池内互相高度相似)聚类会抱成巨族、污染家族语义 —
+    与图腾桶排除同病同治, 从成员资格层面拿掉。每次 rebuild 现读, 改 env 重启即生效。
+    """
+    return {t.strip() for t in os.environ.get("OMBRE_FAMILY_EXCLUDE_TAGS", "").split(",") if t.strip()}
+
+
 class FamilyValidationError(ValueError):
     pass
 
@@ -394,6 +403,7 @@ class FamilyManager:
                 if not family.get("dissolved")
                 for bucket_id in family.get("member_ids", [])
             }
+            excl_tags = _family_exclude_tags()
             eligible = []
             for b in buckets:
                 meta = b.get("metadata") or b  # list_all 形态兼容
@@ -403,6 +413,9 @@ class FamilyManager:
                     continue
                 # 图腾桶排除(链式污染源): 钉选/保护/高亮
                 if meta.get("pinned") or meta.get("protected") or meta.get("highlight"):
+                    continue
+                # tag 排除(独立通道碎片, 见 _family_exclude_tags)
+                if excl_tags and excl_tags.intersection(meta.get("tags") or []):
                     continue
                 bid = b.get("id") or meta.get("id")
                 if bid in reserved_ids:
