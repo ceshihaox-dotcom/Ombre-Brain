@@ -33,13 +33,30 @@ MAX_FAMILY = 15
 MIN_MANUAL_FAMILY = 2
 
 
-def _family_exclude_tags() -> set:
-    """家族成员资格的 tag 排除集 (env OMBRE_FAMILY_EXCLUDE_TAGS, 逗号分隔, 默认空=不生效)。
+def _family_exclude_tags(base_dir: str = "") -> set:
+    """家族成员资格的 tag 排除集, 默认空=不生效。
 
+    配置来源: runtime_config.json strategy.family_exclude_tags(接受数组/逗号分隔,
+    /api/config/strategy 可写) > env OMBRE_FAMILY_EXCLUDE_TAGS(逗号分隔)。
     独立浮现通道的碎片(同一主题池内互相高度相似)聚类会抱成巨族、污染家族语义 —
-    与图腾桶排除同病同治, 从成员资格层面拿掉。每次 rebuild 现读, 改 env 重启即生效。
+    与图腾桶排除同病同治, 从成员资格层面拿掉。每次 rebuild 现读, 改配置即生效。
     """
-    return {t.strip() for t in os.environ.get("OMBRE_FAMILY_EXCLUDE_TAGS", "").split(",") if t.strip()}
+    tags = None
+    if base_dir:
+        try:
+            p = os.path.join(base_dir, "runtime_config.json")
+            if os.path.exists(p):
+                with open(p, "r", encoding="utf-8") as f:
+                    v = (json.load(f).get("strategy") or {}).get("family_exclude_tags")
+                if isinstance(v, str):
+                    v = v.split(",")
+                if isinstance(v, list):
+                    tags = [str(t) for t in v]
+        except Exception as e:
+            logger.warning(f"family_exclude_tags: runtime_config read fail: {e}")
+    if tags is None:
+        tags = os.environ.get("OMBRE_FAMILY_EXCLUDE_TAGS", "").split(",")
+    return {t.strip() for t in tags if t.strip()}
 
 
 class FamilyValidationError(ValueError):
@@ -403,7 +420,7 @@ class FamilyManager:
                 if not family.get("dissolved")
                 for bucket_id in family.get("member_ids", [])
             }
-            excl_tags = _family_exclude_tags()
+            excl_tags = _family_exclude_tags(os.path.dirname(self.path))
             eligible = []
             for b in buckets:
                 meta = b.get("metadata") or b  # list_all 形态兼容

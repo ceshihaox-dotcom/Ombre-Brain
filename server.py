@@ -2161,6 +2161,7 @@ async def api_config_strategy_get(request):
         "max_recall": int(config.get("matching", {}).get("max_results", 5)),
         "auto_merge": bool(config.get("auto_merge", True)),
         "ui_only_tags": list(config.get("ui_only_tags") or []),
+        "family_exclude_tags": list(((_read_runtime_config().get("strategy") or {}).get("family_exclude_tags")) or []),
     })
 
 
@@ -2205,6 +2206,15 @@ async def api_config_strategy_set(request):
         v = [str(t).strip() for t in v if str(t).strip()][:20]
         strategy["ui_only_tags"] = v
         config["ui_only_tags"] = v
+    if "family_exclude_tags" in body:
+        # 家族聚类成员资格排除(独立浮现通道碎片防抱团) — families.py rebuild 时直接读
+        # runtime_config, 这里只负责持久化+校验; 不需要进内存 config。
+        v = body["family_exclude_tags"]
+        if isinstance(v, str):
+            v = v.split(",")
+        if not isinstance(v, list):
+            return JSONResponse({"error": "family_exclude_tags 必须是数组或逗号分隔字符串"}, status_code=400)
+        strategy["family_exclude_tags"] = [str(t).strip() for t in v if str(t).strip()][:20]
     _write_runtime_config(rc)
     return JSONResponse({
         "ok": True,
