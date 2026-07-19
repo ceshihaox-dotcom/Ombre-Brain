@@ -101,7 +101,7 @@ function ImportWorkbench() {
   const [loading, setLoading] = iwS(true);
   const [loadError, setLoadError] = iwS(null);
   const [activeId, setActiveId] = iwS(null);
-  const [filter, setFilter] = iwS('pending');
+  const [filter, setFilter] = iwS('quarantined');
   const [editing, setEditing] = iwS(null);
   const [rawOpen, setRawOpen] = iwS(false);
   // 原文编辑态 — 工作台"原文"显式按钮触发, 跟 body/title/summary 的"点开就改"区别开
@@ -245,11 +245,15 @@ function ImportWorkbench() {
   // 派生:过滤
   const filtered = iwM(() => {
     if (filter === 'all') return queue;
+    if (filter === 'quarantined') return queue.filter(q => q.status !== 'refined' && isReviewQuarantined(q));
     return queue.filter(q => q.status === filter);
   }, [queue, filter]);
 
   // 进度
   const refinedCount = queue.filter(q => q.status === 'refined').length;
+  const pendingCount = queue.filter(q => q.status === 'pending').length;
+  const pendingQuarantinedCount = queue.filter(q => q.status === 'pending' && isReviewQuarantined(q)).length;
+  const pendingNonSurfacingCount = pendingCount - pendingQuarantinedCount;
   const totalCount = queue.length;
 
   // 派生 batch(单批次,从 queue 统计反推)
@@ -261,13 +265,15 @@ function ImportWorkbench() {
     total: totalCount,
     refined: refinedCount,
     raw: '—',
-    note: '工作台显示最近 500 条记忆库桶,精修后状态会同步保存。',
+    note: '“需放行”里的记忆必须精修后才会进入浮现；其余待办本来就不走普通浮现。',
   }), [queue, totalCount, refinedCount]);
 
   // 默认选中第一个 pending
   iwE(() => {
     if (!activeId || !queue.find(q => q.id === activeId)) {
-      const first = queue.find(q => q.status === 'pending') || queue[0];
+      const first = queue.find(q => q.status === 'pending' && isReviewQuarantined(q))
+        || queue.find(q => q.status === 'pending')
+        || queue[0];
       if (first) setActiveId(first.id);
     }
   }, [queue]);
@@ -927,7 +933,7 @@ function ImportWorkbench() {
             <span>·</span>
             <span>已精修 <b>{refinedCount}</b></span>
             <span>·</span>
-            <span>待办 <b>{queue.filter(q => q.status === 'pending').length}</b></span>
+            <span>待办 <b>{pendingCount}</b>（需放行 <b>{pendingQuarantinedCount}</b> · 不走普通浮现 <b>{pendingNonSurfacingCount}</b>）</span>
             <span>·</span>
             <span>存疑 <b>{queue.filter(q => q.status === 'flagged').length}</b></span>
           </div>
@@ -969,6 +975,7 @@ function ImportWorkbench() {
             <div className="imp-queue-title">队列 · {filtered.length} / {totalCount}</div>
             <div className="imp-queue-filters">
               {[
+                ['quarantined', '需放行'],
                 ['pending', '待办'],
                 ['flagged', '存疑'],
                 ['refined', '已精修'],
@@ -1003,6 +1010,7 @@ function ImportWorkbench() {
                     {q.feel && <span className="imp-q-feel">♡</span>}
                     {isIntimate(q) && <span title={q.status === 'refined' ? '亲密记忆' : '亲密待审'} style={{ color: 'var(--rose-deep)' }}>♥</span>}
                     {q.protected && <span style={{ color: 'var(--accent)' }}>❖</span>}
+                    {q.status === 'pending' && <span title={isReviewQuarantined(q) ? '精修前不会进入浮现' : '本来就不走普通浮现'}>{isReviewQuarantined(q) ? '浮现隔离' : '不走浮现'}</span>}
                     <span>imp <b>{q.importance}</b></span>
                     {q.timeHint && <span>· {q.timeHint.slice(5, 10)}</span>}
                   </div>
@@ -1358,7 +1366,7 @@ function ImportWorkbench() {
                   <div className="imp-attr-key">状态</div>
                   <span className={`imp-status-chip imp-status-${active.status}`}>
                     {active.status === 'refined' && '✓ 已精修'}
-                    {active.status === 'pending' && (isReviewQuarantined(active) ? '⌛ 待精修 · 浮现隔离' : '⌛ 待精修')}
+                    {active.status === 'pending' && (isReviewQuarantined(active) ? '⌛ 待精修 · 浮现隔离' : '⌛ 待精修 · 不走普通浮现')}
                     {active.status === 'flagged' && '⚑ 存疑 · 浮现隔离'}
                   </span>
                 </div>

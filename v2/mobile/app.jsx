@@ -2526,6 +2526,7 @@ function ReviewScreen() {
   const counts = useMemo(() => ({
     all: filteredAll.length,
     todo: filteredAll.filter(b => statusOf(b) === 'todo').length,
+    quarantined: filteredAll.filter(b => statusOf(b) === 'todo' && isReviewQuarantined(b)).length,
     doubt: filteredAll.filter(b => statusOf(b) === 'doubt').length,
     done: filteredAll.filter(b => statusOf(b) === 'done').length,
   }), [filteredAll]);
@@ -2690,6 +2691,9 @@ function ReviewScreen() {
             <span>全部</span><span className="n">{counts.all}</span>
           </button>
         </div>
+        <div style={{padding:'0 16px 10px',fontSize:11,color:'var(--ink-3)'}}>
+          需审后放行 <b>{counts.quarantined}</b> · 不走普通浮现 <b>{counts.todo - counts.quarantined}</b>
+        </div>
       </div>
 
       <div className="review-body">
@@ -2702,7 +2706,7 @@ function ReviewScreen() {
             <div className="rv-main-meta">
               {curDt && <span className="rv-main-meta-time">{fmtDay(curDt).num} {fmtDay(curDt).mo} · {fmtTime(curDt)}</span>}
               <span>·</span>
-              <span>{statusOf(cur) === 'done' ? '已精修' : statusOf(cur) === 'doubt' ? '存疑 · 浮现隔离' : (isReviewQuarantined(cur) ? '待办 · 浮现隔离' : '待办')}</span>
+              <span>{statusOf(cur) === 'done' ? '已精修' : statusOf(cur) === 'doubt' ? '存疑 · 浮现隔离' : (isReviewQuarantined(cur) ? '待办 · 浮现隔离' : '待办 · 不走普通浮现')}</span>
               <span className="rv-main-meta-pos"><b>{curIdx >= 0 ? curIdx + 1 : '—'}</b>/{queue.length}</span>
             </div>
             <div className="rv-main-tags">
