@@ -25,6 +25,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from review_state import normalize_review_tags, quarantine_new_tags
 from utils import count_tokens_approx, now_iso, clean_llm_json, atomic_write_text
 
 logger = logging.getLogger("ombre_brain.import")
@@ -746,7 +747,7 @@ class ImportEngine:
                     # Raw mode: store original content without summarization
                     bucket_id = await self.bucket_mgr.create(
                         content=item["content"],
-                        tags=item.get("tags", []),
+                        tags=quarantine_new_tags(item.get("tags", []), created_by="import"),
                         importance=item.get("importance", 5),
                         domain=item.get("domain", ["未分类"]),
                         valence=item.get("valence", 0.5),
@@ -1038,7 +1039,10 @@ class ImportEngine:
                     await self.bucket_mgr.update(
                         bucket["id"],
                         content=merged,
-                        tags=list(set((bucket["metadata"].get("tags") or []) + tags)),
+                        tags=normalize_review_tags(
+                            list(dict.fromkeys((bucket["metadata"].get("tags") or []) + tags)),
+                            "pending",
+                        ),
                         importance=max(bucket["metadata"].get("importance") or 5, importance),
                         domain=list(set((bucket["metadata"].get("domain") or []) + domain)),
                         valence=round((old_v + valence) / 2, 2),
@@ -1057,7 +1061,7 @@ class ImportEngine:
         # Create new
         bucket_id = await self.bucket_mgr.create(
             content=content,
-            tags=tags,
+            tags=quarantine_new_tags(tags, created_by="import"),
             importance=importance,
             domain=domain,
             valence=valence,

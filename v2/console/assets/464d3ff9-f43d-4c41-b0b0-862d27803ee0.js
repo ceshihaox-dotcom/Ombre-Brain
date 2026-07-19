@@ -11,11 +11,21 @@ const { useState: iwS, useEffect: iwE, useMemo: iwM, useRef: iwR, useCallback: i
 // 隐藏 tag 前缀 — 不展示给用户
 const STATUS_TAG_REFINED = '__import_refined';
 const STATUS_TAG_FLAGGED = '__import_flagged';
+const REVIEW_PENDING_TAG = 'review-pending';
+const INTIMACY_PENDING_TAG = 'intimacy-pending';
+const INTIMACY_TAG = 'intimacy';
 function statusOf(item) {
   const tags = item.tags || [];
   if (tags.includes(STATUS_TAG_REFINED)) return 'refined';
   if (tags.includes(STATUS_TAG_FLAGGED)) return 'flagged';
   return 'pending';
+}
+function isIntimate(item) {
+  const tags = item.tags || [];
+  return tags.includes(INTIMACY_PENDING_TAG) || tags.includes(INTIMACY_TAG);
+}
+function isReviewQuarantined(item) {
+  return (item.tags || []).includes(REVIEW_PENDING_TAG);
 }
 // bridge 注入的"伪 tag" — 来源 / 状态 在 imp-paper 都有独立 UI (source pill /
 // type pill / importance bar) 显示, 不应该塞进 tag 列表里让用户误以为可以
@@ -24,6 +34,7 @@ function statusOf(item) {
 const _CONSOLE_PSEUDO_TAGS = new Set([
   '亲手写', 'AI 写入', '导入',                                    // 来源伪 tag (用 source pill 切换)
   '已消化', '保护', '重要', 'feel(柔软)',                          // 状态伪 tag (用对应 toggle / type pill 切换)
+  REVIEW_PENDING_TAG, INTIMACY_PENDING_TAG, INTIMACY_TAG,          // 审核/亲密状态有独立 UI
 ]);
 function visibleTags(tags) {
   return (tags || []).filter(t => !String(t).startsWith('__') && !_CONSOLE_PSEUDO_TAGS.has(String(t)));
@@ -162,7 +173,8 @@ function ImportWorkbench() {
   const fetchQueue = iwC(async (opts = {}) => {
     try {
       if (!opts.silent) setLoadError(null);
-      const rows = await window.__obImportResults(500);
+      // 全库当前约 1k 条；拉 2000 避免待审条目被“最近 500 条”截断后无法放行。
+      const rows = await window.__obImportResults(2000);
       setQueue(rows.map(bucketToItem));
       setLoading(false);
     } catch (e) {
@@ -596,18 +608,12 @@ function ImportWorkbench() {
     if (!active) return;
     const prev = { ...active };
     const wasRefined = active.status === 'refined';
-    let newTags;
-    if (wasRefined) {
-      // 取消精修 → 回 pending
-      newTags = (active.tags || []).filter(t => t !== STATUS_TAG_REFINED && t !== STATUS_TAG_FLAGGED);
-    } else {
-      // 标记精修(顺手清掉存疑)
-      newTags = [...(active.tags || []).filter(t => t !== STATUS_TAG_FLAGGED && t !== STATUS_TAG_REFINED), STATUS_TAG_REFINED];
-    }
-    const newStatus = statusOf({ tags: newTags });
-    setQueue(qs => qs.map(q => q.id === activeId ? { ...q, tags: newTags, status: newStatus } : q));
+    const targetStatus = wasRefined ? 'pending' : 'refined';
     try {
-      await window.__obUpdateBucket(activeId, { tags: newTags });
+      const result = await window.__obReviewBucket(activeId, { status: targetStatus });
+      setQueue(qs => qs.map(q => q.id === activeId ? {
+        ...q, tags: result.tags, status: result.status,
+      } : q));
     } catch (e) {
       alert('保存失败:' + e.message);
       await fetchQueue();
@@ -627,12 +633,17 @@ function ImportWorkbench() {
     setToast({
       msg: wasRefined ? `已撤销精修标记 "${prev.title}"` : `已精修 "${prev.title}"`,
       undo: async () => {
-        const restored = (prev.tags || []).slice();
-        setQueue(qs => qs.map(q => q.id === prev.id ? { ...q, tags: restored, status: statusOf({ tags: restored }) } : q));
-        setActiveId(prev.id);
-        setToast(null);
-        try { await window.__obUpdateBucket(prev.id, { tags: restored }); }
-        catch (e) { alert('撤销失败:' + e.message); }
+        try {
+          const result = await window.__obReviewBucket(prev.id, {
+            status: prev.status,
+            intimate: isIntimate(prev),
+          });
+          setQueue(qs => qs.map(q => q.id === prev.id ? {
+            ...q, tags: result.tags, status: result.status,
+          } : q));
+          setActiveId(prev.id);
+          setToast(null);
+        } catch (e) { alert('撤销失败:' + e.message); }
       },
     });
     setTimeout(() => setToast(t => (t && t.msg.includes(prev.title)) ? null : t), 4500);
@@ -642,16 +653,12 @@ function ImportWorkbench() {
   const flagItem = async () => {
     if (!active) return;
     const wasFlagged = active.status === 'flagged';
-    let newTags;
-    if (wasFlagged) {
-      newTags = (active.tags || []).filter(t => t !== STATUS_TAG_FLAGGED && t !== STATUS_TAG_REFINED);
-    } else {
-      newTags = [...(active.tags || []).filter(t => t !== STATUS_TAG_REFINED && t !== STATUS_TAG_FLAGGED), STATUS_TAG_FLAGGED];
-    }
-    const newStatus = statusOf({ tags: newTags });
-    setQueue(qs => qs.map(q => q.id === activeId ? { ...q, tags: newTags, status: newStatus } : q));
+    const targetStatus = wasFlagged ? 'pending' : 'flagged';
     try {
-      await window.__obUpdateBucket(activeId, { tags: newTags });
+      const result = await window.__obReviewBucket(activeId, { status: targetStatus });
+      setQueue(qs => qs.map(q => q.id === activeId ? {
+        ...q, tags: result.tags, status: result.status,
+      } : q));
     } catch (e) {
       alert('保存失败:' + e.message);
       await fetchQueue();
@@ -661,6 +668,23 @@ function ImportWorkbench() {
       const idx = queue.findIndex(q => q.id === activeId);
       const next = queue.slice(idx + 1).find(q => q.status === 'pending');
       if (next) setActiveId(next.id);
+    }
+  };
+
+  const toggleIntimacy = async () => {
+    if (!active) return;
+    try {
+      const result = await window.__obReviewBucket(activeId, {
+        status: active.status,
+        intimate: !isIntimate(active),
+      });
+      setQueue(qs => qs.map(q => q.id === activeId ? {
+        ...q, tags: result.tags, status: result.status,
+      } : q));
+      setToast({ msg: result.intimate ? `已标记亲密 “${active.title}”` : `已取消亲密 “${active.title}”` });
+    } catch (e) {
+      alert('亲密标记保存失败:' + e.message);
+      await fetchQueue();
     }
   };
 
@@ -977,6 +1001,7 @@ function ImportWorkbench() {
                   <div className="imp-q-title">{q.title}</div>
                   <div className="imp-q-meta">
                     {q.feel && <span className="imp-q-feel">♡</span>}
+                    {isIntimate(q) && <span title={q.status === 'refined' ? '亲密记忆' : '亲密待审'} style={{ color: 'var(--rose-deep)' }}>♥</span>}
                     {q.protected && <span style={{ color: 'var(--accent)' }}>❖</span>}
                     <span>imp <b>{q.importance}</b></span>
                     {q.timeHint && <span>· {q.timeHint.slice(5, 10)}</span>}
@@ -994,6 +1019,14 @@ function ImportWorkbench() {
               <div className="imp-paper-meta">
                 <span className="imp-paper-id">{active.id.slice(0, 12).toUpperCase()}</span>
                 <span>{active.timeHint}</span>
+                {isReviewQuarantined(active) && (
+                  <span className="imp-status-chip imp-status-pending">⌛ 浮现隔离</span>
+                )}
+                {isIntimate(active) && (
+                  <span className="imp-status-chip" style={{ color: 'var(--rose-deep)', borderColor: 'var(--rose-deep)' }}>
+                    ♥ {active.status === 'refined' ? '亲密' : '亲密待审'}
+                  </span>
+                )}
               </div>
 
               {/* 标题 */}
@@ -1251,6 +1284,21 @@ function ImportWorkbench() {
                   </div>
                 </div>
                 <div className="imp-attr-row">
+                  <div className="imp-attr-key">亲密</div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10, flex: 1 }}>
+                    <button
+                      className={`imp-batch-pill${isIntimate(active) ? ' on' : ''}`}
+                      onClick={toggleIntimacy}
+                      title="亲密记忆走独立浮现通道；待审时仍保持隔离"
+                    >{isIntimate(active) ? '♥ 已标记亲密' : '♡ 标记为亲密'}</button>
+                    <span style={{ color: 'var(--ink-4)', fontSize: 10, fontFamily: 'var(--mono)' }}>
+                      {isIntimate(active)
+                        ? (active.status === 'refined' ? '已进入亲密浮现通道' : '待精修，尚未进入亲密浮现')
+                        : '普通记忆通道'}
+                    </span>
+                  </div>
+                </div>
+                <div className="imp-attr-row">
                   <div className="imp-attr-key">事件时间</div>
                   <div style={{ flex: 1, display: 'flex', gap: 6 }}>
                     <input
@@ -1310,8 +1358,8 @@ function ImportWorkbench() {
                   <div className="imp-attr-key">状态</div>
                   <span className={`imp-status-chip imp-status-${active.status}`}>
                     {active.status === 'refined' && '✓ 已精修'}
-                    {active.status === 'pending' && '⌛ 待精修'}
-                    {active.status === 'flagged' && '⚑ 存疑'}
+                    {active.status === 'pending' && (isReviewQuarantined(active) ? '⌛ 待精修 · 浮现隔离' : '⌛ 待精修')}
+                    {active.status === 'flagged' && '⚑ 存疑 · 浮现隔离'}
                   </span>
                 </div>
               </div>

@@ -51,6 +51,7 @@ from decay_engine import DecayEngine
 from embedding_engine import EmbeddingEngine
 from import_memory import ImportEngine
 from feedback_manager import FeedbackConflictError, FeedbackManager, FeedbackValidationError
+from review_state import normalize_review_tags, quarantine_new_tags, review_status, is_intimate
 from utils import load_config, setup_logging, strip_wikilinks, count_tokens_approx, is_internalized, is_protected, is_highlighted, atomic_write_text, is_scaffold_query
 
 # 后台补账任务的强引用(防 GC 早收), 完成即自清
@@ -315,7 +316,11 @@ async def _merge_or_create(
                 merged_arousal = round((old_a + arousal) / 2, 2) if 0 <= arousal <= 1 else old_a
                 update_kwargs = dict(
                     content=merged,
-                    tags=list(set((bucket["metadata"].get("tags") or []) + tags)),
+                    # 新内容进入旧桶后,整桶重新待审;不能让已精修状态把新内容直接带进浮现。
+                    tags=normalize_review_tags(
+                        list(dict.fromkeys((bucket["metadata"].get("tags") or []) + tags)),
+                        "pending",
+                    ),
                     importance=max(bucket["metadata"].get("importance") or 5, importance),
                     domain=list(set((bucket["metadata"].get("domain") or []) + domain)),
                     valence=merged_valence,
@@ -337,7 +342,7 @@ async def _merge_or_create(
 
     bucket_id = await bucket_mgr.create(
         content=content,
-        tags=tags,
+        tags=quarantine_new_tags(tags),
         importance=importance,
         domain=domain,
         valence=valence,
@@ -929,9 +934,10 @@ async def hold(
     # --- Pinned buckets bypass merge and are created directly in permanent dir ---
     # --- 钉选桶跳过合并，直接新建到 permanent 目录 ---
     if pinned:
+        pending_tags = quarantine_new_tags(all_tags)
         bucket_id = await bucket_mgr.create(
             content=content,
-            tags=all_tags,
+            tags=pending_tags,
             importance=10,
             domain=domain,
             valence=valence,
@@ -2397,6 +2403,49 @@ async def api_bucket_update(request):
     })
 
 
+@mcp.custom_route("/api/bucket/{bucket_id}/review", methods=["POST"])
+async def api_bucket_review(request):
+    """Apply the canonical review state and optional intimacy classification.
+
+    body: {"status": "pending"|"flagged"|"refined", "intimate"?: bool}
+    The review desk is the source of truth: only refined memories are released
+    from review-pending; intimate memories are promoted at the same boundary.
+    """
+    from starlette.responses import JSONResponse
+    bucket_id = request.path_params["bucket_id"]
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"error": "invalid JSON"}, status_code=400)
+
+    status = body.get("status")
+    if status not in {"pending", "flagged", "refined"}:
+        return JSONResponse({"error": "status must be pending, flagged, or refined"}, status_code=400)
+    if "intimate" in body and not isinstance(body["intimate"], bool):
+        return JSONResponse({"error": "intimate must be boolean"}, status_code=400)
+
+    bucket = await bucket_mgr.get(bucket_id)
+    if not bucket:
+        return JSONResponse({"error": "not found"}, status_code=404)
+    current_tags = bucket.get("metadata", {}).get("tags") or []
+    next_tags = normalize_review_tags(
+        current_tags,
+        status,
+        body.get("intimate") if "intimate" in body else None,
+    )
+    success = await bucket_mgr.update(bucket_id, tags=next_tags)
+    if not success:
+        return JSONResponse({"error": "review update failed"}, status_code=500)
+    _invalidate_buckets_cache()
+    return JSONResponse({
+        "ok": True,
+        "id": bucket_id,
+        "status": review_status(next_tags),
+        "intimate": is_intimate(next_tags),
+        "tags": next_tags,
+    })
+
+
 @mcp.custom_route("/api/bucket/{bucket_id}/redehydrate", methods=["POST"])
 async def api_bucket_redehydrate(request):
     """对单条记忆重新提炼 — **预览模式, 不写盘**。
@@ -3364,6 +3413,7 @@ async def api_bucket_create(request):
     created_by = body.get("created_by", "user")
     if created_by not in ("user", "ai", "import"):
         created_by = "user"
+    tags = quarantine_new_tags(tags, bucket_type=bucket_type, created_by=created_by)
 
     try:
         bucket_id = await bucket_mgr.create(

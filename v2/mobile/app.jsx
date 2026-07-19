@@ -15,6 +15,16 @@ async function api(path, opts) {
   return await r.json();
 }
 
+async function applyReviewState(bucketId, status, intimate) {
+  const body = { status };
+  if (typeof intimate === 'boolean') body.intimate = intimate;
+  return api('/api/bucket/' + encodeURIComponent(bucketId) + '/review', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
 // ─────────────────────────────────────────
 // Hash routing —— 仅 hash,server.py 不用动
 //   #/                 → 首页
@@ -2430,6 +2440,30 @@ function statusOf(b) {
   return 'todo';
 }
 
+function reviewApiStatus(b) {
+  const status = statusOf(b);
+  return status === 'done' ? 'refined' : status === 'doubt' ? 'flagged' : 'pending';
+}
+
+function isIntimateReview(b) {
+  const tags = b.tags || [];
+  return tags.indexOf('intimacy') >= 0 || tags.indexOf('intimacy-pending') >= 0;
+}
+
+function isReviewQuarantined(b) {
+  return (b.tags || []).indexOf('review-pending') >= 0;
+}
+
+function visibleReviewTags(tags) {
+  return (tags || []).filter(t => {
+    const value = String(t);
+    return !value.startsWith('__')
+      && value !== 'review-pending'
+      && value !== 'intimacy-pending'
+      && value !== 'intimacy';
+  });
+}
+
 function ReviewScreen() {
   const [buckets, setBuckets] = useState(null);
   const [error, setError] = useState(null);
@@ -2584,27 +2618,28 @@ function ReviewScreen() {
     const targetStatus = action === 'refined' ? 'done' : 'doubt';
     const isUntoggle = currentStatus === targetStatus;
 
-    const newTags = (cur.tags || []).filter(t => t !== '__import_refined' && t !== '__import_flagged');
-    if (!isUntoggle) {
-      if (action === 'refined') newTags.push('__import_refined');
-      if (action === 'flagged') newTags.push('__import_flagged');
-    }
     const next = pickNext();
     try {
-      const r = await fetch('/api/bucket/' + encodeURIComponent(cur.id) + '/update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ tags: newTags }),
-      });
-      if (!r.ok) {
-        const err = await r.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${r.status}`);
-      }
-      setBuckets(prev => prev.map(b => b.id === cur.id ? { ...b, tags: newTags } : b));
+      const target = isUntoggle ? 'pending' : (action === 'refined' ? 'refined' : 'flagged');
+      const result = await applyReviewState(cur.id, target);
+      setBuckets(prev => prev.map(b => b.id === cur.id ? { ...b, tags: result.tags } : b));
       // 标记时切下一个,取消时留在原条目让用户看到状态变化
       if (!isUntoggle && next) setCurId(next.id);
     } catch (e) {
       alert('失败: ' + e.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleIntimacy = async () => {
+    if (!cur || busy) return;
+    setBusy(true);
+    try {
+      const result = await applyReviewState(cur.id, reviewApiStatus(cur), !isIntimateReview(cur));
+      setBuckets(prev => prev.map(b => b.id === cur.id ? { ...b, tags: result.tags } : b));
+    } catch (e) {
+      alert('亲密标记失败: ' + e.message);
     } finally {
       setBusy(false);
     }
@@ -2667,12 +2702,19 @@ function ReviewScreen() {
             <div className="rv-main-meta">
               {curDt && <span className="rv-main-meta-time">{fmtDay(curDt).num} {fmtDay(curDt).mo} · {fmtTime(curDt)}</span>}
               <span>·</span>
-              <span>{statusOf(cur) === 'done' ? '已精修' : statusOf(cur) === 'doubt' ? '存疑' : '待办'}</span>
+              <span>{statusOf(cur) === 'done' ? '已精修' : statusOf(cur) === 'doubt' ? '存疑 · 浮现隔离' : (isReviewQuarantined(cur) ? '待办 · 浮现隔离' : '待办')}</span>
               <span className="rv-main-meta-pos"><b>{curIdx >= 0 ? curIdx + 1 : '—'}</b>/{queue.length}</span>
             </div>
             <div className="rv-main-tags">
               {cur.highlight && <span className="rv-main-tag hi">★ 高亮</span>}
-              {(cur.tags || []).filter(t => !String(t).startsWith('__')).map((t, i) => (
+              <button
+                type="button"
+                className={'rv-main-tag rv-intimacy-tag' + (isIntimateReview(cur) ? ' on' : '')}
+                onClick={toggleIntimacy}
+                disabled={busy}
+                title="亲密记忆走独立浮现通道；待审时仍保持隔离"
+              >{isIntimateReview(cur) ? (statusOf(cur) === 'done' ? '♥ 亲密' : '♥ 亲密待审') : '♡ 标记亲密'}</button>
+              {visibleReviewTags(cur.tags).map((t, i) => (
                 <span key={i} className={'rv-main-tag' + (/feel/i.test(String(t)) ? ' feel' : '')}>{t}</span>
               ))}
             </div>

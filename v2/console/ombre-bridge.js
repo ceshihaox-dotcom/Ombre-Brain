@@ -170,6 +170,19 @@
     return r.json();
   };
 
+  // 审阅台权威状态切换:后端统一处理 review-pending 与亲密晋升/回退。
+  window.__obReviewBucket = async function (id, review) {
+    var body = { status: review.status };
+    if (review.intimate != null) body.intimate = !!review.intimate;
+    var r = await fetch('/api/bucket/' + encodeURIComponent(id) + '/review', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  };
+
   // ---------- 导入工作台专用 ----------
   // 上传文件(multipart) 或 粘贴原文(裸文本 body)
   // mode: 'small' (默认, 强制至少 1 条) 或 'large' (大批量精挑)

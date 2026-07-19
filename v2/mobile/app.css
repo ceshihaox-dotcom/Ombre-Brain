@@ -1186,6 +1186,16 @@ input, textarea { font: inherit; color: inherit; }
 .rv-main-tag.feel { color: var(--rose-deep); background: var(--rose-a08); }
 .rv-main-tag.hi   { color: var(--accent); background: var(--accent-3); }
 .rv-main-tag.ai   { color: var(--accent); background: var(--accent-3); }
+.rv-intimacy-tag {
+  appearance: none;
+  background: transparent;
+  cursor: pointer;
+}
+.rv-intimacy-tag.on {
+  color: var(--rose-deep);
+  background: var(--rose-a08);
+}
+.rv-intimacy-tag:disabled { opacity: 0.55; cursor: wait; }
 .rv-main-title {
   font-family: var(--serif); font-style: italic;
   font-size: 22px; font-weight: 500;
